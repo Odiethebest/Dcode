@@ -52,16 +52,16 @@
 
 ### 🟦 Odie（我）— 索引管线 + Agent + 整体架构集成
 - **W1**：把 AST 切块 → embedding → pgvector → jedi 建图 这条线打通
-- **W2**：在 P2 的检索 API 之上搭 Agent（LangGraph + 工具 + SSE + groundedness 校验）
+- **W2**：在 Yuxin 的检索 API 之上搭 Agent（LangGraph + 工具 + SSE + groundedness 校验）
 - **全程**：所有接口契约的拍板与冲突仲裁
 
-### 🟨 P2（待补名字）— 检索 & 基建
+### 🟨 Yuxin Liang — 检索 & 基建
 - **W1**：搭 pgvector / BM25 / Redis 基建。**和我一起共定数据库表结构和代码图的点边设计**——这是全项目最关键的第一个同步点（**S-1，W1 周末必须冻结**）
 - **W2**：把 hybrid retrieval（dense + BM25 + rerank）+ 代码图查询 API 做出来。我会作为消费方接你的接口，所以**接口契约你别一个人拍**，要跟我对齐（**S-2**）
 - **W3–4**：多租户、缓存调优、Docker、部署
 
-### 🟩 P3（待补名字）— 评测 & 前端
-**全项目最可并行的角色**——W1 第一天就能动起来，不用等我或 P2。
+### 🟩 Yufan Li — 评测 & 前端
+**全项目最可并行的角色**——W1 第一天就能动起来，不用等我或 Yuxin。
 - **W1**：构造问题集（手标 + 函数反向合成 + 挖 GitHub issue）+ 搭 eval 脚手架。**早开始、宁缺毋滥**——50–80 道高质量题比 500 道烂题有用得多
 - **W2**：对着 mock Agent 接口先把 UI 壳搭出来。**别等 Agent 写完才开始**
 - **W3（你的大周）**：跑完整 baseline 阶梯 + taxonomy 分析 + LLM-as-Judge + groundedness check
@@ -73,9 +73,9 @@
 
 | 同步点 | 截止时间 | 涉及方 | 冻结内容 |
 |---|---|---|---|
-| **S-1** | W1 周末 | Odie + P2 | 数据模型（4 张表：repos / chunks / symbols / edges）+ 索引 API |
-| **S-2** | W2 周中 | Odie + P2 | 检索 API（`search` + 4 个图查询：`find_definition` / `find_references` / `get_dependencies` / `get_file_outline`） |
-| **S-3** | W2 周末 | Odie + P3 | Agent 的 SSE 输出格式（7 类事件：`thought` / `tool_call` / `tool_result` / `citation` / `partial_answer` / `final_answer` / `error`） |
+| **S-1** | W1 周末 | Odie + Yuxin | 数据模型（4 张表：repos / chunks / symbols / edges）+ 索引 API |
+| **S-2** | W2 周中 | Odie + Yuxin | 检索 API（`search` + 4 个图查询：`find_definition` / `find_references` / `get_dependencies` / `get_file_outline`） |
+| **S-3** | W2 周末 | Odie + Yufan | Agent 的 SSE 输出格式（7 类事件：`thought` / `tool_call` / `tool_result` / `citation` / `partial_answer` / `final_answer` / `error`） |
 
 **为什么这么硬性？** 我们 3 个人并行干，一个接口动了下游所有人重构。任何接口改动**走 PR + 接口拥有者签**，**不要在群里一句话改**。详细字段定义看 [DESIGN.md §4](DESIGN.md)。
 
@@ -97,14 +97,14 @@
 
 | 谁 | W1 周末前必须出的东西 |
 |---|---|
-| **Odie** | tree-sitter 切块跑通；embedding client 抽象（环境变量驱动）；jedi 建图原型；和 P2 共定 schema |
-| **P2** | pgvector + Redis + Postgres 起来；和 Odie 共定 schema；Embedding 候选模型对比抽测（OD-2） |
-| **P3** | 问题集启动（先标 20 题手工题）；eval 脚手架搭起来（哪怕 baseline 还没接上）；判 Judge 模型靠不靠谱（OD-4，抽测 20 题人工 vs Judge 相关性） |
+| **Odie** | tree-sitter 切块跑通；embedding client 抽象（环境变量驱动）；jedi 建图原型；和 Yuxin 共定 schema |
+| **Yuxin** | pgvector + Redis + Postgres 起来；和 Odie 共定 schema；Embedding 候选模型对比抽测（OD-2） |
+| **Yufan** | 问题集启动（先标 20 题手工题）；eval 脚手架搭起来（哪怕 baseline 还没接上）；判 Judge 模型靠不靠谱（OD-4，抽测 20 题人工 vs Judge 相关性） |
 
 ### W1 必须闭环的两个 Open Decision
 
 - **OD-1**（Odie）：目标 repo 选哪个？候选 `requests` / `flask` / `fastapi`。**周一定**。
-- **OD-2**（P2）：embedding 模型选哪个？**周三前给出抽测结果**。
+- **OD-2**（Yuxin）：embedding 模型选哪个？**周三前给出抽测结果**。
 
 其他 OD（OD-3 reranker / OD-4 judge / OD-5 域名）W1 周末前闭环。
 
@@ -135,8 +135,8 @@
 | 这份 Kick_off.md | 现在 |
 
 **强烈建议**：今晚把 DESIGN.md 里**自己负责的那一节**通读一遍：
-- **P2** → §2.2（检索）、§2.6（基建）、§3（数据模型）、§4.2（检索 API）
-- **P3** → §2.4（评测）、§2.5（前端）、§4.3（SSE）、§4.4（评测协议）
+- **Yuxin** → §2.2（检索）、§2.6（基建）、§3（数据模型）、§4.2（检索 API）
+- **Yufan** → §2.4（评测）、§2.5（前端）、§4.3（SSE）、§4.4（评测协议）
 
 读完有问题直接拍我，明天开 kickoff 会过一遍。
 

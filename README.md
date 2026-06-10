@@ -342,8 +342,8 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 | Name | Role |
 |---|---|
 | Ziqi (Odie) Yang | Tech Lead — indexing pipeline, agent orchestrator, system integration |
-| TBD | Retrieval & graph API, infrastructure, deployment |
-| TBD | Evaluation harness, frontend |
+| Yuxin Liang | Retrieval & graph API, infrastructure, deployment |
+| Yufan Li | Evaluation harness, frontend |
 
 Independent project. Target execution window: 4 weeks.
 
