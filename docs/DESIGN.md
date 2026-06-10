@@ -457,6 +457,8 @@ results/{run_id}/
 
 ## 6. 技术选型
 
+**架构级选型**（原 TDD）
+
 | 类别 | 选型 | 备注 |
 |---|---|---|
 | API 框架 | FastAPI | SSE 原生支持 |
@@ -469,6 +471,19 @@ results/{run_id}/
 | Judge 模型 | 商业 LLM API（开工前评估稳定性） | 第 1 周内完成 judge 与人工判断的相关性抽测 |
 | 前端 | React + Tailwind | 与 odieyang.com 风格一致 |
 | 容器化 | Docker Compose | 部署目标：`dcode.odieyang.com` |
+
+**实现层选型**（M0 骨架阶段拍板；TDD 未明示）
+
+| 类别 | 选型 | 备注 |
+|---|---|---|
+| ORM | SQLAlchemy 2.0 async | 直接表达 pgvector + tsvector 自定义算子；优于 SQLModel 的灵活度 |
+| Schema migrations | Alembic | env.py 直接读 `dcode_shared.db.models.Base.metadata`，单一事实源 |
+| Queue 客户端 | aio-pika | asyncio 原生 AMQP；与全栈 async 风格一致 |
+| Python workspace | uv workspaces + Hatch backend | 跨包 lock 可复现；workspace 成员 editable install |
+| 前端构建 / 测试 | Vite + Vitest | strict TypeScript；vite.config.ts 嵌入 vitest 配置 |
+| 前端服务端状态 | TanStack Query | SSE / 轮询 / 缓存；骨架阶段无需引入全局客户端状态 |
+| 前端 lint | eslint 9 flat config + typescript-eslint v8 | 与 vitest / @types/node 兼容 |
+| Pip-only fallback | `requirements{,-dev}.txt` 自动从 `uv.lock` 导出 | 不替换 uv 主路径；环境无 uv 时备用 |
 
 ### 6.1 选型原则
 

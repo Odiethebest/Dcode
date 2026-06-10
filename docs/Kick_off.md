@@ -2,6 +2,8 @@
 
 > 给两位队友的项目启动说明。用最短的篇幅讲清楚：**我们要做什么、为什么、怎么走、你管哪一段、第一周先动哪里**。
 >
+> **M0 骨架已经搭好**（2026-06-10）：全 7 服务 `docker compose up` healthy / Alembic schema 已施加 / 5 个 Python 包 + frontend 全 stubs 就位 / `make check` 全绿。下面 W1 任务在这个基础上接续；不需要再造轮子。详见 [Structure.md](Structure.md)（哪里是 stub）和 [TODO.md](TODO.md)（每个 stub 归属哪个里程碑）。
+>
 > 这份文档读 10 分钟，[PLAN.md](PLAN.md) + [DESIGN.md](DESIGN.md) 读 1–2 小时——这份是入门，那两份是工作手册。
 
 ---

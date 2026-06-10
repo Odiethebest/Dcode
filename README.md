@@ -103,8 +103,11 @@ The project's entire engineering investment serves this **falsifiable** hypothes
 **Infrastructure**
 
 - **Database**: PostgreSQL 15 with the pgvector extension (HNSW on `embedding`, GIN on `tsv`)
-- **Queue**: RabbitMQ (primary) / Redis Streams (fallback)
-- **App**: FastAPI + worker + agent + frontend, orchestrated by Docker Compose
+- **ORM / Migrations**: SQLAlchemy 2.0 async + Alembic
+- **Queue**: RabbitMQ with `aio-pika` client
+- **Python workspace**: `uv` workspaces (5 members) + Hatch backend
+- **Frontend**: React 18 + TypeScript (strict) + Vite + Tailwind + TanStack Query
+- **Apps**: FastAPI gateway + worker + standalone agent service + frontend, orchestrated by Docker Compose
 - **Deployment target**: `dcode.odieyang.com`
 
 Full architecture, component design, and design decisions: [`docs/DESIGN.md`](docs/DESIGN.md).
@@ -133,7 +136,7 @@ CREATE TABLE chunks (
     id          UUID PRIMARY KEY,
     repo_id     UUID REFERENCES repos(id),
     file_path   TEXT NOT NULL,
-    chunk_type  chunk_type_enum,   -- function / method / class / module_doc
+    chunk_type  chunk_type,        -- function / method / class / module_doc
     symbol_name TEXT,
     start_line  INT, end_line INT,
     imports     JSONB,
@@ -150,7 +153,7 @@ CREATE TABLE edges (
     repo_id     UUID,
     source_id   UUID REFERENCES symbols(id),
     target_id   UUID REFERENCES symbols(id),
-    edge_type   edge_type_enum,    -- calls / imports / inherits / references
+    edge_type   edge_type,         -- calls / imports / inherits / references
     source_line INT
 );
 CREATE INDEX ON edges (repo_id, source_id, edge_type);
@@ -219,7 +222,12 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 
 ## Getting Started
 
-> **Status**: project skeleton under construction. The commands below describe the planned local workflow — `getting-started` will be finalized at milestone **M1** (see [`docs/PLAN.md` §7](docs/PLAN.md)).
+> **Status**: M0 skeleton complete (2026-06-10). All 7 services boot healthy via
+> `docker compose up`, `make check` is green (ruff + mypy --strict + pytest + eslint +
+> tsc + vitest), and the schema is applied. The Worker stages, Agent LangGraph nodes,
+> and Retrieval Layer return stub responses — real behavior lands at M1 / M2.
+> See [`docs/TODO.md`](docs/TODO.md) for the per-milestone task lists and
+> [`docs/Structure.md`](docs/Structure.md) for the per-file Real / Skeleton map.
 
 ### Prerequisites
 
@@ -228,7 +236,7 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 - Docker + Docker Compose
 - ≥ 16 GB RAM (for the self-hosted embedding model)
 
-### Local Setup (planned)
+### Local Setup
 
 ```bash
 git clone git@github.com:Odiethebest/Dcode.git
@@ -248,21 +256,27 @@ make migrate
 make check
 ```
 
-### Quick Smoke Test (planned)
+### Quick Smoke Test
+
+These commands work against the M0 skeleton; responses are shape-correct stubs
+until M1 / M2 wires the real pipeline.
 
 ```bash
-# Submit a repo
+# Submit a repo — returns 202 + stub repo_id
 curl -X POST http://localhost:8000/api/v1/repos \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://github.com/psf/requests.git"}'
 
-# Poll status until "status": "ready"
+# Poll status — returns RepoStatusResponse shape (status="queued" until M1)
 curl http://localhost:8000/api/v1/repos/<repo_id>/status
 
-# Ask a question (SSE stream)
+# Ask a question — SSE stream emits one stub `thought` then `final_answer`
 curl -N -X POST http://localhost:8000/api/v1/query \
   -H 'Content-Type: application/json' \
-  -d '{"repo_id":"<repo_id>","query":"How is session handling implemented?"}'
+  -d '{"repo_id":"00000000-0000-0000-0000-000000000000","query":"How is session handling implemented?"}'
+
+# Bonus: agent tool manifest (debug)
+curl http://localhost:8001/internal/tools | jq '.[].name'
 ```
 
 ---

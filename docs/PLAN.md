@@ -180,6 +180,7 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 | 周次 | 里程碑 | Exit Criteria |
 |---|---|---|
+| pre-W1 | **M0 — 骨架搭建** ✅ 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Structure.md](Structure.md) / [TODO.md](TODO.md) |
 | W1 | **M1 — 数据通路打通** | 目标仓库经索引管线完整写入数据库；DESIGN §3 数据模型冻结；§4.1 接口实现并通过冒烟测试 |
 | W2 | **M2 — 端到端可问答** | DESIGN §2.2、§2.3 完成；可对至少 5 个示例问题端到端产出带引用的答案；§4.2、§4.3 冻结 |
 | W3 | **M3 — 评测可复现** | B0–B4 全部 Baseline 在问题集上完成至少一轮跑分；指标产出符合 §4.4 格式；UI 主路径可用 |
