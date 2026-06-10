@@ -4,10 +4,10 @@ Implements DESIGN.md §2.3.2 row 7. Backed by ripgrep against the cloned
 repo workdir — cheap, precise, and complementary to semantic search.
 """
 
+from dcode_shared.schemas import Location
 from pydantic import BaseModel
 
 from dcode_agent.tools.base import Tool
-from dcode_shared.schemas import Location
 
 
 class GrepArgs(BaseModel):

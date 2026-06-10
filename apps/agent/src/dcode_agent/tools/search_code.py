@@ -4,10 +4,10 @@ Implements DESIGN.md §2.3.2 row 1. Underlying call: hybrid retrieval API
 per §2.2.1 (dense + sparse + RRF k=60 + cross-encoder rerank).
 """
 
+from dcode_shared.schemas import Chunk
 from pydantic import BaseModel, Field
 
 from dcode_agent.tools.base import Tool
-from dcode_shared.schemas import Chunk
 
 
 class SearchCodeArgs(BaseModel):

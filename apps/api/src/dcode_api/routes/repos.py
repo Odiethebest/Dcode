@@ -6,10 +6,6 @@ are implemented at milestone M1 per DESIGN.md §2.1.
 
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from dcode_api.deps import get_db
 from dcode_shared.schemas import (
     RepoCreateRequest,
     RepoCreateResponse,
@@ -18,6 +14,10 @@ from dcode_shared.schemas import (
     StagesStatus,
     StageState,
 )
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from dcode_api.deps import get_db
 
 router = APIRouter(tags=["repos"])
 

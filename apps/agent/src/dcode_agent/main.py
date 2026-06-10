@@ -14,13 +14,13 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from dcode_shared.schemas import QueryRequest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
 from dcode_agent.sse import SSEEmitter
 from dcode_agent.state import AgentState
 from dcode_agent.tools import default_registry
-from dcode_shared.schemas import QueryRequest
 
 
 @asynccontextmanager

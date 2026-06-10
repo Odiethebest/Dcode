@@ -44,7 +44,7 @@ lint:
 	cd apps/frontend && npm run lint
 
 typecheck:
-	uv run mypy apps packages
+	uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval
 	cd apps/frontend && npm run typecheck
 
 test:

@@ -15,9 +15,8 @@ keeps the agent service decoupled from storage and makes mocking trivial.
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Generic, TypeVar
 
-from pydantic import BaseModel
-
 from dcode_shared.cache import tool_cache_key
+from pydantic import BaseModel
 
 ArgsT = TypeVar("ArgsT", bound=BaseModel)
 ResultT = TypeVar("ResultT", bound=BaseModel)

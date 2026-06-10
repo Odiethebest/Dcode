@@ -16,7 +16,7 @@ def test_pipeline_context_default_construction() -> None:
 def test_all_stages_expose_run_coroutine() -> None:
     """Every stage module must expose `run` (filled in at M1/M2)."""
     for mod in (clone, parse, chunk, embed, graph):
-        assert callable(getattr(mod, "run"))
+        assert callable(mod.run)
 
 
 async def test_handle_job_tolerates_malformed_message() -> None:

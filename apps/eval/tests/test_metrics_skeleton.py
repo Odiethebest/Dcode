@@ -1,7 +1,6 @@
 """Eval harness smoke tests — baseline ladder + retrieval metric math."""
 
 import pytest
-
 from dcode_eval.baselines import (
     BM25Baseline,
     FullSystemBaseline,

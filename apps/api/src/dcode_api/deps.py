@@ -7,11 +7,11 @@ into the lifespan handler in main.py for graceful startup / shutdown.
 from collections.abc import AsyncIterator
 
 import httpx
+from dcode_shared.db.session import SessionLocal
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcode_api.settings import api_settings
-from dcode_shared.db.session import SessionLocal
 
 _redis: Redis | None = None
 _agent_client: httpx.AsyncClient | None = None

@@ -1,7 +1,8 @@
 """Baseline B3 — hybrid RAG (dense + sparse + RRF + cross-encoder rerank)."""
 
-from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_shared.schemas import Chunk
+
+from dcode_eval.baselines.base import AnswerResult, Baseline
 
 
 class HybridRAGBaseline(Baseline):

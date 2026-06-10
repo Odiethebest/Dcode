@@ -22,7 +22,7 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check apps packages
       - name: Typecheck (mypy --strict)
-        run: uv run mypy apps packages
+        run: uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval
       - name: Test (pytest)
         run: uv run pytest
 

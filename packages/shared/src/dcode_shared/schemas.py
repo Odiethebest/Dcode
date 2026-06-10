@@ -4,7 +4,7 @@ This module is the single source of truth for every cross-service payload shape.
 Services MUST import these types rather than redefining.
 """
 
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ===========================================================================
 
 
-class RepoStatus(str, Enum):
+class RepoStatus(StrEnum):
     """Index pipeline state — monotonically advances except to `failed`."""
 
     queued = "queued"
@@ -26,7 +26,7 @@ class RepoStatus(str, Enum):
     failed = "failed"
 
 
-class StageState(str, Enum):
+class StageState(StrEnum):
     """Per-stage state inside the indexing pipeline."""
 
     pending = "pending"
@@ -35,7 +35,7 @@ class StageState(str, Enum):
     failed = "failed"
 
 
-class ChunkType(str, Enum):
+class ChunkType(StrEnum):
     """AST-level chunk discriminator (DESIGN.md §3.2 chunks.chunk_type)."""
 
     function = "function"
@@ -44,7 +44,7 @@ class ChunkType(str, Enum):
     module_doc = "module_doc"
 
 
-class SymbolKind(str, Enum):
+class SymbolKind(StrEnum):
     """Code-graph node kind (DESIGN.md §3.2 symbols.kind)."""
 
     function = "function"
@@ -53,7 +53,7 @@ class SymbolKind(str, Enum):
     module = "module"
 
 
-class EdgeType(str, Enum):
+class EdgeType(StrEnum):
     """Code-graph edge kind (DESIGN.md §3.2 edges.edge_type)."""
 
     calls = "calls"

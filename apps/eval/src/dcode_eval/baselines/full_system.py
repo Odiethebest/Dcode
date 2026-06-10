@@ -1,7 +1,8 @@
 """Baseline B4 — the full Dcode system (hybrid + call graph + agent)."""
 
-from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_shared.schemas import Chunk
+
+from dcode_eval.baselines.base import AnswerResult, Baseline
 
 
 class FullSystemBaseline(Baseline):

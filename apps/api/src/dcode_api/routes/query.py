@@ -11,12 +11,12 @@ plus an `error` event so the SSE protocol is still exercised end-to-end.
 from collections.abc import AsyncIterator
 
 import httpx
+from dcode_shared.events import ErrorEvent, ThoughtEvent, sse_encode
+from dcode_shared.schemas import QueryRequest
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from dcode_api.deps import get_agent_client
-from dcode_shared.events import ErrorEvent, ThoughtEvent, sse_encode
-from dcode_shared.schemas import QueryRequest
 
 router = APIRouter(tags=["query"])
 

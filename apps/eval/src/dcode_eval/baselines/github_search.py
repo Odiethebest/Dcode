@@ -3,8 +3,9 @@
 Industry-standard control: queries the public GitHub code search API.
 """
 
-from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_shared.schemas import Chunk
+
+from dcode_eval.baselines.base import AnswerResult, Baseline
 
 
 class GithubSearchBaseline(Baseline):

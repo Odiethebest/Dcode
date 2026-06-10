@@ -1,7 +1,8 @@
 """Baseline B2 — vanilla dense RAG (single-path vector retrieval + generator)."""
 
-from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_shared.schemas import Chunk
+
+from dcode_eval.baselines.base import AnswerResult, Baseline
 
 
 class VanillaRAGBaseline(Baseline):

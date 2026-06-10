@@ -3,7 +3,6 @@
 from uuid import uuid4
 
 import pytest
-
 from dcode_shared.cache import (
     embedding_cache_key,
     job_state_key,

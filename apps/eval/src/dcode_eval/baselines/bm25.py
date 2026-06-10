@@ -1,7 +1,8 @@
 """Baseline B1 — standalone BM25 sparse retrieval."""
 
-from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_shared.schemas import Chunk
+
+from dcode_eval.baselines.base import AnswerResult, Baseline
 
 
 class BM25Baseline(Baseline):

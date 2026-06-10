@@ -2,10 +2,9 @@
 
 import uuid
 
-from fastapi.testclient import TestClient
-
 from dcode_agent.main import app
 from dcode_agent.tools import default_registry
+from fastapi.testclient import TestClient
 
 EXPECTED_TOOLS = {
     "search_code",
@@ -53,8 +52,10 @@ def test_healthz_returns_ok() -> None:
 
 
 def test_tools_manifest_endpoint_lists_eight_tools() -> None:
-    client = TestClient(app)
-    response = client.get("/internal/tools")
+    # The manifest endpoint reads app.state.tool_registry which is set in
+    # the lifespan handler — TestClient's context manager triggers it.
+    with TestClient(app) as client:
+        response = client.get("/internal/tools")
     assert response.status_code == 200
     manifest = response.json()
     assert {entry["name"] for entry in manifest} == EXPECTED_TOOLS

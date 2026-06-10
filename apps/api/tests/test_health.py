@@ -2,9 +2,8 @@
 
 import uuid
 
-from fastapi.testclient import TestClient
-
 from dcode_api.main import app
+from fastapi.testclient import TestClient
 
 
 def test_healthz_returns_ok() -> None:
