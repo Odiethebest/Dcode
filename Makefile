@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps check lint typecheck test migrate fmt clean smoke
+.PHONY: help up down logs ps check lint typecheck test migrate requirements fmt clean smoke
 
 # ============================================================
 # Dcode developer commands. See README.md for the 5-minute guide.
@@ -17,6 +17,7 @@ help:
 	@echo "  test       Run pytest + vitest"
 	@echo "  fmt        Auto-format Python + TypeScript"
 	@echo "  migrate    Apply Alembic migrations inside the api container"
+	@echo "  requirements  Regenerate requirements{,-dev}.txt pip fallbacks from uv.lock"
 	@echo "  smoke      Hit /healthz on every service"
 	@echo "  clean      Remove caches and build artifacts"
 
@@ -62,6 +63,15 @@ fmt:
 
 migrate:
 	docker compose exec api uv run alembic -c infra/migrations/alembic.ini upgrade head
+
+# --- Pip-fallback requirements files (regenerate from uv.lock) ---
+
+requirements:
+	@printf '# ============================================================\n# Dcode runtime dependencies — pip-only fallback.\n#\n# Primary path is `uv sync` from pyproject.toml + uv.lock.\n# This file exists for environments that don'"'"'t run uv.\n#\n# Install:\n#   pip install -r requirements.txt\n#   pip install -e packages/shared -e apps/api -e apps/worker -e apps/agent -e apps/eval\n#\n# Regenerate: make requirements\n# ============================================================\n\n' > requirements.txt
+	uv export --format requirements-txt --no-hashes --all-packages --no-emit-workspace --no-dev >> requirements.txt
+	@printf '# ============================================================\n# Dcode runtime + dev dependencies — pip-only fallback.\n#\n# Adds ruff / mypy / pytest / pytest-asyncio / httpx on top of\n# requirements.txt. Primary path is `uv sync`.\n#\n# Install:\n#   pip install -r requirements-dev.txt\n#   pip install -e packages/shared -e apps/api -e apps/worker -e apps/agent -e apps/eval\n#\n# Regenerate: make requirements\n# ============================================================\n\n' > requirements-dev.txt
+	uv export --format requirements-txt --no-hashes --all-packages --no-emit-workspace >> requirements-dev.txt
+	@echo "Regenerated requirements.txt (runtime) and requirements-dev.txt (with dev)"
 
 # --- Smoke tests ---
 
