@@ -25,6 +25,8 @@
 - [Key Design Decisions](#key-design-decisions)
 - [Technical Design](docs/DESIGN.md)
 - [Project Plan](docs/PLAN.md)
+- [Outstanding Work (TODO)](docs/TODO.md)
+- [Repository Structure](docs/Structure.md)
 - [Team](#team)
 
 ---
@@ -332,8 +334,10 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 
 | Document | Role | Contents |
 |---|---|---|
-| **[`docs/DESIGN.md`](docs/DESIGN.md)** | Technical authority | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
-| **[`docs/PLAN.md`](docs/PLAN.md)**     | Execution authority | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1–M4), risk register, open-decision timeline |
+| **[`docs/DESIGN.md`](docs/DESIGN.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
+| **[`docs/PLAN.md`](docs/PLAN.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1–M4), risk register, open-decision timeline |
+| **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Skeleton self-verification status, M1–M4 milestone task lists, M0 decisions log, open questions |
+| **[`docs/Structure.md`](docs/Structure.md)** | File-tree walkthrough | Per-service file inventory tagged Real / Skeleton / M1–M4, cross-cutting concerns (multi-tenancy, cache, SSE, OD placeholders) |
 
 ---
 
