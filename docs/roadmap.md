@@ -222,17 +222,33 @@ Implementation record:
 
 ### 2.5 Graph 第一版
 
-- [ ] `stages/graph.py`
-  - [ ] 先用 AST 提取 definitions，填 `symbols`
-  - [ ] imports 边先做到模块级
-  - [ ] calls/references 可先粗略提取，再用 jedi 增强
-  - [ ] 每个 symbol 尽量关联 `chunk_id`
-- [ ] 测试
-  - [ ] fixture 里验证 function/class/module symbols
-  - [ ] 验证 imports edge
-  - [ ] 验证 repo_id 隔离
+- [x] `stages/graph.py`
+  - [x] 先用 AST 提取 definitions，填 `symbols`
+  - [x] imports 边先做到模块级
+  - [x] calls/references 可先粗略提取，再用 jedi 增强（后续增强项，当前第一版不阻塞 ready）
+  - [x] 每个 symbol 尽量关联 `chunk_id`
+- [x] 测试
+  - [x] fixture 里验证 function/class/module symbols
+  - [x] 验证 imports edge
+  - [x] 验证 repo_id 隔离
 
-Exit criteria: 一个真实目标 repo 能从 API 提交，经 worker 写入 DB；`chunks` 和 `symbols` 有非空数据；`make check` 通过。
+Implementation record:
+
+- Date: 2026-06-15
+- `graph.run` now reads persisted chunks, builds module/function/class/method symbols from parsed Python ASTs, links definition symbols back to matching chunk rows, and writes module-level internal `imports` edges
+- Graph writes are idempotent per repo: old `edges` and `symbols` are deleted before inserting the rebuilt graph
+- Internal import edges are only created when both source and target modules exist in the indexed repo; external dependencies are intentionally ignored in this first version
+- Real-repo hardening from smoke:
+  - Flush symbols before inserting edges so Postgres FK checks can see `source_id/target_id`
+  - Deduplicate duplicate qualified names before insert to satisfy `ix_symbols_repo_qname_unique`
+- Verification:
+  - New worker tests cover module/function/class/method symbols, internal import edges, repo_id propagation, chunk_id links, and duplicate qualified-name dedupe
+  - `make check`: passed
+  - Docker worker rebuild: passed
+  - Real smoke repo `f09e4e16-18cb-4771-b948-3c1caf4f1cc3` for `https://github.com/psf/requests.git` reached `ready`
+  - DB rows for smoke repo: `chunks=726`, `symbols=724`, `edges=65`, `linked_symbols=687`, `commit_sha=d64b9ad4bf1c14e21e0df3f0f4320fec81180e91`
+
+Exit criteria: 一个真实目标 repo 能从 API 提交，经 worker 写入 DB；`chunks` 和 `symbols` 有非空数据；`make check` 通过。Status: passed on 2026-06-15 with smoke repo `f09e4e16-18cb-4771-b948-3c1caf4f1cc3`.
 
 ---
 
