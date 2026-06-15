@@ -162,25 +162,40 @@ Implementation record:
 
 ### 2.3 Clone / Parse / Chunk
 
-- [ ] `stages/clone.py`
-  - [ ] 使用 `git clone --depth=1`
-  - [ ] workdir 按 repo_id 隔离
-  - [ ] 记录 commit SHA
-- [ ] `stages/parse.py`
-  - [ ] 递归收集 `.py` 文件
-  - [ ] 跳过 `.venv`、`venv`、`.git`、`__pycache__`、build artifacts
-  - [ ] 用 tree-sitter 或 Python `ast` 产出可供 chunk 使用的结构
-- [ ] `stages/chunk.py`
-  - [ ] 函数 chunk
-  - [ ] method chunk
-  - [ ] class chunk
-  - [ ] module docstring chunk
-  - [ ] 提取 `file_path/symbol_name/signature/start_line/end_line/imports/content`
-  - [ ] 禁止定长滑窗
-- [ ] 测试
-  - [ ] 用 2-3 个小 fixture 文件覆盖 function/class/method/docstring
-  - [ ] 验证 line number 准确
-  - [ ] 验证 imports 随 chunk 带上
+- [x] `stages/clone.py`
+  - [x] 使用 `git clone --depth=1`
+  - [x] workdir 按 repo_id 隔离
+  - [x] 记录 commit SHA
+- [x] `stages/parse.py`
+  - [x] 递归收集 `.py` 文件
+  - [x] 跳过 `.venv`、`venv`、`.git`、`__pycache__`、build artifacts
+  - [x] 用 Python `ast` 产出可供 chunk 使用的结构
+- [x] `stages/chunk.py`
+  - [x] 函数 chunk
+  - [x] method chunk
+  - [x] class chunk
+  - [x] module docstring chunk
+  - [x] 提取 `file_path/symbol_name/signature/start_line/end_line/imports/content`
+  - [x] 禁止定长滑窗
+- [x] 测试
+  - [x] 用 fixture 文件覆盖 function/class/method/docstring
+  - [x] 验证 line number 准确
+  - [x] 验证 imports 随 chunk 带上
+
+Implementation record:
+
+- Date: 2026-06-15
+- Added worker-local `ParsedPythonFile` and `CodeChunk` dataclasses so parse/chunk outputs are typed before DB persistence is implemented
+- `clone.run` now shallow-clones into `WORKDIR_BASE/{repo_id}`, clears stale workdirs for repeatable retries, and records `commit_sha`; the pipeline writes that SHA to `repos.commit_sha`
+- `parse.run` now walks cloned repos for `.py` files, skips generated/virtualenv/cache directories, parses with Python `ast`, records module-level imports, and skips single-file syntax/encoding failures as warnings
+- `chunk.run` now emits AST-boundary chunks for module docstring, top-level functions, classes, and class methods; each chunk carries path, symbol, signature, line span, imports, and source content
+- Boundary note: 2.3 produces in-memory chunks on `PipelineContext`; DB chunk persistence remains coupled to embedding/persist work in 2.4/2.5
+- Verification:
+  - New worker tests cover local git clone, repo-scoped workdir, commit SHA, parse skip behavior, chunk types, line numbers, and import propagation
+  - `make check`: passed
+  - Docker worker rebuild: passed
+  - Real smoke repo `f88524dc-06cb-4b63-8c94-3b79e416fa2f` for `https://github.com/psf/requests.git` advanced to `cloning=done`, `parsing=done`, then failed at expected `embedding` placeholder
+  - DB `repos.commit_sha`: `d64b9ad4bf1c14e21e0df3f0f4320fec81180e91`
 
 ### 2.4 Embedding 第一版
 

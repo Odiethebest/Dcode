@@ -105,6 +105,7 @@ async def handle_job(
                     stage_states,
                     error=None,
                     complete=False,
+                    commit_sha=ctx.commit_sha,
                 )
 
             await _persist_state(
@@ -116,6 +117,7 @@ async def handle_job(
                 stage_states,
                 error=None,
                 complete=True,
+                commit_sha=ctx.commit_sha,
             )
             logger.info("indexing job completed repo_id=%s", repo_id)
     except Exception as exc:  # noqa: BLE001 — stage failures are represented in job state
@@ -132,6 +134,7 @@ async def handle_job(
                 stage_states,
                 error=error,
                 complete=True,
+                commit_sha=ctx.commit_sha,
             )
         logger.exception("indexing job failed repo_id=%s", repo_id)
     finally:
@@ -177,8 +180,9 @@ async def _persist_state(
     *,
     error: str | None,
     complete: bool,
+    commit_sha: str | None = None,
 ) -> None:
-    await _update_repo(db, repo_id, status, progress, error)
+    await _update_repo(db, repo_id, status, progress, error, commit_sha)
     await _write_job_state(redis, repo_id, status, progress, stages, error=error, complete=complete)
 
 
@@ -188,6 +192,7 @@ async def _update_repo(
     status: RepoStatus,
     progress: int,
     error: str | None,
+    commit_sha: str | None,
 ) -> None:
     repo = await db.get(Repo, repo_id)
     if repo is None:
@@ -196,6 +201,8 @@ async def _update_repo(
     repo.status = status.value
     repo.progress = progress
     repo.error = error
+    if commit_sha is not None:
+        repo.commit_sha = commit_sha
     await db.commit()
 
 
