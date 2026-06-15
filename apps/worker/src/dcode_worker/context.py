@@ -20,6 +20,7 @@ class PipelineContext:
     files: list[str] = field(default_factory=list)
     parsed_files: list[ParsedPythonFile] = field(default_factory=list)
     chunks: list[CodeChunk] = field(default_factory=list)
+    embeddings: list[list[float]] = field(default_factory=list)
     symbols: list[Any] = field(default_factory=list)
     edges: list[Any] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

@@ -199,12 +199,26 @@ Implementation record:
 
 ### 2.4 Embedding 第一版
 
-- [ ] `stages/embed.py`
-  - [ ] 先接 `StubEmbeddingClient` 让 DB 能完整写入
-  - [ ] 实现 `embed:{model_id}:{sha256(text)}` 缓存 key
-  - [ ] 实现 Redis `mget/mset`
-  - [ ] embedding 维度与 `EMBEDDING_DIM` 一致
-- [ ] 后续替换真实模型时保持接口不变
+- [x] `stages/embed.py`
+  - [x] 先接 `StubEmbeddingClient` 让 DB 能完整写入
+  - [x] 实现 `embed:{model_id}:{sha256(text)}` 缓存 key
+  - [x] 实现 Redis `mget/mset`
+  - [x] embedding 维度与 `EMBEDDING_DIM` 一致
+- [x] 后续替换真实模型时保持接口不变
+
+Implementation record:
+
+- Date: 2026-06-15
+- `embed.run` now embeds every `PipelineContext.chunks` item, attaches vectors to `ctx.embeddings`, and replaces the repo's existing `chunks` rows in Postgres for idempotent re-indexing
+- Default embedding client remains `StubEmbeddingClient`, using `EMBEDDING_DIM` for zero-vector output so DB shape and pgvector dimension are exercised before OD-2 model hosting
+- Redis cache uses `embed:{model_id}:{sha256(text)}` via `embedding_cache_key`, with `mget` before embedding and `mset` for misses; cache read/write failures degrade to recomputing instead of failing the job
+- The embedding client interface stays injectable: real model replacement can pass another `EmbeddingClient` without changing pipeline orchestration
+- Verification:
+  - New worker tests cover cache hits, cache misses, Redis `mset`, chunk DB replacement, persisted embeddings, and dimension mismatch rejection
+  - `make check`: passed
+  - Docker worker rebuild: passed
+  - Real smoke repo `860bdd91-7870-452f-a6a4-3a68d9a619e8` for `https://github.com/psf/requests.git` advanced to `embedding=done`, then failed at expected `graphing` placeholder
+  - DB rows for smoke repo: `chunks=726`, `vector_dims(embedding)=1024`, `commit_sha=d64b9ad4bf1c14e21e0df3f0f4320fec81180e91`
 
 ### 2.5 Graph 第一版
 
