@@ -8,6 +8,7 @@ class APISettings(SharedSettings):
 
     cors_origins: str = "http://localhost:5173"
     agent_url: str = "http://localhost:8001"
+    index_queue_name: str = "dcode.index_jobs"
 
     @property
     def cors_origins_list(self) -> list[str]:
