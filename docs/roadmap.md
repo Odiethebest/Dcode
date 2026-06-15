@@ -8,17 +8,34 @@
 
 ## 0. 当前基线
 
-- [ ] 确认 `main` 分支 clean，记录当前 commit SHA
-- [ ] 本地跑通 `make check`
-- [ ] 本地跑通 `docker compose up -d --build`
-- [ ] 本地跑通 `make migrate`
-- [ ] 验证以下 M0 接口仍可用：
-  - [ ] `GET /healthz` on API
-  - [ ] `GET /healthz` on Agent
-  - [ ] `POST /api/v1/repos` 返回 202 shape
-  - [ ] `POST /api/v1/query` 返回 SSE stub
-- [ ] 建一个固定开发目标仓库目录，例如 `data/repos/`
-- [ ] 建一个固定结果目录，例如 `results/`
+- [x] 确认 `main` 分支 clean，记录当前 commit SHA
+- [x] 本地跑通 `make check`
+- [x] 本地跑通 `docker compose up -d --build`
+- [x] 本地跑通 `make migrate`
+- [x] 验证以下 M0 接口仍可用：
+  - [x] `GET /healthz` on API
+  - [x] `GET /healthz` on Agent
+  - [x] `POST /api/v1/repos` 返回 202 shape
+  - [x] `POST /api/v1/query` 返回 SSE stub
+- [x] 建一个固定开发目标仓库目录，例如 `data/repos/`
+- [x] 建一个固定结果目录，例如 `results/`
+
+Baseline run record:
+
+- Date: 2026-06-15
+- Branch: `main`
+- Commit: `55e5839`
+- Local Python env: rebuilt `.venv` with Python 3.11 after the old venv entrypoints pointed at a stale path
+- `make check`: passed
+- `docker compose up -d --build`: passed
+- `make migrate`: passed
+- Smoke:
+  - API `GET /healthz`: `{"status":"ok"}`
+  - Agent `GET /healthz`: `{"status":"ok"}`
+  - API `POST /api/v1/repos`: returned `202` shape with `status="queued"`
+  - API `POST /api/v1/query`: returned stub `thought` and `final_answer` SSE events
+  - Frontend `GET /`: passed
+  - Compose: API, Agent, Frontend, Postgres, Redis, RabbitMQ, Worker healthy
 
 Exit criteria: M0 状态可复现，任何后续改动都有可回归基线。
 
@@ -28,23 +45,54 @@ Exit criteria: M0 状态可复现，任何后续改动都有可回归基线。
 
 这些决定先定下来，避免后面实现时反复改接口。
 
-- [ ] OD-1: 选择主目标仓库
-  - [ ] 首选 `requests`，因为规模适中、依赖少、问题容易人工标注
-  - [ ] 备选 `flask`
-  - [ ] 暂缓 `fastapi`，因为依赖和架构复杂度更高
-- [ ] OD-2: 选择 embedding 策略
-  - [ ] 第一版允许使用 stub/本地简化 embedding 跑通管线
-  - [ ] H1 正式评测前替换成代码 embedding 模型
-  - [ ] 记录模型名、维度、运行方式、成本
-- [ ] OD-3: 选择 reranker 策略
-  - [ ] 第一版先无 reranker 或简单 score fusion
-  - [ ] 正式评测前补 cross-encoder/reranker
-- [ ] OD-4: 选择 judge 策略
-  - [ ] 第一版先生成可人工检查的 `per_question.jsonl`
-  - [ ] 正式报告前再接 LLM-as-Judge
-- [ ] OD-5: 部署策略
-  - [ ] 本地 Docker Compose 优先
-  - [ ] 线上 `dcode.odieyang.com` 放到最后
+- [x] OD-1: 选择主目标仓库
+  - [x] 首选 `requests`，因为规模适中、依赖少、问题容易人工标注
+  - [x] 备选 `flask`
+  - [x] 暂缓 `fastapi`，因为依赖和架构复杂度更高
+- [x] OD-2: 选择 embedding 策略
+  - [x] 第一版允许使用 stub/本地简化 embedding 跑通管线
+  - [x] H1 正式评测前替换成代码 embedding 模型
+  - [x] 记录模型名、维度、运行方式、成本
+- [x] OD-3: 选择 reranker 策略
+  - [x] 第一版先无 reranker 或简单 score fusion
+  - [x] 正式评测前补 cross-encoder/reranker
+- [x] OD-4: 选择 judge 策略
+  - [x] 第一版先生成可人工检查的 `per_question.jsonl`
+  - [x] 正式报告前再接 LLM-as-Judge
+- [x] OD-5: 部署策略
+  - [x] 本地 Docker Compose 优先
+  - [x] 线上 `dcode.odieyang.com` 放到最后
+
+Decision record:
+
+- Date: 2026-06-15
+- OD-1 target repo: `requests`
+  - Primary evaluation repo: `https://github.com/psf/requests.git`
+  - Rationale: smaller and more stable than `fastapi`, enough real cross-file behavior for L1/L2/L3 questions, and easier to manually audit alone.
+  - Fallback: `flask` if `requests` does not produce enough L2/L3 graph questions.
+- OD-2 embedding: `jinaai/jina-embeddings-v2-base-code`
+  - Default env for real embedding phase: `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code`, `EMBEDDING_DIM=768`.
+  - M1/M2 bootstrap behavior: keep `StubEmbeddingClient` until clone/parse/chunk/persist is stable.
+  - Real implementation path: self-host through `sentence-transformers` or `transformers`; cache with `embed:{model_id}:{sha256(text)}` before DB writes.
+  - Rationale: code-oriented open model, Apache-2.0, supports Python and other programming languages, and supports long inputs suitable for AST chunks.
+  - Source: <https://huggingface.co/jinaai/jina-embeddings-v2-base-code>
+- OD-3 reranker: `BAAI/bge-reranker-v2-m3`
+  - Default env for real rerank phase: `RERANKER_MODEL=BAAI/bge-reranker-v2-m3`; keep `RERANKER_ENDPOINT` for either local HTTP service or direct in-process adapter.
+  - M2 bootstrap behavior: identity rerank behind the same interface so retrieval can ship before model hosting.
+  - Real implementation path: rerank top-50 fused candidates and return top-10.
+  - Rationale: reranker takes query + passage and returns relevance directly; v2-m3 is lightweight enough for local deployment and supports multilingual/code-adjacent text.
+  - Source: <https://huggingface.co/BAAI/bge-reranker-v2-m3>
+- OD-4 judge: OpenAI `gpt-5.4-mini`
+  - Default env for automated judge phase: `JUDGE_MODEL=gpt-5.4-mini`.
+  - Bootstrap behavior: write `per_question.jsonl` and allow manual review before API-backed judging.
+  - Real implementation path: use Responses API rubric scoring plus pairwise comparisons; reserve stronger `gpt-5.5` for spot checks or disputed samples only.
+  - Rationale: official OpenAI guidance positions `gpt-5.5` as the flagship for complex reasoning/coding and `gpt-5.4-mini` as the lower-cost/lower-latency option; judge volume favors mini with manual spot checks.
+  - Source: <https://developers.openai.com/api/docs/models>
+- OD-5 deployment: local-first, production-last
+  - Development target: Docker Compose on local machine.
+  - Demo target: `dcode.odieyang.com` only after B2/B3/B4 eval outputs exist.
+  - Production shape: keep one Compose deployment, put a reverse proxy in front, expose frontend + API only, keep Agent/internal routes private.
+  - Frontend production: replace Vite dev container with static build served by nginx/Caddy during M4.
 
 Exit criteria: `docs/TODO.md` 或本文记录所有 OD 的最终选择。
 
@@ -56,16 +104,30 @@ Exit criteria: `docs/TODO.md` 或本文记录所有 OD 的最终选择。
 
 ### 2.1 API 入队
 
-- [ ] `apps/api/src/dcode_api/routes/repos.py`
-  - [ ] `submit_repo` 创建真实 `Repo` 行
-  - [ ] `submit_repo` 发布 RabbitMQ 消息到 `dcode.index_jobs`
-  - [ ] 消息体包含 `repo_id`、`url`
-  - [ ] 返回真实 `repo_id`
-  - [ ] `repo_status` 从 DB 读取 `status/progress/error`
-  - [ ] `repo_status` 合并 Redis `job:{repo_id}` stage 状态
-- [ ] 测试
-  - [ ] API 单测覆盖真实持久化路径
-  - [ ] malformed URL 至少有明确错误
+- [x] `apps/api/src/dcode_api/routes/repos.py`
+  - [x] `submit_repo` 创建真实 `Repo` 行
+  - [x] `submit_repo` 发布 RabbitMQ 消息到 `dcode.index_jobs`
+  - [x] 消息体包含 `repo_id`、`url`
+  - [x] 返回真实 `repo_id`
+  - [x] `repo_status` 从 DB 读取 `status/progress/error`
+  - [x] `repo_status` 合并 Redis `job:{repo_id}` stage 状态
+- [x] 测试
+  - [x] API 单测覆盖真实持久化路径
+  - [x] malformed URL 至少有明确错误
+
+Implementation record:
+
+- Date: 2026-06-15
+- Added RabbitMQ publisher dependency with durable queue publish to `dcode.index_jobs`
+- `POST /api/v1/repos` now validates Git URLs, inserts a queued `repos` row, publishes `{repo_id,url}`, commits on publish success, and rolls back on publish failure
+- `GET /api/v1/repos/{repo_id}/status` now returns DB state plus optional Redis `job:{repo_id}` live stage data
+- Tests cover successful queueing, malformed URL, publish failure rollback, status merge, and unknown repo 404
+- Verification:
+  - `make check`: passed
+  - Docker API/worker rebuild: passed
+  - Real smoke `POST /api/v1/repos`: returned queued repo `475a4ef7-da12-45e0-bfdc-125d359e31d5`
+  - Real smoke `GET /api/v1/repos/{repo_id}/status`: returned queued DB status
+  - Worker log confirmed receipt of the RabbitMQ job
 
 ### 2.2 Worker 状态机
 
