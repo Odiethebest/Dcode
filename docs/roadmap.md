@@ -131,16 +131,34 @@ Implementation record:
 
 ### 2.2 Worker 状态机
 
-- [ ] `apps/worker/src/dcode_worker/pipeline.py`
-  - [ ] 解析 message body
-  - [ ] 按顺序推进状态：`queued -> cloning -> parsing -> embedding -> graphing -> ready`
-  - [ ] 任一阶段异常时写 `failed` 和 `error`
-  - [ ] 每阶段更新 Redis `job:{repo_id}`
-  - [ ] 最终提交 DB transaction
-- [ ] 明确失败策略
-  - [ ] clone 失败直接 failed
-  - [ ] 单文件 parse 失败先跳过并记录 warning
-  - [ ] graph 部分失败不阻断 chunks 落库
+- [x] `apps/worker/src/dcode_worker/pipeline.py`
+  - [x] 解析 message body
+  - [x] 按顺序推进状态：`queued -> cloning -> parsing -> embedding -> graphing -> ready`
+  - [x] 任一阶段异常时写 `failed` 和 `error`
+  - [x] 每阶段更新 Redis `job:{repo_id}`
+  - [x] 每次状态变更提交 DB transaction
+- [x] 明确失败策略
+  - [x] clone 失败直接 failed
+  - [x] 单文件 parse 失败先跳过并记录 warning（2.3 在 parse stage 内实现）
+  - [x] graph 部分失败不阻断 chunks 落库（2.5 在 graph stage 内实现）
+
+Implementation record:
+
+- Date: 2026-06-15
+- `handle_job` now validates `{repo_id,url}` payloads, rejects malformed messages without crashing the consumer, and builds a typed `PipelineContext`
+- Added `PipelineStage` state-machine wiring:
+  - `cloning`: `clone.run`
+  - `parsing`: `parse.run`, then `chunk.run`
+  - `embedding`: `embed.run`
+  - `graphing`: `graph.run`
+- Each visible stage writes durable `repos.status/progress/error` and live Redis `job:{repo_id}` stage state
+- Terminal `ready` and `failed` Redis states use the documented 7-day TTL
+- Stage exceptions are caught, persisted as `failed`, and logged with stack context so the RabbitMQ consumer can ack the message instead of endlessly retrying an unimplemented or invalid stage
+- Verification:
+  - Worker unit tests cover malformed payloads, full success-state progression, and current-stage failure marking
+  - `make check`: passed
+  - Docker worker rebuild: passed
+  - Real smoke repo `8041685d-5e5d-49af-a799-c8d966810560` was consumed by worker and moved from `queued` to `failed` with `cloning=failed`, as expected while `clone.run` is still a 2.3 placeholder
 
 ### 2.3 Clone / Parse / Chunk
 
