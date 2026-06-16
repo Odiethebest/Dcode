@@ -731,11 +731,29 @@ Exit criteria: 一条命令能跑完至少 B2/B3/B4，并产出可读 metrics。
 
 ### 6.1 Index Page
 
-- [ ] repo URL 输入
-- [ ] submit 按钮
-- [ ] 显示 repo_id
-- [ ] 轮询 status
-- [ ] 显示 stages/progress/error
+- [x] repo URL 输入
+- [x] submit 按钮
+- [x] 显示 repo_id
+- [x] 轮询 status
+- [x] 显示 stages/progress/error
+
+Implementation record:
+
+- Date: 2026-06-16
+- Replaced the frontend index-page placeholder with a working repo submission flow in `apps/frontend/src/pages/IndexPage.tsx`
+- Added:
+  - live `POST /api/v1/repos` submit via React Query mutation
+  - repo-scoped `GET /api/v1/repos/{repo_id}/status` polling until `ready` / `failed`
+  - progress bar plus per-stage `cloning/parsing/embedding/graphing` badges
+  - durable recent-repo list in localStorage so later query/demo flows can reuse repo ids
+- Added small frontend support modules:
+  - `src/components/RepoStatusBadge.tsx`
+  - `src/lib/recentRepos.ts`
+- Added `tests/IndexPage.test.tsx` covering submit success, status rendering, local recent-repo persistence path, and submit failure surfacing
+- Verification:
+  - `npm test -- --run`: passed
+  - `npm run typecheck`: passed
+  - `npm run build`: passed
 
 ### 6.2 Query Page
 
