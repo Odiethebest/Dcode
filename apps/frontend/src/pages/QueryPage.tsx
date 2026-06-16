@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { streamQuery } from '@/api/client';
 import type {
@@ -19,12 +19,15 @@ export default function QueryPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const abortActiveRequest = useCallback(() => {
+    const controller = abortRef.current;
+    abortRef.current = null;
+    controller?.abort();
+  }, []);
 
   useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
+    return abortActiveRequest;
+  }, [abortActiveRequest]);
 
   const finalAnswer = [...events]
     .reverse()
@@ -47,7 +50,21 @@ export default function QueryPage() {
           </p>
         </div>
 
-        <form className="space-y-4" onSubmit={(event) => void handleSubmit(event, repoId, query, setEvents, setIsStreaming, setSubmitError, abortRef)}>
+        <form
+          className="space-y-4"
+          onSubmit={(event) =>
+            void handleSubmit(
+              event,
+              repoId,
+              query,
+              setEvents,
+              setIsStreaming,
+              setSubmitError,
+              abortRef,
+              abortActiveRequest
+            )
+          }
+        >
           <div className="space-y-2">
             <label htmlFor="repo-id" className="block text-sm font-medium text-stone-700">
               Repo ID
@@ -88,7 +105,7 @@ export default function QueryPage() {
             <button
               type="button"
               onClick={() => {
-                abortRef.current?.abort();
+                abortActiveRequest();
                 setIsStreaming(false);
               }}
               className="inline-flex min-w-32 items-center justify-center rounded-md border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:bg-stone-50"
@@ -278,10 +295,11 @@ async function handleSubmit(
   setEvents: React.Dispatch<React.SetStateAction<QueryStreamEvent[]>>,
   setIsStreaming: React.Dispatch<React.SetStateAction<boolean>>,
   setSubmitError: React.Dispatch<React.SetStateAction<string | null>>,
-  abortRef: React.MutableRefObject<AbortController | null>
+  abortRef: React.MutableRefObject<AbortController | null>,
+  abortActiveRequest: () => void
 ) {
   event.preventDefault();
-  abortRef.current?.abort();
+  abortActiveRequest();
   const controller = new AbortController();
   abortRef.current = controller;
   setEvents([]);
