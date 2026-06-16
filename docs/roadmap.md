@@ -334,16 +334,39 @@ Implementation record:
 
 ### 3.3 Graph Queries
 
-- [ ] `find_definition`
-  - [ ] exact qualified_name
-  - [ ] suffix match fallback
-- [ ] `find_references`
-  - [ ] reverse edge lookup
-  - [ ] calls/references 都考虑
-- [ ] `get_dependencies`
-  - [ ] imports edge lookup
-- [ ] `get_file_outline`
-  - [ ] 按 file_path 和 line 排序 symbols
+- [x] `find_definition`
+  - [x] exact qualified_name
+  - [x] suffix match fallback
+- [x] `find_references`
+  - [x] reverse edge lookup
+  - [x] calls/references 都考虑
+- [x] `get_dependencies`
+  - [x] imports edge lookup
+- [x] `get_file_outline`
+  - [x] 按 file_path 和 line 排序 symbols
+
+Implementation record:
+
+- Date: 2026-06-16
+- Tightened graph-query semantics in [internal.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/api/src/dcode_api/routes/internal.py):
+  - `find_definition` now resolves exact qualified-name matches first, then falls back to suffix matches in a deterministic order
+  - `find_references` now uses reverse-edge lookup over `calls/references`, and additionally accepts reverse `imports` edges when the target symbol is a module
+  - `get_dependencies` now reads only `imports` edges
+  - `get_file_outline` now returns file-local symbols ordered by `file_path`, then `line`, then `qualified_name`
+- Added helper-level tests for exact-vs-suffix definition matching and module-only import-reference behavior
+- Current graph-data boundary remains explicit:
+  - today’s worker graph populates `imports` edges, so module reference/dependency queries are meaningful immediately
+  - richer non-module `calls/references` answers will improve as the worker emits those edge types in future graph enhancements
+- Verification:
+  - Added graph-query tests on top of the existing internal API contract suite
+  - `make check`: passed
+  - Docker API rebuild: passed
+  - Real smoke against ready repo `f09e4e16-18cb-4771-b948-3c1caf4f1cc3`:
+    - exact definition: `/internal/find_definition?symbol=src.requests.auth.HTTPBasicAuth`
+    - suffix fallback: `/internal/find_definition?symbol=HTTPBasicAuth`
+    - module references: `/internal/find_references?symbol=src.requests.auth`
+    - imports-only dependencies: `/internal/get_dependencies?module=src.requests.api`
+    - ordered outline: `/internal/get_file_outline?path=src/requests/auth.py`
 
 ### 3.4 验证
 

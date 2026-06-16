@@ -9,7 +9,7 @@ from dcode_api.deps import get_db
 from dcode_api.main import app
 from dcode_api.routes import internal
 from dcode_shared.db.models import Chunk as ChunkRow
-from dcode_shared.db.models import Repo
+from dcode_shared.db.models import Repo, Symbol
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from fastapi.testclient import TestClient
 
@@ -202,6 +202,34 @@ async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
     assert chunks[0].score == chunks[0].score_components.rerank
 
 
+def test_select_symbol_matches_prefers_exact_qualified_name() -> None:
+    exact = _symbol_row("src.requests.auth.HTTPBasicAuth", "class", "src/requests/auth.py", 85)
+    suffix = _symbol_row("tests.helpers.HTTPBasicAuth", "class", "tests/helpers.py", 10)
+
+    matches = internal._select_symbol_matches([suffix, exact], "src.requests.auth.HTTPBasicAuth")
+
+    assert matches == [exact]
+
+
+def test_select_symbol_matches_falls_back_to_suffix_match() -> None:
+    first = _symbol_row("src.requests.auth.HTTPBasicAuth", "class", "src/requests/auth.py", 85)
+    second = _symbol_row("tests.helpers.HTTPBasicAuth", "class", "tests/helpers.py", 10)
+
+    matches = internal._select_symbol_matches([first, second], "HTTPBasicAuth")
+
+    assert matches == [first, second]
+
+
+def test_reference_edge_types_include_imports_for_modules_only() -> None:
+    module_symbol = _symbol_row("src.requests.auth", "module", "src/requests/auth.py", 1)
+    class_symbol = _symbol_row(
+        "src.requests.auth.HTTPBasicAuth", "class", "src/requests/auth.py", 85
+    )
+
+    assert internal._reference_edge_types([module_symbol]) == ("calls", "references", "imports")
+    assert internal._reference_edge_types([class_symbol]) == ("calls", "references")
+
+
 def _chunk_row(
     file_path: str,
     symbol_name: str,
@@ -222,4 +250,16 @@ def _chunk_row(
         imports=[],
         content=f"class {symbol_name}: ...",
         embedding=[0.0],
+    )
+
+
+def _symbol_row(qualified_name: str, kind: str, file_path: str, line: int) -> Symbol:
+    return Symbol(
+        id=uuid.uuid4(),
+        repo_id=uuid.uuid4(),
+        qualified_name=qualified_name,
+        kind=kind,
+        file_path=file_path,
+        line=line,
+        chunk_id=None,
     )

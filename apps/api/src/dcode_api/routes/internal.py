@@ -21,6 +21,8 @@ router = APIRouter(tags=["internal"])
 _TERM_SPLIT_RE = re.compile(r"\s+")
 _SEARCH_CANDIDATE_LIMIT = 50
 _RRF_K = 60
+_REFERENCE_EDGE_TYPES = ("calls", "references")
+_MODULE_REFERENCE_EDGE_TYPES = ("calls", "references", "imports")
 
 
 @dataclass(frozen=True)
@@ -277,11 +279,13 @@ async def _find_references(db: AsyncSession, repo_id: UUID, symbol: str) -> list
     if not targets:
         return []
 
+    edge_types = _reference_edge_types(targets)
     source_symbol = aliased(Symbol)
     stmt = (
         select(source_symbol)
         .join(Edge, Edge.source_id == source_symbol.id)
         .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type.in_(edge_types))
         .where(Edge.target_id.in_([row.id for row in targets]))
         .order_by(source_symbol.file_path, source_symbol.line, source_symbol.qualified_name)
     )
@@ -299,6 +303,7 @@ async def _get_dependencies(db: AsyncSession, repo_id: UUID, module: str) -> lis
         select(target_symbol)
         .join(Edge, Edge.target_id == target_symbol.id)
         .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "imports")
         .where(Edge.source_id.in_([row.id for row in sources]))
         .order_by(target_symbol.file_path, target_symbol.line, target_symbol.qualified_name)
     )
@@ -311,7 +316,7 @@ async def _get_file_outline(db: AsyncSession, repo_id: UUID, path: str) -> list[
         select(Symbol)
         .where(Symbol.repo_id == repo_id)
         .where(Symbol.file_path == path)
-        .order_by(Symbol.line, Symbol.qualified_name)
+        .order_by(Symbol.file_path, Symbol.line, Symbol.qualified_name)
     )
     result = await db.execute(stmt)
     return [_location_from_symbol(row) for row in result.scalars().all()]
@@ -328,17 +333,10 @@ async def _resolve_symbols(
     if module_only:
         base_stmt = base_stmt.where(Symbol.kind == "module")
 
-    exact_stmt = base_stmt.where(Symbol.qualified_name == symbol)
-    exact_result = await db.execute(exact_stmt.order_by(Symbol.file_path, Symbol.line))
-    exact_rows = list(exact_result.scalars().all())
-    if exact_rows:
-        return exact_rows
-
-    suffix_stmt = base_stmt.where(Symbol.qualified_name.ilike(f"%.{symbol}"))
-    suffix_result = await db.execute(
-        suffix_stmt.order_by(Symbol.qualified_name, Symbol.file_path, Symbol.line)
-    )
-    return list(suffix_result.scalars().all())
+    stmt = base_stmt.order_by(Symbol.qualified_name, Symbol.file_path, Symbol.line)
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+    return _select_symbol_matches(rows, symbol)
 
 
 def _query_terms(query: str) -> list[str]:
@@ -397,3 +395,16 @@ def _unique_locations(locations: Iterable[Location]) -> list[Location]:
         seen.add(key)
         unique.append(location)
     return unique
+
+
+def _select_symbol_matches(rows: Sequence[Symbol], symbol: str) -> list[Symbol]:
+    exact = [row for row in rows if row.qualified_name == symbol]
+    if exact:
+        return exact
+    return [row for row in rows if row.qualified_name.endswith(f".{symbol}")]
+
+
+def _reference_edge_types(targets: Sequence[Symbol]) -> tuple[str, ...]:
+    if any(target.kind == "module" for target in targets):
+        return _MODULE_REFERENCE_EDGE_TYPES
+    return _REFERENCE_EDGE_TYPES
