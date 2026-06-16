@@ -77,7 +77,10 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      WORKDIR_BASE: /tmp/dcode-workdirs
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - repo_workdirs:/tmp/dcode-workdirs
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,9 +103,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       JUDGE_MODEL: ${JUDGE_MODEL:-stub}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
+      RETRIEVAL_BASE_URL: http://api:8000
+      WORKDIR_BASE: /tmp/dcode-workdirs
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8001:8001"
+    volumes:
+      - repo_workdirs:/tmp/dcode-workdirs
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,3 +138,4 @@ services:
 
 volumes:
   postgres_data:
+  repo_workdirs:

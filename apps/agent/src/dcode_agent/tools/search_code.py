@@ -7,6 +7,7 @@ per §2.2.1 (dense + sparse + RRF k=60 + cross-encoder rerank).
 from dcode_shared.schemas import Chunk
 from pydantic import BaseModel, Field
 
+from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
@@ -28,5 +29,9 @@ class SearchCodeTool(Tool[SearchCodeArgs, SearchCodeResult]):
     ArgsSchema = SearchCodeArgs
 
     async def execute(self, repo_id: str, args: SearchCodeArgs) -> SearchCodeResult:
-        # TODO(M2): call retrieval API per DESIGN.md §4.2 search(repo_id, query, k).
-        raise NotImplementedError("search_code — implement per DESIGN.md §2.3.2 at M2")
+        payload = await common.fetch_internal_json(
+            "search",
+            repo_id,
+            {"query": args.query, "k": args.k},
+        )
+        return SearchCodeResult(chunks=[Chunk.model_validate(item) for item in payload])

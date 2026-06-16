@@ -7,6 +7,7 @@ Implements DESIGN.md §2.3.2 row 4. Reverse-edge query on the code graph
 from dcode_shared.schemas import Location
 from pydantic import BaseModel
 
+from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
@@ -26,5 +27,9 @@ class FindReferencesTool(Tool[FindReferencesArgs, FindReferencesResult]):
     async def execute(
         self, repo_id: str, args: FindReferencesArgs
     ) -> FindReferencesResult:
-        # TODO(M2): query edges WHERE target_id = symbols.id AND edge_type IN ('calls', 'references').
-        raise NotImplementedError("find_references — implement per DESIGN.md §2.3.2 at M2")
+        payload = await common.fetch_internal_json(
+            "find_references",
+            repo_id,
+            {"symbol": args.symbol},
+        )
+        return FindReferencesResult(locations=[Location.model_validate(item) for item in payload])

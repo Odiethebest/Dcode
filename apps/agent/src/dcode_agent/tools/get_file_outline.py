@@ -1,11 +1,13 @@
-"""Tool: `get_file_outline(path)` → List[Symbol].
+"""Tool: `get_file_outline(path)` → List[Location].
 
 Implements DESIGN.md §2.3.2 row 6. List the symbols (classes / functions)
 defined in a single file.
 """
 
+from dcode_shared.schemas import Location
 from pydantic import BaseModel
 
+from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
@@ -13,15 +15,9 @@ class GetFileOutlineArgs(BaseModel):
     path: str
 
 
-class OutlineEntry(BaseModel):
-    symbol: str
-    kind: str  # function / class / method
-    line: int
-
-
 class GetFileOutlineResult(BaseModel):
     path: str
-    entries: list[OutlineEntry]
+    locations: list[Location]
 
 
 class GetFileOutlineTool(Tool[GetFileOutlineArgs, GetFileOutlineResult]):
@@ -32,5 +28,12 @@ class GetFileOutlineTool(Tool[GetFileOutlineArgs, GetFileOutlineResult]):
     async def execute(
         self, repo_id: str, args: GetFileOutlineArgs
     ) -> GetFileOutlineResult:
-        # TODO(M2): SELECT symbols WHERE repo_id, file_path ORDER BY line.
-        raise NotImplementedError("get_file_outline — implement per DESIGN.md §2.3.2 at M2")
+        payload = await common.fetch_internal_json(
+            "get_file_outline",
+            repo_id,
+            {"path": args.path},
+        )
+        return GetFileOutlineResult(
+            path=args.path,
+            locations=[Location.model_validate(item) for item in payload],
+        )

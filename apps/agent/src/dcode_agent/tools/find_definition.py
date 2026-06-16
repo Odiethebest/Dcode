@@ -7,6 +7,7 @@ Implements DESIGN.md §2.3.2 row 3. Backed by the code-graph query API
 from dcode_shared.schemas import Location
 from pydantic import BaseModel
 
+from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
@@ -26,5 +27,9 @@ class FindDefinitionTool(Tool[FindDefinitionArgs, FindDefinitionResult]):
     async def execute(
         self, repo_id: str, args: FindDefinitionArgs
     ) -> FindDefinitionResult:
-        # TODO(M2): call graph API per DESIGN.md §4.2 with (repo_id, symbol).
-        raise NotImplementedError("find_definition — implement per DESIGN.md §2.3.2 at M2")
+        payload = await common.fetch_internal_json(
+            "find_definition",
+            repo_id,
+            {"symbol": args.symbol},
+        )
+        return FindDefinitionResult(locations=[Location.model_validate(item) for item in payload])

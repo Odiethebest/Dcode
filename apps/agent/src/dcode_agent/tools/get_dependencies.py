@@ -1,10 +1,12 @@
-"""Tool: `get_dependencies(module)` → List[Module].
+"""Tool: `get_dependencies(module)` → List[Location].
 
 Implements DESIGN.md §2.3.2 row 5. Module-level import-edge query.
 """
 
+from dcode_shared.schemas import Location
 from pydantic import BaseModel
 
+from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
@@ -13,7 +15,7 @@ class GetDependenciesArgs(BaseModel):
 
 
 class GetDependenciesResult(BaseModel):
-    modules: list[str]
+    locations: list[Location]
 
 
 class GetDependenciesTool(Tool[GetDependenciesArgs, GetDependenciesResult]):
@@ -24,5 +26,9 @@ class GetDependenciesTool(Tool[GetDependenciesArgs, GetDependenciesResult]):
     async def execute(
         self, repo_id: str, args: GetDependenciesArgs
     ) -> GetDependenciesResult:
-        # TODO(M2): query edges WHERE source = module symbol AND edge_type = 'imports'.
-        raise NotImplementedError("get_dependencies — implement per DESIGN.md §2.3.2 at M2")
+        payload = await common.fetch_internal_json(
+            "get_dependencies",
+            repo_id,
+            {"module": args.module},
+        )
+        return GetDependenciesResult(locations=[Location.model_validate(item) for item in payload])

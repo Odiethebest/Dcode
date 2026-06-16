@@ -407,16 +407,51 @@ Exit criteria: 不用 Agent，直接调用内部 API 可以回答“搜 auth 相
 
 ### 4.1 Tool execute
 
-- [ ] `search_code.execute` 调内部 search API
-- [ ] `find_definition.execute` 调内部 graph API
-- [ ] `find_references.execute` 调内部 graph API
-- [ ] `get_dependencies.execute` 调内部 graph API
-- [ ] `get_file_outline.execute` 调内部 graph API
-- [ ] `read_file.execute` 从已索引 repo workdir 读取指定行
-- [ ] `grep.execute`
-  - [ ] 如果环境无 `rg`，fallback 到 Python 文件扫描
-- [ ] `list_directory.execute` 限制在 repo workdir 内
-- [ ] 防 path traversal：拒绝 `..` 逃逸 workdir
+- [x] `search_code.execute` 调内部 search API
+- [x] `find_definition.execute` 调内部 graph API
+- [x] `find_references.execute` 调内部 graph API
+- [x] `get_dependencies.execute` 调内部 graph API
+- [x] `get_file_outline.execute` 调内部 graph API
+- [x] `read_file.execute` 从已索引 repo workdir 读取指定行
+- [x] `grep.execute`
+  - [x] 如果环境无 `rg`，fallback 到 Python 文件扫描
+- [x] `list_directory.execute` 限制在 repo workdir 内
+- [x] 防 path traversal：拒绝 `..` 逃逸 workdir
+
+Implementation record:
+
+- Date: 2026-06-16
+- Added shared tool helpers in [common.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/common.py):
+  - internal API HTTP client against `RETRIEVAL_BASE_URL`
+  - repo workdir resolution under `WORKDIR_BASE/{repo_id}`
+  - path normalization and traversal rejection
+- Wired the retrieval-backed tools to live internal APIs:
+  - [search_code.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/search_code.py)
+  - [find_definition.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/find_definition.py)
+  - [find_references.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/find_references.py)
+  - [get_dependencies.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/get_dependencies.py)
+  - [get_file_outline.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/get_file_outline.py)
+- Implemented filesystem-backed tools:
+  - [read_file.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/read_file.py): inclusive line-range reads with validation
+  - [grep.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/grep.py): `rg --json` when available, Python regex scan fallback otherwise
+  - [list_directory.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/tools/list_directory.py): repo-scoped listing, skips hidden/cache entries, stable ordering
+- Added `workdir_base` to [settings.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/settings.py) and updated [docker-compose.yml](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/docker-compose.yml) so Agent and Worker share the same `repo_workdirs` volume; Agent now talks to API through `RETRIEVAL_BASE_URL=http://api:8000` inside Compose
+- Added execution coverage in [test_tools_execute.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/tests/test_tools_execute.py) for:
+  - retrieval tool HTTP dispatch
+  - `read_file` line slicing
+  - `grep` Python fallback
+  - `list_directory` ordering
+  - path traversal rejection
+- Verification:
+  - `make check`: passed
+  - `docker compose up -d --build agent worker`: passed
+  - Re-indexed `https://github.com/psf/requests.git` as repo `f89e5e09-272e-40dc-934e-00241d4c045c`, reached `ready`
+  - Real smoke inside Agent container:
+    - `SearchCodeTool("HTTPBasicAuth")` returned `src/requests/auth.py`
+    - `FindDefinitionTool("HTTPBasicAuth")` returned `src/requests/auth.py`
+    - `ReadFileTool("src/requests/auth.py", 85-92)` returned the `HTTPBasicAuth` class header
+    - `GrepTool("HTTPBasicAuth")` returned repo matches from the shared workdir
+    - `ListDirectoryTool("src/requests")` returned visible entries from the repo tree
 
 ### 4.2 LangGraph 节点
 
