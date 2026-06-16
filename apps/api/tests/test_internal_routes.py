@@ -8,6 +8,7 @@ import pytest
 from dcode_api.deps import get_db
 from dcode_api.main import app
 from dcode_api.routes import internal
+from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Repo
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from fastapi.testclient import TestClient
@@ -136,3 +137,89 @@ def test_internal_routes_404_for_unknown_repo() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "REPO_NOT_FOUND"
+
+
+def test_hybrid_search_fuses_sparse_and_dense_scores() -> None:
+    row_sparse_and_dense = _chunk_row("auth.py", "HTTPBasicAuth", 85)
+    row_sparse_only = _chunk_row("models.py", "PreparedRequest", 378)
+    row_dense_only = _chunk_row("sessions.py", "SessionRedirectMixin", 109)
+
+    sparse = [
+        internal.SearchCandidate(row=row_sparse_and_dense, sparse_score=120.0),
+        internal.SearchCandidate(row=row_sparse_only, sparse_score=40.0),
+    ]
+    dense = [
+        internal.SearchCandidate(row=row_dense_only, dense_score=0.91),
+        internal.SearchCandidate(row=row_sparse_and_dense, dense_score=0.42),
+    ]
+
+    fused = internal._identity_rerank(internal._fuse_search_candidates(sparse, dense))
+
+    assert [candidate.row.id for candidate in fused] == [
+        row_sparse_and_dense.id,
+        row_dense_only.id,
+        row_sparse_only.id,
+    ]
+    assert fused[0].sparse_score == 120.0
+    assert fused[0].dense_score == 0.42
+    assert fused[0].rerank_score == fused[0].fused_score
+    assert fused[1].sparse_score == 0.0
+    assert fused[1].dense_score == 0.91
+
+
+async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = uuid.uuid4()
+    row = _chunk_row("src/requests/auth.py", "HTTPBasicAuth", 85, repo_id=repo_id)
+
+    async def fake_sparse(
+        _: object, passed_repo_id: uuid.UUID, query: str, terms: list[str], *, limit: int
+    ) -> list[internal.SearchCandidate]:
+        assert passed_repo_id == repo_id
+        assert query == "HTTPBasicAuth"
+        assert terms[0] == "httpbasicauth"
+        assert limit >= 2
+        return [internal.SearchCandidate(row=row, sparse_score=88.0)]
+
+    async def fake_dense(
+        _: object, passed_repo_id: uuid.UUID, query_vector: list[float] | None, *, limit: int
+    ) -> list[internal.SearchCandidate]:
+        assert passed_repo_id == repo_id
+        assert query_vector is None
+        assert limit >= 2
+        return []
+
+    monkeypatch.setattr(internal, "_search_sparse_candidates", fake_sparse)
+    monkeypatch.setattr(internal, "_search_dense_candidates", fake_dense)
+
+    chunks = await internal._search_chunks(object(), repo_id, "HTTPBasicAuth", 2)
+
+    assert len(chunks) == 1
+    assert chunks[0].symbol_name == "HTTPBasicAuth"
+    assert chunks[0].score_components.sparse == 88.0
+    assert chunks[0].score_components.dense == 0.0
+    assert chunks[0].score == chunks[0].score_components.rerank
+
+
+def _chunk_row(
+    file_path: str,
+    symbol_name: str,
+    start_line: int,
+    *,
+    repo_id: uuid.UUID | None = None,
+) -> ChunkRow:
+    return ChunkRow(
+        id=uuid.uuid4(),
+        repo_id=repo_id or uuid.uuid4(),
+        file_path=file_path,
+        chunk_type="class",
+        parent_symbol=None,
+        symbol_name=symbol_name,
+        signature=f"class {symbol_name}",
+        start_line=start_line,
+        end_line=start_line + 10,
+        imports=[],
+        content=f"class {symbol_name}: ...",
+        embedding=[0.0],
+    )

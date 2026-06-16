@@ -296,18 +296,41 @@ Implementation record:
 
 ### 3.2 Search 第一版
 
-- [ ] sparse 检索
-  - [ ] 使用 `tsv` 或简单 SQL fallback
-  - [ ] 支持精确 symbol/path 命中
-- [ ] dense 检索
-  - [ ] stub embedding 阶段允许退化
-  - [ ] 真实 embedding 后使用 pgvector cosine
-- [ ] fusion
-  - [ ] 实现 RRF
-  - [ ] score_components 保留 dense/sparse/rerank
-- [ ] rerank
-  - [ ] 第一版可设为 identity rerank
-  - [ ] 正式评测前接真实 reranker
+- [x] sparse 检索
+  - [x] 使用 `tsv` 或简单 SQL fallback
+  - [x] 支持精确 symbol/path 命中
+- [x] dense 检索
+  - [x] stub embedding 阶段允许退化
+  - [x] 真实 embedding 后使用 pgvector cosine（dense SQL path 已接好；当前 stub runtime 不启用 query embedding）
+- [x] fusion
+  - [x] 实现 RRF
+  - [x] score_components 保留 dense/sparse/rerank
+- [x] rerank
+  - [x] 第一版可设为 identity rerank
+  - [x] 正式评测前接真实 reranker
+
+Implementation record:
+
+- Date: 2026-06-16
+- Upgraded `/internal/search` from a single sparse ranker to hybrid search with four explicit stages:
+  - sparse candidate collection over `symbol_name/file_path/content`
+  - dense candidate hook
+  - reciprocal-rank fusion (RRF, `k=60`)
+  - identity rerank that preserves a later swap to a real reranker
+- `score_components` now carries channel-separated values:
+  - `sparse`: lexical match score
+  - `dense`: dense similarity score when available, else `0.0`
+  - `rerank`: final identity-reranked fused score
+- Current runtime behavior is intentionally conservative:
+  - with `EMBEDDING_MODEL=stub`, query embedding is disabled and dense search cleanly degrades to sparse-only
+  - the pgvector cosine query path is implemented in `_search_dense_candidates` and can be activated once the API is wired to a real query embedding client for OD-2
+- Verification:
+  - Added tests for hybrid candidate fusion ordering, sparse-only degradation under stub embedding, and route contracts
+  - `make check`: passed
+  - Docker API rebuild: passed
+  - Real smoke against ready repo `f09e4e16-18cb-4771-b948-3c1caf4f1cc3`:
+    - `/internal/search?query=HTTPBasicAuth&k=5` returned `src/requests/auth.py` first
+    - response `score_components` exposed `sparse` and `rerank` values while `dense=0.0` under stub mode
 
 ### 3.3 Graph Queries
 

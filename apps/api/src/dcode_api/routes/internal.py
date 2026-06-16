@@ -1,7 +1,8 @@
 """Internal retrieval and graph-query endpoints."""
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
 from dcode_shared.db.models import Chunk as ChunkRow
@@ -13,10 +14,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from dcode_api.deps import get_db
+from dcode_api.settings import api_settings
 
 router = APIRouter(tags=["internal"])
 
 _TERM_SPLIT_RE = re.compile(r"\s+")
+_SEARCH_CANDIDATE_LIMIT = 50
+_RRF_K = 60
+
+
+@dataclass(frozen=True)
+class SearchCandidate:
+    row: ChunkRow
+    sparse_score: float = 0.0
+    dense_score: float = 0.0
+    fused_score: float = 0.0
+    rerank_score: float = 0.0
 
 
 @router.get("/search", response_model=list[Chunk])
@@ -86,6 +99,29 @@ async def _search_chunks(db: AsyncSession, repo_id: UUID, query: str, k: int) ->
         return []
 
     terms = _query_terms(query_text)
+    sparse = await _search_sparse_candidates(
+        db, repo_id, query_text, terms, limit=max(k, _SEARCH_CANDIDATE_LIMIT)
+    )
+    query_vector = await _embed_search_query(query_text)
+    dense = await _search_dense_candidates(
+        db,
+        repo_id,
+        query_vector,
+        limit=max(k, _SEARCH_CANDIDATE_LIMIT),
+    )
+    fused = _fuse_search_candidates(sparse, dense)
+    reranked = _identity_rerank(fused)
+    return [_chunk_from_candidate(candidate) for candidate in reranked[:k]]
+
+
+async def _search_sparse_candidates(
+    db: AsyncSession,
+    repo_id: UUID,
+    query: str,
+    terms: list[str],
+    *,
+    limit: int,
+) -> list[SearchCandidate]:
     patterns = [f"%{term}%" for term in terms]
     conditions = []
     for pattern in patterns:
@@ -99,22 +135,136 @@ async def _search_chunks(db: AsyncSession, repo_id: UUID, query: str, k: int) ->
 
     stmt = select(ChunkRow).where(ChunkRow.repo_id == repo_id).where(or_(*conditions))
     result = await db.execute(stmt)
-    rows = result.scalars().all()
-    ranked = sorted(rows, key=lambda row: _chunk_rank(row, query_text, terms), reverse=True)
+    rows = list(result.scalars().all())
+    ranked = sorted(rows, key=lambda row: _chunk_rank(row, query, terms), reverse=True)
     return [
-        Chunk(
-            chunk_id=row.id,
-            file_path=row.file_path,
-            symbol_name=row.symbol_name,
-            start_line=row.start_line,
-            end_line=row.end_line,
-            content=row.content,
-            score=score,
-            score_components=ScoreComponents(dense=0.0, sparse=score, rerank=0.0),
-        )
-        for row in ranked[:k]
-        for score in [_chunk_rank(row, query_text, terms)]
+        SearchCandidate(row=row, sparse_score=_chunk_rank(row, query, terms))
+        for row in ranked[:limit]
     ]
+
+
+async def _search_dense_candidates(
+    db: AsyncSession,
+    repo_id: UUID,
+    query_vector: Sequence[float] | None,
+    *,
+    limit: int,
+) -> list[SearchCandidate]:
+    # Stub embedding mode deliberately degrades to sparse-only until a real
+    # query embedder is wired into the API.
+    if query_vector is None:
+        return []
+
+    distance = ChunkRow.embedding.cosine_distance(list(query_vector))
+    stmt = (
+        select(ChunkRow, (1.0 - distance).label("dense_score"))
+        .where(ChunkRow.repo_id == repo_id)
+        .where(ChunkRow.embedding.is_not(None))
+        .order_by(distance)
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    candidates: list[SearchCandidate] = []
+    for row, dense_score in result.all():
+        candidates.append(SearchCandidate(row=row, dense_score=float(dense_score)))
+    return candidates
+
+
+async def _embed_search_query(query: str) -> list[float] | None:
+    if api_settings.embedding_model == "stub":
+        return None
+
+    # The API has not yet been wired to the real OD-2 embedding model client.
+    # Until then, disable dense search rather than mixing incompatible vectors.
+    _ = query
+    return None
+
+
+def _fuse_search_candidates(
+    sparse: list[SearchCandidate],
+    dense: list[SearchCandidate],
+) -> list[SearchCandidate]:
+    by_chunk_id: dict[UUID, SearchCandidate] = {}
+    sparse_ranks = {candidate.row.id: index + 1 for index, candidate in enumerate(sparse)}
+    dense_ranks = {candidate.row.id: index + 1 for index, candidate in enumerate(dense)}
+
+    for candidate in sparse:
+        by_chunk_id[candidate.row.id] = candidate
+
+    for candidate in dense:
+        existing = by_chunk_id.get(candidate.row.id)
+        if existing is None:
+            by_chunk_id[candidate.row.id] = candidate
+            continue
+        by_chunk_id[candidate.row.id] = SearchCandidate(
+            row=existing.row,
+            sparse_score=existing.sparse_score,
+            dense_score=candidate.dense_score,
+        )
+
+    fused: list[SearchCandidate] = []
+    for chunk_id, candidate in by_chunk_id.items():
+        fused_score = 0.0
+        sparse_rank = sparse_ranks.get(chunk_id)
+        dense_rank = dense_ranks.get(chunk_id)
+        if sparse_rank is not None:
+            fused_score += _rrf_score(sparse_rank)
+        if dense_rank is not None:
+            fused_score += _rrf_score(dense_rank)
+        fused.append(
+            SearchCandidate(
+                row=candidate.row,
+                sparse_score=candidate.sparse_score,
+                dense_score=candidate.dense_score,
+                fused_score=fused_score,
+            )
+        )
+
+    return sorted(
+        fused,
+        key=lambda candidate: (
+            candidate.fused_score,
+            candidate.sparse_score,
+            candidate.dense_score,
+            candidate.row.file_path,
+            candidate.row.start_line,
+        ),
+        reverse=True,
+    )
+
+
+def _identity_rerank(candidates: list[SearchCandidate]) -> list[SearchCandidate]:
+    return [
+        SearchCandidate(
+            row=candidate.row,
+            sparse_score=candidate.sparse_score,
+            dense_score=candidate.dense_score,
+            fused_score=candidate.fused_score,
+            rerank_score=candidate.fused_score,
+        )
+        for candidate in candidates
+    ]
+
+
+def _rrf_score(rank: int) -> float:
+    return 1.0 / (_RRF_K + rank)
+
+
+def _chunk_from_candidate(candidate: SearchCandidate) -> Chunk:
+    return Chunk(
+        chunk_id=candidate.row.id,
+        file_path=candidate.row.file_path,
+        symbol_name=candidate.row.symbol_name,
+        start_line=candidate.row.start_line,
+        end_line=candidate.row.end_line,
+        content=candidate.row.content,
+        score=candidate.rerank_score,
+        score_components=ScoreComponents(
+            dense=candidate.dense_score,
+            sparse=candidate.sparse_score,
+            rerank=candidate.rerank_score,
+        ),
+    )
 
 
 async def _find_definitions(db: AsyncSession, repo_id: UUID, symbol: str) -> list[Location]:
