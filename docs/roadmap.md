@@ -611,19 +611,40 @@ Implementation record:
 
 先保留 H1 关键对照，B0/B1 可后补。
 
-- [ ] B2 Vanilla Dense RAG
-  - [ ] dense top-k
-  - [ ] 单 prompt answer 或模板 answer
-- [ ] B3 Hybrid RAG
-  - [ ] hybrid top-k
-  - [ ] 单 prompt answer 或模板 answer
-- [ ] B4 Full System
-  - [ ] 调 agent SSE
-  - [ ] drain final_answer
-- [ ] B1 BM25
-  - [ ] sparse top-k
-- [ ] B0 GitHub Search
-  - [ ] 如 GitHub API/rate limit 麻烦，可标记为 optional
+- [x] B2 Vanilla Dense RAG
+  - [x] dense top-k
+  - [x] 单 prompt answer 或模板 answer
+- [x] B3 Hybrid RAG
+  - [x] hybrid top-k
+  - [x] 单 prompt answer 或模板 answer
+- [x] B4 Full System
+  - [x] 调 agent SSE
+  - [x] drain final_answer
+- [x] B1 BM25
+  - [x] sparse top-k
+- [x] B0 GitHub Search
+  - [x] 如 GitHub API/rate limit 麻烦，可标记为 optional
+
+Implementation record:
+
+- Date: 2026-06-16
+- Added eval settings in [settings.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/settings.py) for API / agent endpoints and retrieval defaults
+- Added shared baseline helpers in [common.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/common.py):
+  - internal retrieval API client
+  - template answer builder for non-agent baselines
+  - SSE drain helper for the full-system baseline
+- Implemented minimal runnable baselines:
+  - [bm25.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/bm25.py): sparse retrieval via current internal search path
+  - [vanilla_rag.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/vanilla_rag.py): current dense placeholder, with explicit stub-embedding degradation note
+  - [hybrid_rag.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/hybrid_rag.py): hybrid retrieval + template answer
+  - [full_system.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/full_system.py): API gateway SSE call, drains `final_answer`
+- Current baseline boundary is explicit:
+  - `B0` remains optional and unimplemented because GitHub Search API auth/rate-limit handling is not needed for the first local H1 run
+  - `B2` currently reuses the retrieval API because the repo is still indexed with stub embeddings, so true dense-only separation is not yet meaningful
+- Added coverage in [test_baselines.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/tests/test_baselines.py) for template-answer baselines and SSE-based full-system answer assembly
+- Verification:
+  - `./.venv/bin/pytest apps/eval/tests/test_baselines.py -q`: passed
+  - `MYPYPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run mypy -p dcode_eval`: passed
 
 ### 5.3 Harness
 
