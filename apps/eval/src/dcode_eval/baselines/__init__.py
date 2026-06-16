@@ -21,3 +21,17 @@ __all__ = [
     "HybridRAGBaseline",
     "VanillaRAGBaseline",
 ]
+
+
+def build_baseline(baseline_id: str) -> Baseline:
+    catalog: dict[str, type[Baseline]] = {
+        "B0": GithubSearchBaseline,
+        "B1": BM25Baseline,
+        "B2": VanillaRAGBaseline,
+        "B3": HybridRAGBaseline,
+        "B4": FullSystemBaseline,
+    }
+    try:
+        return catalog[baseline_id]()
+    except KeyError as exc:
+        raise ValueError(f"unknown baseline: {baseline_id}") from exc

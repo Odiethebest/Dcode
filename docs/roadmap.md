@@ -648,20 +648,43 @@ Implementation record:
 
 ### 5.3 Harness
 
-- [ ] `dcode_eval.run`
-  - [ ] 读取 questions JSONL
-  - [ ] 选择 baseline
-  - [ ] 跑 retrieve
-  - [ ] 跑 answer
-  - [ ] 写 `per_question.jsonl`
-  - [ ] 写 `metrics.json`
-  - [ ] 写 `taxonomy_breakdown.json`
-- [ ] 指标
-  - [ ] Recall@k
-  - [ ] MRR
-  - [ ] nDCG
-  - [ ] Groundedness
-  - [ ] Pairwise win-rate 第一版可人工填或跳过
+- [x] `dcode_eval.run`
+  - [x] 读取 questions JSONL
+  - [x] 选择 baseline
+  - [x] 跑 retrieve
+  - [x] 跑 answer
+  - [x] 写 `per_question.jsonl`
+  - [x] 写 `metrics.json`
+  - [x] 写 `taxonomy_breakdown.json`
+- [x] 指标
+  - [x] Recall@k
+  - [x] MRR
+  - [x] nDCG
+  - [x] Groundedness
+  - [x] Pairwise win-rate 第一版可人工填或跳过
+
+Implementation record:
+
+- Date: 2026-06-16
+- Implemented runnable harness in [run.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/run.py):
+  - loads `questions.jsonl`
+  - instantiates the selected baseline
+  - runs retrieval + answer per question
+  - computes `Recall@k`, `MRR`, `nDCG@k`, `Groundedness`
+  - writes `per_question.jsonl`, `metrics.json`, `taxonomy_breakdown.json`
+- Added baseline factory in [baselines/__init__.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/baselines/__init__.py)
+- Added harness test in [test_run.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/tests/test_run.py) for artifact writing and metric aggregation
+- Current metric boundary is explicit:
+  - `pairwise_win_rate` is emitted as `null` in this first pass
+  - groundedness is taken from the baseline answer result, which means template baselines report direct-citation groundedness while `B4` uses the streamed agent score
+- Verification:
+  - `./.venv/bin/pytest apps/eval/tests/test_run.py -q`: passed
+  - Real smoke:
+    - `python -m dcode_eval.run --baseline B4 --questions apps/eval/src/dcode_eval/questions/data/questions.jsonl --output results/eval-smoke --k 5`
+    - wrote `results/eval-smoke/per_question.jsonl`
+    - wrote `results/eval-smoke/metrics.json`
+    - wrote `results/eval-smoke/taxonomy_breakdown.json`
+    - `metrics.json` summary: `questions=16`, `recall_at_k=0.1979`, `mrr=0.2125`, `ndcg_at_k=0.1917`, `groundedness=0.95`
 
 ### 5.4 H1 判定
 

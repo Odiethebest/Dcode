@@ -31,7 +31,7 @@ def template_answer(label: str, chunks: list[Chunk], *, max_chunks: int = 3) -> 
         citation = f"`{chunk.file_path}:{chunk.start_line}`"
         citations.append(citation)
         lines.append(f"- {citation} `{chunk.symbol_name}`")
-    return AnswerResult(answer="\n".join(lines), citations=citations, groundedness=0.0)
+    return AnswerResult(answer="\n".join(lines), citations=citations, groundedness=1.0)
 
 
 async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:
