@@ -370,9 +370,32 @@ Implementation record:
 
 ### 3.4 验证
 
-- [ ] 对目标 repo 手写 5 个查询
-- [ ] 每个查询保存期望文件/符号
-- [ ] 增加 API 测试或集成测试
+- [x] 对目标 repo 手写 5 个查询
+- [x] 每个查询保存期望文件/符号
+- [x] 增加 API 测试或集成测试
+
+Implementation record:
+
+- Date: 2026-06-16
+- Added versioned retrieval validation fixture at [requests_query_cases.json](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/api/tests/fixtures/requests_query_cases.json) with 5 handwritten `requests` repo cases covering:
+  - `/internal/search`
+  - `/internal/find_definition`
+  - `/internal/find_references`
+  - `/internal/get_dependencies`
+  - `/internal/get_file_outline`
+- Each case now persists expected files and/or symbols so retrieval behavior is auditable without re-deriving answers from memory
+- Added [test_internal_validation.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/api/tests/test_internal_validation.py):
+  - a deterministic fixture-shape test that keeps the versioned case set complete and unique
+  - an optional live integration suite gated by `DCODE_LIVE_REPO_ID`, hitting the running API over HTTP and asserting the saved file/symbol expectations
+- Verification:
+  - `./.venv/bin/pytest apps/api/tests/test_internal_validation.py -q`: passed
+  - `DCODE_LIVE_REPO_ID=f09e4e16-18cb-4771-b948-3c1caf4f1cc3 ./.venv/bin/pytest apps/api/tests/test_internal_validation.py -q`: passed
+  - Live cases confirmed:
+    - search `auth` returns `src/requests/auth.py`
+    - definition `HTTPBasicAuth` resolves to `src.requests.auth.HTTPBasicAuth`
+    - references of `src.requests.auth` include `src.requests.adapters`, `src.requests.models`, `src.requests.sessions`
+    - dependencies of `src.requests.api` include `src.requests.models`, `src.requests.sessions`
+    - outline of `src/requests/auth.py` preserves ordered leading symbols from `src.requests.auth`
 
 Exit criteria: 不用 Agent，直接调用内部 API 可以回答“搜 auth 相关代码”“找 X 定义”“列某文件 outline”。
 

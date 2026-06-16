@@ -1,0 +1,81 @@
+[
+  {
+    "id": "search-auth",
+    "endpoint": "search",
+    "params": {
+      "query": "auth",
+      "k": 5
+    },
+    "expect": {
+      "top_file": "src/requests/auth.py",
+      "must_include_symbols": [
+        "HTTPBasicAuth"
+      ]
+    }
+  },
+  {
+    "id": "find-definition-http-basic-auth",
+    "endpoint": "find_definition",
+    "params": {
+      "symbol": "HTTPBasicAuth"
+    },
+    "expect": {
+      "top_file": "src/requests/auth.py",
+      "top_symbol": "src.requests.auth.HTTPBasicAuth"
+    }
+  },
+  {
+    "id": "find-references-auth-module",
+    "endpoint": "find_references",
+    "params": {
+      "symbol": "src.requests.auth"
+    },
+    "expect": {
+      "must_include_files": [
+        "src/requests/adapters.py",
+        "src/requests/models.py",
+        "src/requests/sessions.py"
+      ],
+      "must_include_symbols": [
+        "src.requests.adapters",
+        "src.requests.models",
+        "src.requests.sessions"
+      ]
+    }
+  },
+  {
+    "id": "get-dependencies-api-module",
+    "endpoint": "get_dependencies",
+    "params": {
+      "module": "src.requests.api"
+    },
+    "expect": {
+      "must_include_files": [
+        "src/requests/models.py",
+        "src/requests/sessions.py"
+      ],
+      "must_include_symbols": [
+        "src.requests.models",
+        "src.requests.sessions"
+      ]
+    }
+  },
+  {
+    "id": "get-file-outline-auth",
+    "endpoint": "get_file_outline",
+    "params": {
+      "path": "src/requests/auth.py"
+    },
+    "expect": {
+      "ordered_symbols_prefix": [
+        "src.requests.auth",
+        "src.requests.auth._basic_auth_str",
+        "src.requests.auth.AuthBase"
+      ],
+      "must_include_symbols": [
+        "src.requests.auth.HTTPBasicAuth",
+        "src.requests.auth.HTTPDigestAuth"
+      ]
+    }
+  }
+]
