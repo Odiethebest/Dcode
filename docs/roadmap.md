@@ -572,20 +572,40 @@ Exit criteria: 至少 5 个手写问题能端到端返回答案和 verified cita
 
 ### 5.1 小而准的问题集
 
-- [ ] 创建 `apps/eval/src/dcode_eval/questions/data/questions.jsonl`
-- [ ] 第一版 15-20 题即可
-  - [ ] L1: 5 题
-  - [ ] L2: 7-10 题
-  - [ ] L3: 3-5 题
-- [ ] 每题包含：
-  - [ ] `id`
-  - [ ] `repo_id`
-  - [ ] `question`
-  - [ ] `taxonomy`
-  - [ ] `gt_chunk_ids`
-  - [ ] `gt_files`
-  - [ ] `source`
-- [ ] 人工检查每题 GT
+- [x] 创建 `apps/eval/src/dcode_eval/questions/data/questions.jsonl`
+- [x] 第一版 15-20 题即可
+  - [x] L1: 5 题
+  - [x] L2: 7-10 题
+  - [x] L3: 3-5 题
+- [x] 每题包含：
+  - [x] `id`
+  - [x] `repo_id`
+  - [x] `question`
+  - [x] `taxonomy`
+  - [x] `gt_chunk_ids`
+  - [x] `gt_files`
+  - [x] `source`
+- [x] 人工检查每题 GT
+
+Implementation record:
+
+- Date: 2026-06-16
+- Added question schema + loader under [questions](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/questions):
+  - [models.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/questions/models.py)
+  - [loader.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/questions/loader.py)
+- Added curated question set at [questions.jsonl](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/questions/data/questions.jsonl):
+  - target repo snapshot: `requests`
+  - fixed repo id: `f89e5e09-272e-40dc-934e-00241d4c045c`
+  - 16 manually checked questions total
+  - taxonomy split: `L1=5`, `L2=8`, `L3=3`
+- Stored per-question GT as the current indexed repo snapshot:
+  - `gt_chunk_ids` are current chunk UUIDs from the ready `requests` index
+  - `gt_files` capture the broader file-level relevance set
+  - all current entries are `source="manual"`
+- Added dataset tests in [test_questions_dataset.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/tests/test_questions_dataset.py) to lock count, uniqueness, field presence, and taxonomy balance
+- Verification:
+  - `./.venv/bin/pytest apps/eval/tests/test_questions_dataset.py -q`: passed
+  - `uv run ruff check apps/eval/src/dcode_eval/questions apps/eval/tests/test_questions_dataset.py`: passed
 
 ### 5.2 Baseline 最小集合
 
