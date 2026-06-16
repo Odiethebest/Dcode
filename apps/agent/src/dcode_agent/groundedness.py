@@ -51,7 +51,7 @@ def extract_citations(answer: str) -> list[tuple[str, str, int]]:
     return out
 
 
-async def verify(answer: str, repo_id: str, db: AsyncSession) -> GroundednessResult:
+async def verify(answer: str, repo_id: str, db: AsyncSession | None) -> GroundednessResult:
     """Verify every citation in `answer` against indexed chunks / symbols.
 
     TODO(M2): real SELECT against `chunks (repo_id, file_path)` and

@@ -17,7 +17,10 @@ from contextlib import asynccontextmanager
 from dcode_shared.schemas import QueryRequest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from redis.asyncio import Redis
 
+from dcode_agent import graph
+from dcode_agent.settings import agent_settings
 from dcode_agent.sse import SSEEmitter
 from dcode_agent.state import AgentState
 from dcode_agent.tools import default_registry
@@ -26,9 +29,12 @@ from dcode_agent.tools import default_registry
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.tool_registry = default_registry()
-    # TODO(M2): app.state.compiled_graph = graph.build_graph()
-    # TODO(M2): warm DB / Redis pools per DESIGN.md §2.6.
-    yield
+    app.state.compiled_graph = graph.build_graph()
+    app.state.tool_cache = Redis.from_url(agent_settings.redis_url, decode_responses=True)
+    try:
+        yield
+    finally:
+        await app.state.tool_cache.aclose()
 
 
 app = FastAPI(

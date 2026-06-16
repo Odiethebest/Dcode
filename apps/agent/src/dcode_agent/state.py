@@ -21,8 +21,11 @@ class AgentState:
     thoughts: list[str] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     observations: list[dict[str, Any]] = field(default_factory=list)
+    pending_tool_name: str | None = None
+    pending_tool_args: dict[str, Any] = field(default_factory=dict)
     draft_answer: str | None = None
     citations: list[dict[str, Any]] = field(default_factory=list)
     groundedness_score: float | None = None
     final_answer: str | None = None
     error: str | None = None
+    runtime: dict[str, Any] = field(default_factory=dict, repr=False)

@@ -455,22 +455,51 @@ Implementation record:
 
 ### 4.2 LangGraph 节点
 
-- [ ] `plan_node`
-  - [ ] 第一版可规则路由：包含 “who calls/reference” 调 `find_references`
-  - [ ] 包含 “definition/where defined” 调 `find_definition`
-  - [ ] 默认调 `search_code`
+- [x] `plan_node`
+  - [x] 第一版可规则路由：包含 “who calls/reference” 调 `find_references`
+  - [x] 包含 “definition/where defined” 调 `find_definition`
+  - [x] 默认调 `search_code`
   - [ ] 后续再接 LLM planner
-- [ ] `tool_call_node`
-  - [ ] registry lookup
-  - [ ] Redis tool cache
-  - [ ] 追加 observations
-  - [ ] 通过 SSE 发 `tool_call/tool_result`
-- [ ] `synthesize_node`
-  - [ ] 第一版可模板化总结 top chunks 和 graph results
+- [x] `tool_call_node`
+  - [x] registry lookup
+  - [x] Redis tool cache
+  - [x] 追加 observations
+  - [x] 通过 SSE 发 `tool_call/tool_result`
+- [x] `synthesize_node`
+  - [x] 第一版可模板化总结 top chunks 和 graph results
   - [ ] 后续再接 LLM synthesis
-- [ ] `groundedness_node`
-  - [ ] 调 `groundedness.verify`
+- [x] `groundedness_node`
+  - [x] 调 `groundedness.verify`
   - [ ] 未验证 citation 不计入最终 citations
+
+Implementation record:
+
+- Date: 2026-06-16
+- Implemented first-pass LangGraph node logic in [graph.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/graph.py):
+  - `plan_node` now performs rule routing with lightweight subject extraction
+  - `tool_call_node` now resolves tools from the registry, checks the tool cache, stores observations, and emits `tool_call` / `tool_result`
+  - `synthesize_node` now produces template answers from search / graph / file observations
+  - `groundedness_node` now calls [groundedness.verify](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/groundedness.py) and records `groundedness_score`
+- Extended [state.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/state.py) with:
+  - `pending_tool_name`
+  - `pending_tool_args`
+  - `runtime` context for registry / cache / emitter / db handles
+- Updated [main.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/main.py) lifespan to prepare:
+  - `app.state.compiled_graph = graph.build_graph()`
+  - `app.state.tool_cache = Redis.from_url(...)`
+- Relaxed `groundedness.verify(..., db)` to accept `db=None` so the graph can invoke it before 4.3 DB-backed verification lands
+- Added graph tests in [test_graph.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/tests/test_graph.py) covering:
+  - rule routing for definition vs default search queries
+  - tool execution + cache hit behavior
+  - template synthesis for search observations
+  - one-shot compiled graph execution from `plan -> tool_call -> synthesize -> groundedness`
+- Current boundary is explicit:
+  - this graph does one planned tool call, then synthesizes
+  - `/internal/query` still uses the SSE stub; 4.4 will replace that path with the compiled graph
+  - groundedness still flags extracted citations as unverified until 4.3 adds DB-backed checks
+- Verification:
+  - `./.venv/bin/pytest apps/agent/tests/test_graph.py -q`: passed
+  - `MYPYPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run mypy -p dcode_agent`: passed
 
 ### 4.3 Groundedness
 
