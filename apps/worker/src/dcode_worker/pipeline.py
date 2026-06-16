@@ -15,6 +15,7 @@ from uuid import UUID
 from dcode_shared.cache import job_state_key
 from dcode_shared.db.models import Repo
 from dcode_shared.db.session import SessionLocal
+from dcode_shared.observability import log_event, structured_event
 from dcode_shared.schemas import RepoStatus, StageState
 from dcode_shared.settings import shared_settings
 from redis.asyncio import Redis
@@ -69,7 +70,7 @@ async def handle_job(
         return
     repo_id, repo_url = job
 
-    logger.info("received indexing job repo_id=%s", repo_id)
+    log_event(logger, "index_job_received", repo_id=repo_id, repo_url=repo_url)
     ctx = PipelineContext(repo_id=str(repo_id), repo_url=repo_url)
     stage_states = _initial_stage_states(stages)
 
@@ -92,11 +93,13 @@ async def handle_job(
                     error=None,
                     complete=False,
                 )
-                logger.info(
-                    "stage_transition repo_id=%s stage=%s state=in_progress progress=%s",
-                    repo_id,
-                    stage.name,
-                    stage.in_progress,
+                log_event(
+                    logger,
+                    "stage_transition",
+                    repo_id=repo_id,
+                    stage=stage.name,
+                    state="in_progress",
+                    progress=stage.in_progress,
                 )
 
                 for runner in stage.runners:
@@ -114,11 +117,13 @@ async def handle_job(
                     complete=False,
                     commit_sha=ctx.commit_sha,
                 )
-                logger.info(
-                    "stage_transition repo_id=%s stage=%s state=done progress=%s",
-                    repo_id,
-                    stage.name,
-                    stage.done,
+                log_event(
+                    logger,
+                    "stage_transition",
+                    repo_id=repo_id,
+                    stage=stage.name,
+                    state="done",
+                    progress=stage.done,
                 )
 
             await _persist_state(
@@ -132,7 +137,7 @@ async def handle_job(
                 complete=True,
                 commit_sha=ctx.commit_sha,
             )
-            logger.info("indexing job completed repo_id=%s", repo_id)
+            log_event(logger, "index_job_completed", repo_id=repo_id, progress=100)
     except Exception as exc:  # noqa: BLE001 — stage failures are represented in job state
         error = str(exc) or exc.__class__.__name__
         if current_stage is not None:
@@ -149,7 +154,7 @@ async def handle_job(
                 complete=True,
                 commit_sha=ctx.commit_sha,
             )
-        logger.exception("indexing job failed repo_id=%s", repo_id)
+        logger.exception(structured_event("index_job_failed", repo_id=repo_id, error=error))
     finally:
         if owns_redis:
             await redis.aclose()

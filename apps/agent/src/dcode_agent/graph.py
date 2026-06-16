@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any, cast
 
+from dcode_shared.observability import log_event
 from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
@@ -51,11 +52,12 @@ async def tool_call_node(state: AgentState) -> AgentState:
     cache_key = tool.cache_key(state.repo_id, args_model)
 
     await _emit_tool_call(state, state.pending_tool_name, args_model.model_dump(mode="json"))
-    logger.info(
-        "tool_call repo_id=%s step=%s tool=%s cached=unknown",
-        state.repo_id,
-        state.step_count + 1,
-        state.pending_tool_name,
+    log_event(
+        logger,
+        "tool_call",
+        repo_id=state.repo_id,
+        step=state.step_count + 1,
+        tool=state.pending_tool_name,
     )
     cached_payload = await _cache_get(state.runtime.get("tool_cache"), cache_key)
     cached = cached_payload is not None
@@ -65,12 +67,13 @@ async def tool_call_node(state: AgentState) -> AgentState:
         result = await tool.execute(state.repo_id, args_model)
         result_payload = result.model_dump(mode="json")
         await _cache_set(state.runtime.get("tool_cache"), cache_key, json.dumps(result_payload))
-    logger.info(
-        "tool_result repo_id=%s step=%s tool=%s cached=%s",
-        state.repo_id,
-        state.step_count + 1,
-        state.pending_tool_name,
-        cached,
+    log_event(
+        logger,
+        "tool_result",
+        repo_id=state.repo_id,
+        step=state.step_count + 1,
+        tool=state.pending_tool_name,
+        cached=cached,
     )
 
     observation = {

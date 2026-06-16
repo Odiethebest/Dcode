@@ -1,5 +1,6 @@
 """LangGraph node tests for the agent's first-pass orchestration."""
 
+import logging
 from typing import Any, ClassVar
 from uuid import uuid4
 
@@ -112,7 +113,8 @@ async def test_plan_node_defaults_to_search_code() -> None:
     assert updated.pending_tool_args == {"query": "auth related code", "k": 5}
 
 
-async def test_tool_call_node_executes_and_then_hits_cache() -> None:
+async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="dcode.agent.graph")
     tool = DummyTool()
     registry = _registry(tool)
     emitter = FakeEmitter()
@@ -143,6 +145,8 @@ async def test_tool_call_node_executes_and_then_hits_cache() -> None:
     assert second.observations[0]["cached"] is True
     assert emitter.tool_calls[0][1] == "find_definition"
     assert "src/requests/auth.py" in emitter.tool_results[0][2]
+    assert any('"event": "tool_call"' in record.message for record in caplog.records)
+    assert any('"event": "tool_result"' in record.message for record in caplog.records)
 
 
 async def test_synthesize_node_formats_search_observation() -> None:

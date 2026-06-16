@@ -1,6 +1,7 @@
 """Harness tests for the eval CLI core."""
 
 import json
+import logging
 from pathlib import Path
 
 from dcode_eval.baselines.base import AnswerResult, Baseline
@@ -36,7 +37,10 @@ class StubBaseline(Baseline):
         )
 
 
-async def test_run_eval_writes_expected_artifacts(tmp_path: Path, monkeypatch) -> None:
+async def test_run_eval_writes_expected_artifacts(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    caplog.set_level(logging.INFO, logger="dcode.eval.run")
     questions_path = tmp_path / "questions.jsonl"
     questions_path.write_text(
         json.dumps(
@@ -66,15 +70,20 @@ async def test_run_eval_writes_expected_artifacts(tmp_path: Path, monkeypatch) -
     assert (out_dir / "per_question.jsonl").exists()
     assert (out_dir / "metrics.json").exists()
     assert (out_dir / "taxonomy_breakdown.json").exists()
+    assert (out_dir / "run_config.json").exists()
 
     metrics = json.loads((out_dir / "metrics.json").read_text(encoding="utf-8"))
+    run_config = json.loads((out_dir / "run_config.json").read_text(encoding="utf-8"))
     assert metrics["baseline"] == "B9"
+    assert run_config["baseline"] == "B9"
     assert metrics["recall_at_k"] == 1.0
     assert metrics["groundedness"] == 1.0
     assert result["taxonomy_breakdown"]["L1"]["questions"] == 1
+    assert any('"event": "eval_run_start"' in record.message for record in caplog.records)
 
 
-async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch) -> None:
+async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -> None:
+    caplog.set_level(logging.INFO, logger="dcode.eval.run")
     questions_path = tmp_path / "questions.jsonl"
     questions_path.write_text(
         "\n".join(
@@ -146,4 +155,6 @@ async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch) -> None:
 
     assert (tmp_path / "suite" / "suite_summary.json").exists()
     assert (tmp_path / "suite" / "h1_report.json").exists()
+    assert (tmp_path / "suite" / "run_config.json").exists()
     assert result["h1_report"]["decision"] == "supported"
+    assert any('"event": "eval_suite_start"' in record.message for record in caplog.records)

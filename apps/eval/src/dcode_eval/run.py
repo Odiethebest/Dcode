@@ -3,14 +3,19 @@
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from dcode_shared.observability import log_event
+
 from dcode_eval.baselines import build_baseline
 from dcode_eval.metrics.retrieval import mrr, ndcg_at_k, recall_at_k
 from dcode_eval.questions import load_questions
+
+logger = logging.getLogger("dcode.eval.run")
 
 
 async def run_eval(
@@ -24,6 +29,15 @@ async def run_eval(
     questions = load_questions(questions_path)
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_config = {
+        "mode": "single",
+        "baseline": baseline_id,
+        "questions_path": questions_path,
+        "output_dir": output_dir,
+        "k": k,
+    }
+    _write_json(out_dir / "run_config.json", run_config)
+    log_event(logger, "eval_run_start", **run_config)
 
     per_question_rows: list[dict[str, Any]] = []
     for question in questions:
@@ -64,6 +78,14 @@ async def run_eval(
     _write_jsonl(out_dir / "per_question.jsonl", per_question_rows)
     _write_json(out_dir / "metrics.json", metrics)
     _write_json(out_dir / "taxonomy_breakdown.json", taxonomy_breakdown)
+    log_event(
+        logger,
+        "eval_run_complete",
+        baseline=baseline_id,
+        questions=len(per_question_rows),
+        k=k,
+        output_dir=output_dir,
+    )
     return {
         "per_question": per_question_rows,
         "metrics": metrics,
@@ -80,6 +102,15 @@ async def run_suite(
 ) -> dict[str, Any]:
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_config = {
+        "mode": "suite",
+        "baselines": baseline_ids,
+        "questions_path": questions_path,
+        "output_dir": output_dir,
+        "k": k,
+    }
+    _write_json(out_dir / "run_config.json", run_config)
+    log_event(logger, "eval_suite_start", **run_config)
     suite_results: dict[str, Any] = {}
     for baseline_id in baseline_ids:
         suite_results[baseline_id] = await run_eval(
@@ -99,6 +130,7 @@ async def run_suite(
         report = _h1_report(suite_results)
         _write_json(out_dir / "h1_report.json", report)
 
+    log_event(logger, "eval_suite_complete", baselines=baseline_ids, output_dir=output_dir, k=k)
     return {"suite": suite_results, "summary": summary, "h1_report": report}
 
 

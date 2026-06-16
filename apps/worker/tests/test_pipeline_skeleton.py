@@ -1,6 +1,7 @@
 """Worker import + pipeline shape smoke tests."""
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from types import TracebackType
@@ -135,6 +136,31 @@ async def test_handle_job_marks_current_stage_failed() -> None:
     assert state["stages"]["cloning"] == StageState.done.value
     assert state["stages"]["parsing"] == StageState.failed.value
     assert redis.expirations[str(repo.id)] == pipeline.JOB_STATE_TTL_SECONDS
+
+
+async def test_handle_job_emits_structured_stage_logs(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="dcode.worker.pipeline")
+    repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
+
+    await pipeline.handle_job(
+        json.dumps({"repo_id": str(repo.id), "url": repo.url}).encode(),
+        session_factory=FakeSessionFactory(repo),
+        redis_client=FakeRedis(),
+        stages=(
+            pipeline.PipelineStage(
+                RepoStatus.cloning,
+                "cloning",
+                (_runner("clone", []),),
+                5,
+                20,
+            ),
+        ),
+    )
+
+    messages = [record.message for record in caplog.records]
+    assert any('"event": "index_job_received"' in message for message in messages)
+    assert any('"event": "stage_transition"' in message for message in messages)
+    assert any('"event": "index_job_completed"' in message for message in messages)
 
 
 async def test_embedding_stub_returns_zero_vectors_of_configured_dim() -> None:
