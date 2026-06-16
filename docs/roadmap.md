@@ -503,11 +503,28 @@ Implementation record:
 
 ### 4.3 Groundedness
 
-- [ ] `extract_citations` 保持现有 regex 单测
-- [ ] `verify` 查询 chunks 文件/行范围
-- [ ] `verify` 查询 symbols qualified_name
-- [ ] 返回 verified citations 和 score
-- [ ] 添加 DB fixture 测试
+- [x] `extract_citations` 保持现有 regex 单测
+- [x] `verify` 查询 chunks 文件/行范围
+- [x] `verify` 查询 symbols qualified_name
+- [x] 返回 verified citations 和 score
+- [x] 添加 DB fixture 测试
+
+Implementation record:
+
+- Date: 2026-06-16
+- Implemented DB-backed citation verification in [groundedness.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/groundedness.py):
+  - file citations like ``path/to/file.py:42`` now verify against `chunks` with `start_line <= line <= end_line`
+  - symbol citations like ``flask.app.Flask.run`` now verify against exact `symbols.qualified_name`
+  - verified symbol citations now resolve back to `file_path` and `line`
+  - invalid `repo_id` or missing `db` still degrades to unverified rather than crashing the agent
+- Kept the existing regex extraction tests and expanded [test_groundedness.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/tests/test_groundedness.py) with fake DB fixture coverage for:
+  - verified file-range match
+  - verified symbol match
+  - missing line-range citation
+  - no-DB fallback
+- Verification:
+  - `./.venv/bin/pytest apps/agent/tests/test_groundedness.py -q`: passed
+  - `MYPYPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run mypy -p dcode_agent`: passed
 
 ### 4.4 SSE
 

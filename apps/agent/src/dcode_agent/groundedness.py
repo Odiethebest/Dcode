@@ -11,7 +11,10 @@ NFR-4 and PLAN.md §3.1 measure against.
 
 import re
 from dataclasses import dataclass
+from uuid import UUID
 
+from dcode_shared.db.models import Chunk, Symbol
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Regex patterns for citation extraction.
@@ -52,21 +55,69 @@ def extract_citations(answer: str) -> list[tuple[str, str, int]]:
 
 
 async def verify(answer: str, repo_id: str, db: AsyncSession | None) -> GroundednessResult:
-    """Verify every citation in `answer` against indexed chunks / symbols.
-
-    TODO(M2): real SELECT against `chunks (repo_id, file_path)` and
-    `symbols (repo_id, qualified_name)` per DESIGN.md §3.2. Until then we
-    return verified=False for every extracted citation so the score is 0
-    (rather than falsely 1.0).
-    """
+    """Verify every citation in `answer` against indexed chunks / symbols."""
     extracted = extract_citations(answer)
     if not extracted:
         return GroundednessResult(citations=[], score=1.0)
 
-    checks = [
-        CitationCheck(symbol=sym, file_path=path, line=line, verified=False)
-        for sym, path, line in extracted
-    ]
+    try:
+        parsed_repo_id = UUID(repo_id)
+    except ValueError:
+        parsed_repo_id = None
+
+    checks: list[CitationCheck] = []
+    for sym, path, line in extracted:
+        if db is None or parsed_repo_id is None:
+            checks.append(CitationCheck(symbol=sym, file_path=path, line=line, verified=False))
+            continue
+
+        if path and line > 0:
+            checks.append(await _verify_file_line(db, parsed_repo_id, sym, path, line))
+            continue
+
+        checks.append(await _verify_symbol(db, parsed_repo_id, sym))
+
     verified_count = sum(1 for c in checks if c.verified)
     score = verified_count / len(checks) if checks else 1.0
     return GroundednessResult(citations=checks, score=score)
+
+
+async def _verify_file_line(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol: str,
+    file_path: str,
+    line: int,
+) -> CitationCheck:
+    stmt = (
+        select(Chunk)
+        .where(Chunk.repo_id == repo_id)
+        .where(Chunk.file_path == file_path)
+        .where(Chunk.start_line <= line)
+        .where(Chunk.end_line >= line)
+        .limit(1)
+    )
+    row = await db.scalar(stmt)
+    return CitationCheck(symbol=symbol, file_path=file_path, line=line, verified=row is not None)
+
+
+async def _verify_symbol(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol: str,
+) -> CitationCheck:
+    stmt = (
+        select(Symbol)
+        .where(Symbol.repo_id == repo_id)
+        .where(Symbol.qualified_name == symbol)
+        .limit(1)
+    )
+    row = await db.scalar(stmt)
+    if row is None:
+        return CitationCheck(symbol=symbol, file_path="", line=0, verified=False)
+    return CitationCheck(
+        symbol=symbol,
+        file_path=row.file_path,
+        line=row.line,
+        verified=True,
+    )
