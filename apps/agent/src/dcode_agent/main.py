@@ -1,19 +1,13 @@
 """Agent service entrypoint — exposes `/healthz`, `/internal/query` (SSE),
-and `/internal/tools` (manifest, debug).
-
-The API gateway proxies all public `/api/v1/query` traffic here. We keep
-agent endpoints under `internal/*` to make the trust boundary explicit
-and to allow direct curl testing during development.
-
-Skeleton: `/internal/query` schedules `_run_stub_pipeline()` instead of
-the real LangGraph (graph.build_graph()) so the SSE wire format is
-exercised end-to-end without LLM calls. Real ReAct loop lands at M2.
-"""
+and `/internal/tools` (manifest, debug)."""
 
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
+from dcode_shared.db.session import SessionLocal
+from dcode_shared.events import CitationEvent
 from dcode_shared.schemas import QueryRequest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -31,10 +25,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.tool_registry = default_registry()
     app.state.compiled_graph = graph.build_graph()
     app.state.tool_cache = Redis.from_url(agent_settings.redis_url, decode_responses=True)
+    app.state.db_session_factory = SessionLocal
     try:
         yield
     finally:
-        await app.state.tool_cache.aclose()
+        close = getattr(app.state.tool_cache, "aclose", None)
+        if close is not None:
+            await close()
 
 
 app = FastAPI(
@@ -59,14 +56,19 @@ async def list_tools() -> list[dict[str, object]]:
 
 @app.post("/internal/query", tags=["agent"])
 async def internal_query(body: QueryRequest) -> StreamingResponse:
-    """Run the agent for one query and stream SSE events back.
-
-    Wire format follows DESIGN.md §4.3 exactly (event names + payload shapes
-    defined in `dcode_shared.events`).
-    """
+    """Run the agent for one query and stream SSE events back."""
     emitter = SSEEmitter()
     state = AgentState(repo_id=str(body.repo_id), query=body.query)
-    asyncio.create_task(_run_stub_pipeline(emitter, state))
+    asyncio.create_task(
+        _run_graph_pipeline(
+            emitter,
+            state,
+            app.state.compiled_graph,
+            app.state.tool_registry,
+            app.state.tool_cache,
+            app.state.db_session_factory,
+        )
+    )
     return StreamingResponse(
         emitter.iter_bytes(),
         media_type="text/event-stream",
@@ -74,23 +76,72 @@ async def internal_query(body: QueryRequest) -> StreamingResponse:
     )
 
 
-async def _run_stub_pipeline(emitter: SSEEmitter, state: AgentState) -> None:
-    """Skeleton substitute for `graph.build_graph().ainvoke(state)`.
-
-    Emits one thought + one final_answer so the SSE protocol is exercised
-    end-to-end. Replaced by the real LangGraph invocation at M2.
-    """
+async def _run_graph_pipeline(
+    emitter: SSEEmitter,
+    state: AgentState,
+    compiled_graph: Any,
+    tool_registry: Any,
+    tool_cache: Any,
+    db_session_factory: Any,
+) -> None:
+    """Invoke the compiled graph and flush terminal SSE events."""
     try:
-        await emitter.emit_thought(
-            step=1,
-            content="(skeleton) Agent received query; real ReAct loop lands at M2.",
-        )
+        async with db_session_factory() as db:
+            final_state = await compiled_graph.ainvoke(
+                AgentState(
+                    repo_id=state.repo_id,
+                    query=state.query,
+                    runtime={
+                        "emitter": emitter,
+                        "tool_registry": tool_registry,
+                        "tool_cache": tool_cache,
+                        "db": db,
+                    },
+                )
+            )
+
+        state_dict = _state_dict(final_state)
+        citations = _citation_events(state_dict)
+        for citation in citations:
+            await emitter.emit_citation(
+                symbol=citation.symbol,
+                file_path=citation.file_path,
+                line=citation.line,
+                verified=citation.verified,
+            )
+
+        answer = cast(str, state_dict.get("final_answer") or state_dict.get("draft_answer") or "")
+        if answer:
+            await emitter.emit_partial_answer(answer)
+
         await emitter.emit_final_answer(
-            answer=f"(skeleton) Stub answer for: {state.query}",
-            citations=[],
-            groundedness=1.0,
+            answer=answer,
+            citations=citations,
+            groundedness=float(state_dict.get("groundedness_score") or 0.0),
         )
     except Exception as exc:  # noqa: BLE001 — surface any unexpected failure as SSE error
         await emitter.emit_error(code="INTERNAL", message=str(exc))
     finally:
         await emitter.close()
+
+
+def _state_dict(state: Any) -> dict[str, Any]:
+    if isinstance(state, dict):
+        return cast(dict[str, Any], state)
+    if hasattr(state, "__dict__"):
+        return cast(dict[str, Any], state.__dict__)
+    raise TypeError(f"unexpected graph state type: {type(state)!r}")
+
+
+def _citation_events(state_dict: dict[str, Any]) -> list[CitationEvent]:
+    out: list[CitationEvent] = []
+    for citation in cast(list[dict[str, Any]], state_dict.get("citations", [])):
+        out.append(
+            CitationEvent(
+                symbol=str(citation["symbol"]),
+                file_path=str(citation["file_path"]),
+                line=int(citation["line"]),
+                verified=bool(citation["verified"]),
+            )
+        )
+    return out

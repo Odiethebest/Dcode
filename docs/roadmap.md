@@ -528,16 +528,39 @@ Implementation record:
 
 ### 4.4 SSE
 
-- [ ] 替换 `_run_stub_pipeline`
-- [ ] 真正发出：
-  - [ ] `thought`
-  - [ ] `tool_call`
-  - [ ] `tool_result`
-  - [ ] `citation`
-  - [ ] `partial_answer` 或直接 `final_answer`
-  - [ ] `final_answer`
-  - [ ] `error`
-- [ ] API gateway 保持透传
+- [x] 替换 `_run_stub_pipeline`
+- [x] 真正发出：
+  - [x] `thought`
+  - [x] `tool_call`
+  - [x] `tool_result`
+  - [x] `citation`
+  - [x] `partial_answer` 或直接 `final_answer`
+  - [x] `final_answer`
+  - [x] `error`
+- [x] API gateway 保持透传
+
+Implementation record:
+
+- Date: 2026-06-16
+- Replaced the stub query pipeline in [main.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/src/dcode_agent/main.py) with `_run_graph_pipeline(...)`, which:
+  - invokes `app.state.compiled_graph`
+  - injects `emitter / tool_registry / tool_cache / db` into `AgentState.runtime`
+  - emits terminal `citation`, `partial_answer`, and `final_answer` events after graph completion
+  - emits `error` on any graph/runtime failure
+- Added runtime session wiring in lifespan:
+  - `db_session_factory = SessionLocal`
+  - `tool_cache` shutdown now tolerates test doubles without `aclose()`
+- Added SSE endpoint tests in [test_query_sse.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/tests/test_query_sse.py) covering:
+  - successful stream with `thought -> tool_call -> tool_result -> citation -> partial_answer -> final_answer`
+  - failure stream with `error`
+- Trimmed the old stub-specific assertion from [test_tools_registry.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/agent/tests/test_tools_registry.py) because `/internal/query` now depends on the real graph path instead of a hardcoded fake answer
+- Verification:
+  - `./.venv/bin/pytest apps/agent/tests/test_query_sse.py apps/agent/tests/test_tools_registry.py -q`: passed
+  - `docker compose up -d --build agent`: passed
+  - Real smoke through API gateway on repo `f89e5e09-272e-40dc-934e-00241d4c045c`:
+    - `POST /api/v1/query` for `Where is \`HTTPBasicAuth\` defined?`
+    - streamed `thought`, `tool_call`, `tool_result`, two verified `citation` events, `partial_answer`, and `final_answer`
+    - `final_answer.groundedness = 1.0`
 
 Exit criteria: 至少 5 个手写问题能端到端返回答案和 verified citations。
 

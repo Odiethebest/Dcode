@@ -1,6 +1,4 @@
-"""Tool registry + agent SSE smoke tests."""
-
-import uuid
+"""Tool registry + agent manifest smoke tests."""
 
 from dcode_agent.main import app
 from dcode_agent.tools import default_registry
@@ -59,18 +57,3 @@ def test_tools_manifest_endpoint_lists_eight_tools() -> None:
     assert response.status_code == 200
     manifest = response.json()
     assert {entry["name"] for entry in manifest} == EXPECTED_TOOLS
-
-
-def test_internal_query_streams_a_thought_and_final_answer() -> None:
-    """Skeleton must emit at least one thought + one final_answer SSE event."""
-    client = TestClient(app)
-    rid = str(uuid.uuid4())
-    with client.stream(
-        "POST",
-        "/internal/query",
-        json={"repo_id": rid, "query": "How does X work?"},
-    ) as response:
-        assert response.status_code == 200
-        body = b"".join(response.iter_bytes())
-    assert b"event: thought" in body
-    assert b"event: final_answer" in body
