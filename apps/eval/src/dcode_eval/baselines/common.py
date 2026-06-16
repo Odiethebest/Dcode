@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from dcode_shared.internal import internal_auth_headers
 from dcode_shared.schemas import Chunk
 
 from dcode_eval.baselines.base import AnswerResult
@@ -16,6 +17,7 @@ async def internal_search(repo_id: str, query: str, k: int) -> list[Chunk]:
         response = await client.get(
             f"{eval_settings.api_base_url.rstrip('/')}/internal/search",
             params={"repo_id": repo_id, "query": query, "k": k},
+            headers=internal_auth_headers(eval_settings.internal_api_key),
         )
     response.raise_for_status()
     return [Chunk.model_validate(item) for item in response.json()]

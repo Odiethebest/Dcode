@@ -5,13 +5,14 @@ import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "requests_query_cases.json"
 _LIVE_REPO_ID = os.getenv("DCODE_LIVE_REPO_ID")
 _LIVE_API_BASE_URL = os.getenv("DCODE_LIVE_API_BASE_URL", "http://localhost:8000")
+_LIVE_INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-internal-key-change-me")
 _ALLOWED_ENDPOINTS = {
     "search",
     "find_definition",
@@ -48,7 +49,8 @@ def test_live_internal_api_requests_cases(case: dict[str, Any]) -> None:
     query = urlencode({"repo_id": _LIVE_REPO_ID, **case["params"]})
     url = f"{_LIVE_API_BASE_URL}/internal/{case['endpoint']}?{query}"
 
-    with urlopen(url) as response:
+    request = Request(url, headers={"X-Dcode-Internal-Key": _LIVE_INTERNAL_API_KEY})
+    with urlopen(request) as response:
         assert response.status == 200
         body = json.loads(response.read().decode("utf-8"))
 

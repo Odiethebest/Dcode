@@ -125,6 +125,28 @@ def test_submit_repo_rejects_malformed_url() -> None:
     assert publisher.calls == []
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost/example/repo.git",
+        "https://127.0.0.1/repo.git",
+        "ssh://10.0.0.8/repo.git",
+        "git://[::1]/repo.git",
+        "git@localhost:team/repo.git",
+    ],
+)
+def test_submit_repo_rejects_local_or_private_git_urls(url: str) -> None:
+    session = FakeSession()
+    publisher = FakePublisher()
+    override_dependencies(session, publisher)
+
+    response = TestClient(app).post("/api/v1/repos", json={"url": url})
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "INVALID_REPO_URL"
+    assert publisher.calls == []
+
+
 def test_submit_repo_rolls_back_when_publish_fails() -> None:
     session = FakeSession()
     publisher = FakePublisher(fail=True)

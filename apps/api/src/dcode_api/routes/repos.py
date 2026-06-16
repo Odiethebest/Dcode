@@ -1,8 +1,10 @@
 """Indexing endpoints — implements DESIGN.md §4.1."""
 
+import ipaddress
 import json
 import re
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlparse
 from uuid import UUID
 
 from dcode_shared.cache import job_state_key
@@ -25,7 +27,7 @@ from dcode_api.deps import get_db, get_index_job_publisher, get_redis
 router = APIRouter(tags=["repos"])
 
 _SCP_LIKE_GIT_URL = re.compile(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$")
-_ALLOWED_URL_SCHEMES = ("https://", "http://", "ssh://", "git://")
+_ALLOWED_URL_SCHEMES = {"https", "http", "ssh", "git"}
 
 
 @router.post(
@@ -108,7 +110,41 @@ async def repo_status(
 def _is_supported_git_url(url: str) -> bool:
     if not url:
         return False
-    return url.startswith(_ALLOWED_URL_SCHEMES) or bool(_SCP_LIKE_GIT_URL.match(url))
+    scp_like = _SCP_LIKE_GIT_URL.match(url)
+    if scp_like:
+        host = url.split("@", 1)[1].split(":", 1)[0]
+        return _is_allowed_remote_host(host)
+
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_URL_SCHEMES:
+        return False
+    if not parsed.hostname:
+        return False
+    return _is_allowed_remote_host(parsed.hostname)
+
+
+def _is_allowed_remote_host(host: str) -> bool:
+    normalized = host.strip().strip("[]").rstrip(".").lower()
+    if not normalized:
+        return False
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return False
+
+    try:
+        ip = ipaddress.ip_address(normalized)
+    except ValueError:
+        return True
+
+    return not any(
+        (
+            ip.is_private,
+            ip.is_loopback,
+            ip.is_link_local,
+            ip.is_multicast,
+            ip.is_reserved,
+            ip.is_unspecified,
+        )
+    )
 
 
 async def _read_job_state(redis: Redis, repo_id: UUID) -> dict[str, object]:

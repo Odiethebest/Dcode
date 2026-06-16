@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from dcode_shared.internal import internal_auth_headers
 
 from dcode_agent.settings import agent_settings
 
@@ -17,7 +18,11 @@ async def fetch_internal_json(
     url = f"{agent_settings.retrieval_base_url.rstrip('/')}/internal/{endpoint}"
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
         query_params: dict[str, str | int] = {"repo_id": repo_id, **params}
-        response = await client.get(url, params=query_params)
+        response = await client.get(
+            url,
+            params=query_params,
+            headers=internal_auth_headers(agent_settings.internal_api_key),
+        )
 
     try:
         response.raise_for_status()

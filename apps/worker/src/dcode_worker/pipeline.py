@@ -16,6 +16,7 @@ from dcode_shared.cache import job_state_key
 from dcode_shared.db.models import Repo
 from dcode_shared.db.session import SessionLocal
 from dcode_shared.schemas import RepoStatus, StageState
+from dcode_shared.settings import shared_settings
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +29,7 @@ logger = logging.getLogger("dcode.worker.pipeline")
 
 StageRunner = Callable[[PipelineContext], Awaitable[PipelineContext]]
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
-JOB_STATE_TTL_SECONDS = 7 * 24 * 60 * 60
+JOB_STATE_TTL_SECONDS = shared_settings.job_state_ttl_seconds
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,12 @@ async def handle_job(
                     error=None,
                     complete=False,
                 )
+                logger.info(
+                    "stage_transition repo_id=%s stage=%s state=in_progress progress=%s",
+                    repo_id,
+                    stage.name,
+                    stage.in_progress,
+                )
 
                 for runner in stage.runners:
                     ctx = await runner(ctx)
@@ -106,6 +113,12 @@ async def handle_job(
                     error=None,
                     complete=False,
                     commit_sha=ctx.commit_sha,
+                )
+                logger.info(
+                    "stage_transition repo_id=%s stage=%s state=done progress=%s",
+                    repo_id,
+                    stage.name,
+                    stage.done,
                 )
 
             await _persist_state(

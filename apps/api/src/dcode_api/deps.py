@@ -11,6 +11,7 @@ from uuid import UUID
 import aio_pika
 import httpx
 from dcode_shared.db.session import SessionLocal
+from dcode_shared.internal import internal_auth_headers
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,5 +70,6 @@ async def get_agent_client() -> httpx.AsyncClient:
         _agent_client = httpx.AsyncClient(
             base_url=api_settings.agent_url,
             timeout=httpx.Timeout(60.0, connect=5.0),
+            headers=internal_auth_headers(api_settings.internal_api_key),
         )
     return _agent_client

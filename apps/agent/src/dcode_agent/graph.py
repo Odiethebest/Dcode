@@ -2,13 +2,17 @@
 
 import inspect
 import json
+import logging
 import re
 from typing import Any, cast
 
+from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
 from dcode_agent.state import MAX_STEPS, AgentState
+
+logger = logging.getLogger("dcode.agent.graph")
 
 # ---------------------------------------------------------------------------
 # Nodes
@@ -47,6 +51,12 @@ async def tool_call_node(state: AgentState) -> AgentState:
     cache_key = tool.cache_key(state.repo_id, args_model)
 
     await _emit_tool_call(state, state.pending_tool_name, args_model.model_dump(mode="json"))
+    logger.info(
+        "tool_call repo_id=%s step=%s tool=%s cached=unknown",
+        state.repo_id,
+        state.step_count + 1,
+        state.pending_tool_name,
+    )
     cached_payload = await _cache_get(state.runtime.get("tool_cache"), cache_key)
     cached = cached_payload is not None
     if cached:
@@ -55,6 +65,13 @@ async def tool_call_node(state: AgentState) -> AgentState:
         result = await tool.execute(state.repo_id, args_model)
         result_payload = result.model_dump(mode="json")
         await _cache_set(state.runtime.get("tool_cache"), cache_key, json.dumps(result_payload))
+    logger.info(
+        "tool_result repo_id=%s step=%s tool=%s cached=%s",
+        state.repo_id,
+        state.step_count + 1,
+        state.pending_tool_name,
+        cached,
+    )
 
     observation = {
         "tool": state.pending_tool_name,
@@ -230,7 +247,7 @@ async def _cache_set(cache: Any, key: str, value: str) -> None:
     if isinstance(cache, dict):
         cache[key] = value
         return
-    result = cache.set(key, value, ex=24 * 60 * 60)
+    result = cache.set(key, value, ex=shared_settings.tool_cache_ttl_seconds)
     if inspect.isawaitable(result):
         await result
 

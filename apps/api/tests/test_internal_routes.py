@@ -8,8 +8,10 @@ import pytest
 from dcode_api.deps import get_db
 from dcode_api.main import app
 from dcode_api.routes import internal
+from dcode_api.settings import api_settings
 from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Repo, Symbol
+from dcode_shared.internal import internal_auth_headers
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from fastapi.testclient import TestClient
 
@@ -38,6 +40,10 @@ def clear_dependency_overrides() -> Any:
     app.dependency_overrides.clear()
 
 
+def _internal_headers() -> dict[str, str]:
+    return internal_auth_headers(api_settings.internal_api_key)
+
+
 def test_internal_search_route_returns_chunk_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     repo_id = uuid.uuid4()
     override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
@@ -63,7 +69,10 @@ def test_internal_search_route_returns_chunk_schema(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(internal, "_search_chunks", fake_search)
 
-    response = TestClient(app).get(f"/internal/search?repo_id={repo_id}&query=auth&k=3")
+    response = TestClient(app).get(
+        f"/internal/search?repo_id={repo_id}&query=auth&k=3",
+        headers=_internal_headers(),
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -115,12 +124,22 @@ def test_internal_graph_routes_return_location_schema(monkeypatch: pytest.Monkey
     monkeypatch.setattr(internal, "_get_file_outline", fake_get_file_outline)
     client = TestClient(app)
 
-    definition = client.get(f"/internal/find_definition?repo_id={repo_id}&symbol=HTTPBasicAuth")
-    references = client.get(f"/internal/find_references?repo_id={repo_id}&symbol=HTTPBasicAuth")
-    dependencies = client.get(
-        f"/internal/get_dependencies?repo_id={repo_id}&module=src.requests.api"
+    definition = client.get(
+        f"/internal/find_definition?repo_id={repo_id}&symbol=HTTPBasicAuth",
+        headers=_internal_headers(),
     )
-    outline = client.get(f"/internal/get_file_outline?repo_id={repo_id}&path=src/requests/auth.py")
+    references = client.get(
+        f"/internal/find_references?repo_id={repo_id}&symbol=HTTPBasicAuth",
+        headers=_internal_headers(),
+    )
+    dependencies = client.get(
+        f"/internal/get_dependencies?repo_id={repo_id}&module=src.requests.api",
+        headers=_internal_headers(),
+    )
+    outline = client.get(
+        f"/internal/get_file_outline?repo_id={repo_id}&path=src/requests/auth.py",
+        headers=_internal_headers(),
+    )
 
     assert definition.status_code == 200
     assert references.status_code == 200
@@ -133,10 +152,21 @@ def test_internal_graph_routes_return_location_schema(monkeypatch: pytest.Monkey
 def test_internal_routes_404_for_unknown_repo() -> None:
     override_db(FakeSession())
     repo_id = uuid.uuid4()
-    response = TestClient(app).get(f"/internal/search?repo_id={repo_id}&query=auth")
+    response = TestClient(app).get(
+        f"/internal/search?repo_id={repo_id}&query=auth",
+        headers=_internal_headers(),
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "REPO_NOT_FOUND"
+
+
+def test_internal_routes_require_service_auth() -> None:
+    repo_id = uuid.uuid4()
+    response = TestClient(app).get(f"/internal/search?repo_id={repo_id}&query=auth")
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "FORBIDDEN"
 
 
 def test_hybrid_search_fuses_sparse_and_dense_scores() -> None:

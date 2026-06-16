@@ -6,6 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 from dcode_agent.main import app
+from dcode_agent.settings import agent_settings
+from dcode_shared.internal import internal_auth_headers
 from fastapi.testclient import TestClient
 
 
@@ -56,6 +58,7 @@ def test_internal_query_streams_graph_events() -> None:
             "POST",
             "/internal/query",
             json={"repo_id": str(uuid4()), "query": "Where is `HTTPBasicAuth` defined?"},
+            headers=internal_auth_headers(agent_settings.internal_api_key),
         ) as response:
             assert response.status_code == 200
             body = b"".join(response.iter_bytes())
@@ -79,6 +82,7 @@ def test_internal_query_streams_error_when_graph_fails() -> None:
             "POST",
             "/internal/query",
             json={"repo_id": str(uuid4()), "query": "Where is `HTTPBasicAuth` defined?"},
+            headers=internal_auth_headers(agent_settings.internal_api_key),
         ) as response:
             assert response.status_code == 200
             body = b"".join(response.iter_bytes())
@@ -88,3 +92,14 @@ def test_internal_query_streams_error_when_graph_fails() -> None:
     assert b"event: tool_result" in body
     assert b"event: error" in body
     assert b"boom" in body
+
+
+def test_internal_query_requires_service_auth() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/internal/query",
+            json={"repo_id": str(uuid4()), "query": "Where is `HTTPBasicAuth` defined?"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "FORBIDDEN"

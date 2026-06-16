@@ -51,6 +51,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       AGENT_URL: http://agent:8001
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"
@@ -78,6 +79,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
       WORKDIR_BASE: /tmp/dcode-workdirs
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - repo_workdirs:/tmp/dcode-workdirs
@@ -105,6 +107,7 @@ services:
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8001:8001"

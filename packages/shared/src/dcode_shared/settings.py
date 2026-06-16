@@ -25,6 +25,12 @@ class SharedSettings(BaseSettings):
     # --- Logging ---
     log_level: str = "info"
 
+    # --- Internal service auth / cache policy ---
+    internal_api_key: str = "dev-internal-key-change-me"
+    query_cache_ttl_seconds: int = 60 * 60
+    tool_cache_ttl_seconds: int = 24 * 60 * 60
+    job_state_ttl_seconds: int = 7 * 24 * 60 * 60
+
     # --- Open Decisions (OD-2..OD-4) ---
     embedding_model: str = "stub"
     embedding_dim: int = 1024

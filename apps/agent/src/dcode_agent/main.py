@@ -8,8 +8,9 @@ from typing import Any, cast
 
 from dcode_shared.db.session import SessionLocal
 from dcode_shared.events import CitationEvent
+from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.schemas import QueryRequest
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 
@@ -48,15 +49,22 @@ async def healthz() -> dict[str, str]:
 
 
 @app.get("/internal/tools", tags=["meta"])
-async def list_tools() -> list[dict[str, object]]:
+async def list_tools(
+    x_dcode_internal_key: str | None = Header(default=None, alias=INTERNAL_API_KEY_HEADER),
+) -> list[dict[str, object]]:
     """Tool manifest — used by the planner LLM and for debugging."""
+    _require_internal_api_key(x_dcode_internal_key)
     registry = app.state.tool_registry
     return list(registry.manifest())
 
 
 @app.post("/internal/query", tags=["agent"])
-async def internal_query(body: QueryRequest) -> StreamingResponse:
+async def internal_query(
+    body: QueryRequest,
+    x_dcode_internal_key: str | None = Header(default=None, alias=INTERNAL_API_KEY_HEADER),
+) -> StreamingResponse:
     """Run the agent for one query and stream SSE events back."""
+    _require_internal_api_key(x_dcode_internal_key)
     emitter = SSEEmitter()
     state = AgentState(repo_id=str(body.repo_id), query=body.query)
     asyncio.create_task(
@@ -131,6 +139,14 @@ def _state_dict(state: Any) -> dict[str, Any]:
     if hasattr(state, "__dict__"):
         return cast(dict[str, Any], state.__dict__)
     raise TypeError(f"unexpected graph state type: {type(state)!r}")
+
+
+def _require_internal_api_key(x_dcode_internal_key: str | None) -> None:
+    if x_dcode_internal_key != agent_settings.internal_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "internal route requires service auth"},
+        )
 
 
 def _citation_events(state_dict: dict[str, Any]) -> list[CitationEvent]:

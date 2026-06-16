@@ -11,12 +11,16 @@ plus an `error` event so the SSE protocol is still exercised end-to-end.
 from collections.abc import AsyncIterator
 
 import httpx
+from dcode_shared.cache import query_cache_key
 from dcode_shared.events import ErrorEvent, ThoughtEvent, sse_encode
 from dcode_shared.schemas import QueryRequest
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
-from dcode_api.deps import get_agent_client
+from dcode_api.deps import get_agent_client, get_redis
+from dcode_api.settings import api_settings
 
 router = APIRouter(tags=["query"])
 
@@ -25,20 +29,41 @@ router = APIRouter(tags=["query"])
 async def query(
     body: QueryRequest,
     agent: httpx.AsyncClient = Depends(get_agent_client),
+    redis: Redis = Depends(get_redis),
 ) -> StreamingResponse:
     """Stream SSE events from the agent service back to the client.
 
-    TODO(M2): wire query cache check (DESIGN.md §3.3 `query:{repo_id}:{hash}`)
-    before forwarding to the agent.
+    Successful streams are cached in Redis under the documented
+    `query:{repo_id}:{hash(query)}` key for a short replay window.
     """
     return StreamingResponse(
-        _proxy_to_agent(agent, body),
+        _stream_query(agent, redis, body),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # disable nginx buffering for SSE
         },
     )
+
+
+async def _stream_query(
+    agent: httpx.AsyncClient,
+    redis: Redis,
+    body: QueryRequest,
+) -> AsyncIterator[bytes]:
+    cache_key = query_cache_key(str(body.repo_id), body.query)
+    cached = await _query_cache_get(redis, cache_key)
+    if cached is not None:
+        yield cached.encode("utf-8")
+        return
+
+    buffered = bytearray()
+    async for chunk in _proxy_to_agent(agent, body):
+        buffered.extend(chunk)
+        yield chunk
+
+    if buffered and b"event: error\n" not in buffered:
+        await _query_cache_set(redis, cache_key, buffered.decode("utf-8"))
 
 
 async def _proxy_to_agent(
@@ -75,3 +100,20 @@ async def _proxy_to_agent(
             "error",
             ErrorEvent(code="AGENT_UNAVAILABLE", message=str(exc)),
         )
+
+
+async def _query_cache_get(redis: Redis, key: str) -> str | None:
+    try:
+        cached = await redis.get(key)
+    except RedisError:
+        return None
+    if isinstance(cached, bytes):
+        return cached.decode("utf-8")
+    return cached if isinstance(cached, str) else None
+
+
+async def _query_cache_set(redis: Redis, key: str, value: str) -> None:
+    try:
+        await redis.setex(key, api_settings.query_cache_ttl_seconds, value)
+    except RedisError:
+        return

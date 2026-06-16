@@ -7,8 +7,9 @@ from uuid import UUID
 
 from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Edge, Repo, Symbol
+from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -16,7 +17,18 @@ from sqlalchemy.orm import aliased
 from dcode_api.deps import get_db
 from dcode_api.settings import api_settings
 
-router = APIRouter(tags=["internal"])
+
+async def _require_internal_api_key(
+    x_dcode_internal_key: str | None = Header(default=None, alias=INTERNAL_API_KEY_HEADER),
+) -> None:
+    if x_dcode_internal_key != api_settings.internal_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FORBIDDEN", "message": "internal route requires service auth"},
+        )
+
+
+router = APIRouter(tags=["internal"], dependencies=[Depends(_require_internal_api_key)])
 
 _TERM_SPLIT_RE = re.compile(r"\s+")
 _SEARCH_CANDIDATE_LIMIT = 50
