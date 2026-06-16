@@ -92,3 +92,12 @@ export interface ErrorPayload {
   code: string;
   message: string;
 }
+
+export type QueryStreamEvent =
+  | { event: 'thought'; data: ThoughtPayload }
+  | { event: 'tool_call'; data: ToolCallPayload }
+  | { event: 'tool_result'; data: ToolResultPayload }
+  | { event: 'citation'; data: CitationPayload }
+  | { event: 'partial_answer'; data: PartialAnswerPayload }
+  | { event: 'final_answer'; data: FinalAnswerPayload }
+  | { event: 'error'; data: ErrorPayload };

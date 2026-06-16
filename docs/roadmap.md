@@ -757,13 +757,36 @@ Implementation record:
 
 ### 6.2 Query Page
 
-- [ ] repo_id 输入或选择最近索引 repo
-- [ ] query 输入
-- [ ] `streamQuery` 实现 SSE parser
-- [ ] 渲染 7 类事件
-- [ ] final answer 区域
-- [ ] citations 列表
-- [ ] verified/unverified 标记
+- [x] repo_id 输入或选择最近索引 repo
+- [x] query 输入
+- [x] `streamQuery` 实现 SSE parser
+- [x] 渲染 7 类事件
+- [x] final answer 区域
+- [x] citations 列表
+- [x] verified/unverified 标记
+
+Implementation record:
+
+- Date: 2026-06-16
+- Implemented real query streaming in `apps/frontend/src/api/client.ts`:
+  - `POST /api/v1/query`
+  - chunk-safe SSE parser over `fetch` + `ReadableStream`
+  - typed `QueryStreamEvent` union in `src/api/types.ts`
+- Replaced the query-page placeholder in `apps/frontend/src/pages/QueryPage.tsx` with:
+  - repo id input plus recent indexed repo picker from localStorage
+  - query form with stop/abort handling
+  - event log renderer covering `thought/tool_call/tool_result/citation/partial_answer/final_answer/error`
+  - final-answer panel, groundedness display, and merged citation list with verified badges
+- Tightened frontend build hygiene:
+  - changed `apps/frontend/package.json` build script from `tsc -b && vite build` to `tsc -b --noEmit && vite build`
+  - this avoids TypeScript emitting stray `.js` files into `src/` and `tests/` during verification
+- Added frontend tests:
+  - `tests/streamQuery.test.ts` for SSE parsing and non-200 failures
+  - `tests/QueryPage.test.tsx` for streamed event rendering and citation/final-answer display
+- Verification:
+  - `npm test -- --run`: passed
+  - `npm run typecheck`: passed
+  - `npm run build`: passed
 
 ### 6.3 Demo Compare
 
