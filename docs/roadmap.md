@@ -790,9 +790,33 @@ Implementation record:
 
 ### 6.3 Demo Compare
 
-- [ ] 同题展示 B2/B3/B4 输出
-- [ ] 展示 citations 和 groundedness
-- [ ] 展示 L2/L3 示例
+- [x] 同题展示 B2/B3/B4 输出
+- [x] 展示 citations 和 groundedness
+- [x] 展示 L2/L3 示例
+
+Implementation record:
+
+- Date: 2026-06-16
+- Added a dedicated compare route and page:
+  - `apps/frontend/src/pages/ComparePage.tsx`
+  - route mounted at `/compare`
+  - nav updated in `src/App.tsx`
+- Added a checked-in evaluation snapshot at `src/demo/evalSnapshot.ts` so demo/report pages do not depend on untracked local `results/`
+  - includes suite summary metrics for `B2/B3/B4`
+  - includes the current H1 decision and L2/L3 composite margins
+  - includes 3 concrete demo prompts (`q-006`, `q-010`, `q-015`) with per-baseline answers, citations, groundedness, and retrieval metrics
+- Compare page behavior:
+  - top-level H1 status panel with L2/L3 margins
+  - baseline summary panel for B2/B3/B4
+  - taxonomy toggle for L2/L3
+  - question picker within the selected taxonomy
+  - side-by-side B2/B3/B4 answer comparison with citation lists and groundedness labels
+  - `:0` citations are surfaced as `suspect` so the current B4 grounding weakness is obvious in demo
+- Added `tests/ComparePage.test.tsx` and updated app-shell nav coverage
+- Verification:
+  - `npm test -- --run`: passed
+  - `npm run typecheck`: passed
+  - `npm run build`: passed
 
 Exit criteria: 一次演示能完成“索引 repo -> 提问 -> 展示答案/引用 -> 展示 baseline 对比”。
 

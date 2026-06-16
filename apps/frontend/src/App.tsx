@@ -1,5 +1,6 @@
 import { Link, Route, Routes } from 'react-router-dom';
 
+import ComparePage from '@/pages/ComparePage';
 import IndexPage from '@/pages/IndexPage';
 import QueryPage from '@/pages/QueryPage';
 
@@ -15,12 +16,16 @@ export default function App() {
           <Link to="/query" className="hover:underline">
             Query
           </Link>
+          <Link to="/compare" className="hover:underline">
+            Compare
+          </Link>
         </nav>
       </header>
       <main className="flex-1 px-6 py-8">
         <Routes>
           <Route path="/" element={<IndexPage />} />
           <Route path="/query" element={<QueryPage />} />
+          <Route path="/compare" element={<ComparePage />} />
         </Routes>
       </main>
     </div>

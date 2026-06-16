@@ -21,6 +21,7 @@ describe('App shell', () => {
     renderApp();
     expect(screen.getByText('Index')).toBeInTheDocument();
     expect(screen.getByText('Query')).toBeInTheDocument();
+    expect(screen.getByText('Compare')).toBeInTheDocument();
   });
 
   it('lands on the Index page by default', () => {
