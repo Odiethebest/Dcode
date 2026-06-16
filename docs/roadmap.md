@@ -688,10 +688,38 @@ Implementation record:
 
 ### 5.4 H1 判定
 
-- [ ] 分别报告 L1/L2/L3
-- [ ] 重点看 L2/L3 上 B4 是否优于 B2/B3
-- [ ] 如果没有显著优势，如实记录 unsupported
-- [ ] 不改题、不调阈值、不删除失败样本
+- [x] 分别报告 L1/L2/L3
+- [x] 重点看 L2/L3 上 B4 是否优于 B2/B3
+- [x] 如果没有显著优势，如实记录 unsupported
+- [x] 不改题、不调阈值、不删除失败样本
+
+Implementation record:
+
+- Date: 2026-06-16
+- Extended [run.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/src/dcode_eval/run.py) with suite execution:
+  - `--baseline B2 B3 B4` now runs the three baselines in one command
+  - writes per-baseline subdirectories plus top-level `suite_summary.json`
+  - writes top-level `h1_report.json` when `B2/B3/B4` are all present
+- Added fixed H1 decision rule:
+  - compare `B4` against both `B2` and `B3`
+  - scope limited to `L2` and `L3`
+  - composite score = mean of `Recall@k`, `MRR`, `nDCG@k`, `Groundedness`
+  - H1 is `supported` only if `B4` beats both `B2` and `B3` by at least `0.05` composite points on both `L2` and `L3`
+- Added suite test in [test_run.py](/Users/odieyang/Documents/Projects/Group%20Projects/Dcode/apps/eval/tests/test_run.py) to lock:
+  - `suite_summary.json` emission
+  - `h1_report.json` emission
+  - deterministic `supported` decision under a controlled stub comparison
+- Real result for the current repo snapshot is intentionally recorded as-is:
+  - command:
+    - `python -m dcode_eval.run --baseline B2 B3 B4 --questions apps/eval/src/dcode_eval/questions/data/questions.jsonl --output results/eval-suite --k 5`
+  - produced:
+    - `results/eval-suite/B2/*`
+    - `results/eval-suite/B3/*`
+    - `results/eval-suite/B4/*`
+    - `results/eval-suite/suite_summary.json`
+    - `results/eval-suite/h1_report.json`
+  - decision: `unsupported`
+  - reason: on both `L2` and `L3`, current `B4` composite does not exceed `B2/B3`; with the current stub-embedding index, `B2` and `B3` collapse to the same retrieval path and `B4` pays extra groundedness penalties without retrieval gains
 
 Exit criteria: 一条命令能跑完至少 B2/B3/B4，并产出可读 metrics。
 

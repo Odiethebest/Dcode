@@ -71,6 +71,37 @@ async def run_eval(
     }
 
 
+async def run_suite(
+    *,
+    baseline_ids: list[str],
+    questions_path: str,
+    output_dir: str,
+    k: int,
+) -> dict[str, Any]:
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    suite_results: dict[str, Any] = {}
+    for baseline_id in baseline_ids:
+        suite_results[baseline_id] = await run_eval(
+            baseline_id=baseline_id,
+            questions_path=questions_path,
+            output_dir=str(out_dir / baseline_id),
+            k=k,
+        )
+
+    summary = {
+        baseline_id: result["metrics"] for baseline_id, result in suite_results.items()
+    }
+    _write_json(out_dir / "suite_summary.json", summary)
+
+    report: dict[str, Any] | None = None
+    if {"B2", "B3", "B4"}.issubset(suite_results):
+        report = _h1_report(suite_results)
+        _write_json(out_dir / "h1_report.json", report)
+
+    return {"suite": suite_results, "summary": summary, "h1_report": report}
+
+
 def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> dict[str, Any]:
     if not rows:
         return {
@@ -106,13 +137,63 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _h1_report(suite_results: dict[str, Any]) -> dict[str, Any]:
+    threshold = 0.05
+    compared_taxonomies = ("L2", "L3")
+    comparisons: dict[str, Any] = {}
+    supported = True
+
+    for taxonomy in compared_taxonomies:
+        b2 = suite_results["B2"]["taxonomy_breakdown"][taxonomy]
+        b3 = suite_results["B3"]["taxonomy_breakdown"][taxonomy]
+        b4 = suite_results["B4"]["taxonomy_breakdown"][taxonomy]
+        b2_score = _composite_score(b2)
+        b3_score = _composite_score(b3)
+        b4_score = _composite_score(b4)
+        margin_vs_b2 = b4_score - b2_score
+        margin_vs_b3 = b4_score - b3_score
+        taxonomy_supported = margin_vs_b2 >= threshold and margin_vs_b3 >= threshold
+        supported = supported and taxonomy_supported
+        comparisons[taxonomy] = {
+            "B2_composite": b2_score,
+            "B3_composite": b3_score,
+            "B4_composite": b4_score,
+            "margin_vs_B2": margin_vs_b2,
+            "margin_vs_B3": margin_vs_b3,
+            "supported": taxonomy_supported,
+        }
+
+    return {
+        "decision": "supported" if supported else "unsupported",
+        "threshold": threshold,
+        "compared_taxonomies": list(compared_taxonomies),
+        "comparisons": comparisons,
+        "note": (
+            "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 "
+            "composite points on both L2 and L3."
+        ),
+    }
+
+
+def _composite_score(metrics: dict[str, Any]) -> float:
+    return mean(
+        [
+            float(metrics["recall_at_k"]),
+            float(metrics["mrr"]),
+            float(metrics["ndcg_at_k"]),
+            float(metrics["groundedness"]),
+        ]
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dcode-eval", description="Dcode evaluation harness")
     parser.add_argument(
         "--baseline",
         required=True,
+        nargs="+",
         choices=["B0", "B1", "B2", "B3", "B4"],
-        help="DESIGN.md §2.4.3 baseline tier to run",
+        help="One or more DESIGN.md §2.4.3 baseline tiers to run",
     )
     parser.add_argument(
         "--questions",
@@ -132,29 +213,44 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    baselines = args.baseline
+    if len(baselines) == 1:
+        result = asyncio.run(
+            run_eval(
+                baseline_id=baselines[0],
+                questions_path=args.questions,
+                output_dir=args.output,
+                k=args.k,
+            )
+        )
+        metrics = result["metrics"]
+        print(
+            json.dumps(
+                {
+                    "baseline": metrics["baseline"],
+                    "questions": metrics["questions"],
+                    "k": metrics["k"],
+                    "recall_at_k": metrics["recall_at_k"],
+                    "mrr": metrics["mrr"],
+                    "ndcg_at_k": metrics["ndcg_at_k"],
+                    "groundedness": metrics["groundedness"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
     result = asyncio.run(
-        run_eval(
-            baseline_id=args.baseline,
+        run_suite(
+            baseline_ids=baselines,
             questions_path=args.questions,
             output_dir=args.output,
             k=args.k,
         )
     )
-    metrics = result["metrics"]
-    print(
-        json.dumps(
-            {
-                "baseline": metrics["baseline"],
-                "questions": metrics["questions"],
-                "k": metrics["k"],
-                "recall_at_k": metrics["recall_at_k"],
-                "mrr": metrics["mrr"],
-                "ndcg_at_k": metrics["ndcg_at_k"],
-                "groundedness": metrics["groundedness"],
-            },
-            ensure_ascii=False,
-        )
-    )
+    print(json.dumps(result["summary"], ensure_ascii=False))
+    if result["h1_report"] is not None:
+        print(json.dumps(result["h1_report"], ensure_ascii=False))
     return 0
 
 
