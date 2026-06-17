@@ -48,10 +48,10 @@ Dcode is a structure-aware retrieval platform. It asynchronously builds a dual i
 | Concern | Mechanism |
 |---|---|
 | Async indexing | Job queue + worker with monotonic state machine (`queued → cloning → parsing → embedding → graphing → ready`) |
-| Chunk granularity | AST-level chunks via tree-sitter (no fixed-window sliding) |
-| Call graph | jedi-derived definitions / references / dependencies |
-| Hybrid retrieval | Dense (pgvector) + sparse (BM25) → RRF fusion → cross-encoder rerank |
-| Multi-hop reasoning | LangGraph state machine, 8 tools, ≤ 8 steps per query |
+| Chunk granularity | AST-level chunks via Python `ast` (no fixed-window sliding) |
+| Call graph | AST-built symbol table + module import edges (v1) |
+| Hybrid retrieval | Sparse retrieval + RRF fusion path; dense query embedding and real rerank remain follow-up work |
+| Multi-hop reasoning | LangGraph state machine, 8 tools, first-pass single-tool loop per query |
 | Hallucination control | Programmatic groundedness check, ≥ 95% hard constraint (non-disableable) |
 | Reproducible evaluation | Five-tier baseline ladder + L1/L2/L3 question taxonomy |
 | Multi-tenancy | All chunks / symbols / jobs isolated by `repo_id` |
@@ -82,7 +82,7 @@ The project's entire engineering investment serves this **falsifiable** hypothes
                                     ▼              ▼
                               ┌──────────┐  ┌──────────────────┐
                               │  Worker  │  │ Retrieval & Graph│
-                              │ AST/jedi │  │ hybrid + graph   │
+                              │   AST    │  │ hybrid + graph   │
                               └────┬─────┘  └────┬─────────────┘
                                    │ write       │ read
                                    ▼             ▼
@@ -94,7 +94,7 @@ The project's entire engineering investment serves this **falsifiable** hypothes
 **Components**
 
 - **API Gateway** (FastAPI) — auth, multi-tenant routing, SSE termination
-- **Index Worker** — `clone → tree-sitter AST chunk → embed → jedi graph → persist`
+- **Index Worker** — `clone → Python AST chunk → embed → graph rebuild → persist`
 - **Agent Orchestrator** — LangGraph state machine with 8 tools and a groundedness guardrail
 - **Retrieval Layer** — hybrid search + atomic graph queries (`find_definition`, `find_references`, `get_dependencies`, `get_file_outline`)
 - **Storage** — PostgreSQL + pgvector (single store for vectors and graph), Redis for embedding / tool-result / query caches
@@ -108,7 +108,7 @@ The project's entire engineering investment serves this **falsifiable** hypothes
 - **Python workspace**: `uv` workspaces (5 members) + Hatch backend
 - **Frontend**: React 18 + TypeScript (strict) + Vite + Tailwind + TanStack Query
 - **Apps**: FastAPI gateway + worker + standalone agent service + frontend, orchestrated by Docker Compose
-- **Deployment target**: `dcode.odieyang.com`
+- **Deployment target**: `dcode.odieyang.com` (DNS unresolved as of 2026-06-16)
 
 Full architecture, component design, and design decisions: [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -222,12 +222,14 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 
 ## Getting Started
 
-> **Status**: M0 skeleton complete (2026-06-10). All 7 services boot healthy via
-> `docker compose up`, `make check` is green (ruff + mypy --strict + pytest + eslint +
-> tsc + vitest), and the schema is applied. The Worker stages, Agent LangGraph nodes,
-> and Retrieval Layer return stub responses — real behavior lands at M1 / M2.
-> See [`docs/TODO.md`](docs/TODO.md) for the per-milestone task lists and
-> [`docs/Structure.md`](docs/Structure.md) for the per-file Real / Skeleton map.
+> **Status (2026-06-16)**: the end-to-end indexing, retrieval, agent SSE, frontend,
+> evaluation harness, and production packaging are implemented. `make check`,
+> `make frontend-build`, `make eval-smoke`, and `make migrate` all pass locally.
+> Current limitations are explicit: the default stack still runs `EMBEDDING_MODEL=stub`,
+> dense query embedding and real reranking are not wired, the graph is definition/import
+> focused, and the current H1 decision is **unsupported** on the recorded 16-question suite.
+> See [`docs/final_report.md`](docs/final_report.md), [`docs/h1_decision.md`](docs/h1_decision.md),
+> and [`docs/TODO.md`](docs/TODO.md) for the as-built status.
 
 ### Prerequisites
 
@@ -258,34 +260,44 @@ make check
 
 ### Quick Smoke Test
 
-These commands work against the M0 skeleton; responses are shape-correct stubs
-until M1 / M2 wires the real pipeline.
+These commands exercise the real stack.
 
 ```bash
-# Submit a repo — returns 202 + stub repo_id
+# Submit a repo
 curl -X POST http://localhost:8000/api/v1/repos \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://github.com/psf/requests.git"}'
 
-# Poll status — returns RepoStatusResponse shape (status="queued" until M1)
+# Poll status until `status=ready`
 curl http://localhost:8000/api/v1/repos/<repo_id>/status
 
-# Ask a question — SSE stream emits one stub `thought` then `final_answer`
+# Ask a question after indexing reaches `ready`
 curl -N -X POST http://localhost:8000/api/v1/query \
   -H 'Content-Type: application/json' \
-  -d '{"repo_id":"00000000-0000-0000-0000-000000000000","query":"How is session handling implemented?"}'
-
-# Bonus: agent tool manifest (debug)
-curl http://localhost:8001/internal/tools | jq '.[].name'
+  -d '{"repo_id":"<repo_id>","query":"Where is `HTTPBasicAuth` defined?"}'
 ```
 
 ---
 
 ## Deployment
 
-Target: `dcode.odieyang.com` via Docker Compose. All services — API gateway, index worker, agent orchestrator, PostgreSQL + pgvector, Redis, RabbitMQ, and frontend — are orchestrated from a single `docker-compose.yml`. Per **NFR-7**, the system must come up from a clean checkout with a single `docker compose up`.
+Two compose entrypoints are now tracked:
 
-The self-hosted embedding service runs alongside in the same compose stack to avoid commercial API rate limits and cost during indexing (single repo = thousands of embedding calls). Commercial APIs (judge model, optionally reranker) are accessed via env-configured endpoints — never hardcoded — pending resolution of open decisions OD-2 through OD-4. See [`docs/DESIGN.md` §6](docs/DESIGN.md) for the full selection table and placeholder strategy.
+- `docker-compose.yml`: developer stack, with the frontend served as an nginx-hosted static SPA on `http://localhost:5173` and proxied `/api/*` calls.
+- `docker-compose.prod.yml`: production-shaped stack, where only the frontend is public and `/api/*` is reverse-proxied to the internal API service.
+
+Production setup:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
+  uv run alembic -c infra/migrations/alembic.ini upgrade head
+```
+
+As of **2026-06-16**, the production compose stack is validated locally, but
+`dcode.odieyang.com` does **not** resolve publicly yet, so the external-demo
+exit criterion is still open.
 
 ---
 
@@ -323,12 +335,23 @@ H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval
 
 Question-set construction (manual / function-reverse-synthesis / GitHub issue mining), result schema, and the LLM-as-Judge protocol: [`docs/DESIGN.md` §2.4](docs/DESIGN.md) and [`docs/PLAN.md` §3](docs/PLAN.md).
 
+### Current Result
+
+The recorded suite under `results/eval-suite/` currently yields:
+
+- `B2`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `1.0`
+- `B3`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `1.0`
+- `B4`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `0.95`
+
+The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
+either L2 or L3. Details: [`docs/h1_decision.md`](docs/h1_decision.md).
+
 ---
 
 ## Key Design Decisions
 
 **AST-level chunking, no fixed-window sliding**
-A fixed-window slicer destroys function boundaries and drops import context, which makes retrieved chunks semantically meaningless once removed from their call site (`D-2.1.1`). Dcode chunks at function, method, class, and module-docstring boundaries via tree-sitter. The cost is a parser per language; the project bounds this by committing to Python only.
+A fixed-window slicer destroys function boundaries and drops import context, which makes retrieved chunks semantically meaningless once removed from their call site (`D-2.1.1`). Dcode chunks at function, method, class, and module-docstring boundaries via Python `ast`. The current implementation is Python-only and keeps the chunk boundary contract intact.
 
 **Vectors and call graph in a single PostgreSQL instance**
 A typical "RAG + graph" project would deploy Qdrant for vectors and a separate graph store for relationships. We co-locate both in PostgreSQL — pgvector for embeddings (HNSW + GIN), normal relational tables for symbols and edges. The win is operational: one connection pool, one backup boundary, one consistency story. The cost is some hand-rolling around hybrid retrieval, which we'd write either way.
@@ -350,7 +373,9 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 |---|---|---|
 | **[`docs/DESIGN.md`](docs/DESIGN.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
 | **[`docs/PLAN.md`](docs/PLAN.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1–M4), risk register, open-decision timeline |
-| **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Skeleton self-verification status, M1–M4 milestone task lists, M0 decisions log, open questions |
+| **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
+| **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
+| **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
 | **[`docs/Structure.md`](docs/Structure.md)** | File-tree walkthrough | Per-service file inventory tagged Real / Skeleton / M1–M4, cross-cutting concerns (multi-tenancy, cache, SSE, OD placeholders) |
 
 ---

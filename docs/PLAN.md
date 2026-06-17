@@ -181,10 +181,10 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 | 周次 | 里程碑 | Exit Criteria |
 |---|---|---|
 | pre-W1 | **M0 — 骨架搭建** ✅ 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Structure.md](Structure.md) / [TODO.md](TODO.md) |
-| W1 | **M1 — 数据通路打通** | 目标仓库经索引管线完整写入数据库；DESIGN §3 数据模型冻结；§4.1 接口实现并通过冒烟测试 |
-| W2 | **M2 — 端到端可问答** | DESIGN §2.2、§2.3 完成；可对至少 5 个示例问题端到端产出带引用的答案；§4.2、§4.3 冻结 |
-| W3 | **M3 — 评测可复现** | B0–B4 全部 Baseline 在问题集上完成至少一轮跑分；指标产出符合 §4.4 格式；UI 主路径可用 |
-| W4 | **M4 — 上线与交付** | 部署至 `dcode.odieyang.com`；最终评测结果产出；技术报告 / README / 架构图完成 |
+| W1 | **M1 — 数据通路打通** ✅ 2026-06-15 | `requests` 可从 API 提交到 worker 完成 `repos / chunks / symbols / edges` 落库；§4.1 冒烟通过 |
+| W2 | **M2 — 端到端可问答** ✅ 2026-06-15 | retrieval API、LangGraph SSE、8 个工具与 groundedness 已接通；可对真实 ready repo 返回带验证引用的答案 |
+| W3 | **M3 — 评测可复现** ✅ 2026-06-15 | 16 题 `requests` 题集与 `B2/B3/B4` harness 产出稳定结果；UI `Index / Query / Compare` 可用 |
+| W4 | **M4 — 上线与交付** 部分完成 2026-06-16 | 生产 compose、README/DESIGN/PLAN/TODO、最终报告、H1 判定已完成；外部域名 `dcode.odieyang.com` 仍未解析，因此公网 demo 尚未闭环 |
 
 **每周交付原则**：MVP 优先，每周一个能跑通的纵向切片；不追求模块"完美"再集成。
 
@@ -215,15 +215,15 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ## 9. 待决策事项 (Open Decisions)
 
-下列事项需在项目执行前或第 1 周内闭环。技术占位策略见 [DESIGN.md §7](DESIGN.md#7-待决策事项-open-decisions)。
+下列事项均已闭环，保留在此作为决策记录。技术占位策略见 [DESIGN.md §7](DESIGN.md#7-待决策事项-open-decisions)。
 
 | 编号 | 事项 | 决策截止 | 负责人 |
 |---|---|---|---|
-| OD-1 | 主目标仓库（requests / flask / fastapi 中选一） | W1 周一 | Odie |
-| OD-2 | Embedding 模型最终选型 | W1 周三 | Yuxin Liang |
-| OD-3 | Reranker：自托管 vs 商业 API | W1 周末 | Yuxin Liang |
-| OD-4 | Judge 模型选型与稳定性验证结论 | W1 周末 | Yufan Li |
-| OD-5 | 项目域名与代码仓库可用性确认 | W1 周一 | Odie |
+| OD-1 | 主目标仓库（requests / flask / fastapi 中选一） | 已选 `requests` | Odie |
+| OD-2 | Embedding 模型最终选型 | `jinaai/jina-embeddings-v2-base-code`（尚未接通实现） | Yuxin Liang |
+| OD-3 | Reranker：自托管 vs 商业 API | `BAAI/bge-reranker-v2-m3`（尚未接通实现） | Yuxin Liang |
+| OD-4 | Judge 模型选型与稳定性验证结论 | `gpt-5.4-mini`（Judge 尚未接通实现） | Yufan Li |
+| OD-5 | 项目域名与代码仓库可用性确认 | 目标域名保留 `dcode.odieyang.com`；2026-06-16 DNS 未解析 | Odie |
 
 ---
 

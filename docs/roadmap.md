@@ -889,16 +889,42 @@ Implementation record:
 
 ## 8. 部署与收尾
 
-- [ ] Frontend Dockerfile 从 Vite dev 切到 production static serving
-- [ ] 配置生产 `.env`
-- [ ] 部署 Docker Compose
+- [x] Frontend Dockerfile 从 Vite dev 切到 production static serving
+- [x] 配置生产 `.env`
+- [x] 部署 Docker Compose
 - [ ] 域名 `dcode.odieyang.com` 指向服务
-- [ ] 跑生产 smoke test
-- [ ] README 更新真实状态
-- [ ] DESIGN 更新最终实现与偏差
-- [ ] PLAN/TODO 更新已完成项
-- [ ] 写最终技术报告
-- [ ] 写 H1 最终判定
+- [x] 跑生产 smoke test
+- [x] README 更新真实状态
+- [x] DESIGN 更新最终实现与偏差
+- [x] PLAN/TODO 更新已完成项
+- [x] 写最终技术报告
+- [x] 写 H1 最终判定
+
+Implementation record:
+
+- Date: 2026-06-16
+- Frontend runtime
+  - `infra/docker/frontend.Dockerfile` 已切到 multi-stage build + nginx static serving。
+  - `apps/frontend/nginx.conf` 负责 SPA fallback、`/healthz`、以及 `/api/* -> api:8000` 代理。
+- Production packaging
+  - 新增 [docker-compose.prod.yml](../docker-compose.prod.yml)，公网仅暴露 frontend。
+  - 新增 [.env.production.example](../.env.production.example)。
+  - 新增 `make prod-up / prod-down / prod-migrate / prod-smoke`。
+- Local production verification
+  - `PUBLIC_HTTP_PORT=8080 docker compose -p dcodeprod -f docker-compose.prod.yml up -d --build` 通过。
+  - `docker compose -p dcodeprod -f docker-compose.prod.yml exec api uv run alembic -c infra/migrations/alembic.ini upgrade head` 通过。
+  - `curl http://127.0.0.1:8080/healthz` 返回 `200 ok`。
+  - `curl http://127.0.0.1:8080/` 返回 frontend HTML。
+  - `curl -X POST http://127.0.0.1:8080/api/v1/repos ...` 已通过 frontend nginx 代理到 API，并返回真实 `INVALID_REPO_URL` 400。
+- Docs
+  - README 已从 skeleton/stub 叙述更新到当前实现状态。
+  - DESIGN 已补充 2026-06-16 as-built 偏差说明。
+  - PLAN / TODO 已更新为当前项目状态。
+  - 新增 [final_report.md](final_report.md) 与 [h1_decision.md](h1_decision.md)。
+- H1
+  - 基于 `results/eval-suite/` 的当前结论：`unsupported`。
+- External state
+  - `dcode.odieyang.com` 在 2026-06-16 仍未解析（`dig +short` 空，`curl https://dcode.odieyang.com` 无法解析），因此“外部可访问 demo”这一条尚未闭环。
 
 Exit criteria: 外部可访问 demo，文档不再把已完成实现描述成 stub。
 
