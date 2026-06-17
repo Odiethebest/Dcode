@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps check lint typecheck test migrate requirements fmt clean smoke
+.PHONY: help up down logs ps check lint typecheck test migrate requirements fmt clean smoke frontend-build eval-smoke
 
 # ============================================================
 # Dcode developer commands. See README.md for the 5-minute guide.
@@ -15,6 +15,8 @@ help:
 	@echo "  lint       Run ruff (Python) + eslint (TypeScript)"
 	@echo "  typecheck  Run mypy --strict + tsc --noEmit"
 	@echo "  test       Run pytest + vitest"
+	@echo "  frontend-build  Build the frontend production bundle"
+	@echo "  eval-smoke Run the offline evaluation harness smoke test"
 	@echo "  fmt        Auto-format Python + TypeScript"
 	@echo "  migrate    Apply Alembic migrations inside the api container"
 	@echo "  requirements  Regenerate requirements{,-dev}.txt pip fallbacks from uv.lock"
@@ -53,6 +55,12 @@ test:
 	cd apps/frontend && npm test -- --run
 
 check: lint typecheck test
+
+frontend-build:
+	cd apps/frontend && npm run build
+
+eval-smoke:
+	PYTHONPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run python -m dcode_eval.smoke
 
 fmt:
 	uv run ruff format apps packages

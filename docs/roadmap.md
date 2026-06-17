@@ -826,35 +826,64 @@ Exit criteria: 一次演示能完成“索引 repo -> 提问 -> 展示答案/引
 
 这些不优先于 H1，但上线前必须处理。
 
-- [ ] DB
-  - [ ] migration 可重复执行
-  - [ ] schema 与 SQLAlchemy model 一致
-  - [ ] 所有查询都过滤 `repo_id`
-- [ ] Redis
-  - [ ] embedding cache
-  - [ ] tool cache
-  - [ ] query cache
-  - [ ] job status TTL
-- [ ] 安全
-  - [ ] repo URL 基础校验
-  - [ ] workdir path traversal 防护
-  - [ ] internal API 不公开到前端
-- [ ] 可观测性
-  - [ ] worker 每阶段结构化日志
-  - [ ] agent 每个 tool call 日志
-  - [ ] eval 记录 run config
-- [ ] 测试
-  - [ ] worker stage fixture tests
-  - [ ] retrieval API tests
-  - [ ] agent tool tests
-  - [ ] groundedness DB tests
-  - [ ] frontend SSE parser tests
-- [ ] CI
-  - [ ] `make check` 全绿
-  - [ ] frontend build 通过
-  - [ ] eval smoke test 通过
+- [x] DB
+  - [x] migration 可重复执行
+  - [x] schema 与 SQLAlchemy model 一致
+  - [x] 所有查询都过滤 `repo_id`
+- [x] Redis
+  - [x] embedding cache
+  - [x] tool cache
+  - [x] query cache
+  - [x] job status TTL
+- [x] 安全
+  - [x] repo URL 基础校验
+  - [x] workdir path traversal 防护
+  - [x] internal API 不公开到前端
+- [x] 可观测性
+  - [x] worker 每阶段结构化日志
+  - [x] agent 每个 tool call 日志
+  - [x] eval 记录 run config
+- [x] 测试
+  - [x] worker stage fixture tests
+  - [x] retrieval API tests
+  - [x] agent tool tests
+  - [x] groundedness DB tests
+  - [x] frontend SSE parser tests
+- [x] CI
+  - [x] `make check` 全绿
+  - [x] frontend build 通过
+  - [x] eval smoke test 通过
 
 Exit criteria: 核心路径失败能定位，常见回归能被测试拦住。
+
+Implementation record:
+
+- Date: 2026-06-16
+- DB
+  - `make migrate` on an already-upgraded stack completed cleanly, confirming head re-entry is a no-op.
+  - Added metadata tests to pin table/column/enum shape and embedding dim to SQLAlchemy models.
+  - Audited retrieval / graph / groundedness query paths and kept `repo_id` filters on every repo-scoped lookup.
+- Redis
+  - `embedding cache` remained on `embed:{model}:{sha256(text)}`.
+  - `tool cache` TTL moved to shared settings and remains repo-scoped.
+  - `query cache` now caches successful `/api/v1/query` SSE streams at `query:{repo_id}:{hash(query)}`.
+  - `job status TTL` moved to shared settings and remains 7 days after completion.
+- 安全
+  - Internal API and agent internal routes now require `X-Dcode-Internal-Key`; agent/eval callers send it, frontend does not.
+  - Repo submission rejects localhost / loopback / private-network Git URLs.
+  - Workdir traversal protection stayed enforced in agent file tools and remained covered by tests.
+- 可观测性
+  - Worker emits structured JSON events for job receipt, per-stage transitions, completion, and failure.
+  - Agent emits structured JSON logs for each tool call and tool result.
+  - Eval writes `run_config.json` for single-run and suite outputs and logs run start/finish.
+- CI / verification
+  - Added `frontend-build` and `eval-smoke` Make targets.
+  - GitHub Actions now runs frontend build and an offline eval smoke command.
+  - Verification on 2026-06-16:
+    - `make check`: passed
+    - `cd apps/frontend && npm run build`: passed
+    - `uv run python -m dcode_eval.smoke`: passed
+    - `make migrate`: passed
 
 ---
 

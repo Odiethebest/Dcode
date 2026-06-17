@@ -25,6 +25,8 @@ jobs:
         run: uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval
       - name: Test (pytest)
         run: uv run pytest
+      - name: Eval smoke
+        run: PYTHONPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run python -m dcode_eval.smoke
 
   frontend:
     name: Frontend (lint + typecheck + tests)
@@ -45,3 +47,5 @@ jobs:
         run: npm run typecheck
       - name: Test (vitest)
         run: npm test -- --run
+      - name: Build
+        run: npm run build
