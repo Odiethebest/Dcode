@@ -9,6 +9,7 @@ Thumbs.db
 
 # Env (keep .env.example tracked)
 .env
+.env.production
 .env.local
 .env.*.local
 

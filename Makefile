@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps check lint typecheck test migrate requirements fmt clean smoke frontend-build eval-smoke
+.PHONY: help up down logs ps check lint typecheck test migrate requirements fmt clean smoke frontend-build eval-smoke prod-up prod-down prod-migrate prod-smoke
 
 # ============================================================
 # Dcode developer commands. See README.md for the 5-minute guide.
@@ -17,6 +17,10 @@ help:
 	@echo "  test       Run pytest + vitest"
 	@echo "  frontend-build  Build the frontend production bundle"
 	@echo "  eval-smoke Run the offline evaluation harness smoke test"
+	@echo "  prod-up    Bring up the production compose overlay"
+	@echo "  prod-down  Tear down the production compose overlay"
+	@echo "  prod-migrate  Apply migrations inside the production compose overlay"
+	@echo "  prod-smoke Hit the public production entrypoint locally"
 	@echo "  fmt        Auto-format Python + TypeScript"
 	@echo "  migrate    Apply Alembic migrations inside the api container"
 	@echo "  requirements  Regenerate requirements{,-dev}.txt pip fallbacks from uv.lock"
@@ -61,6 +65,20 @@ frontend-build:
 
 eval-smoke:
 	PYTHONPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run python -m dcode_eval.smoke
+
+prod-up:
+	docker compose -f docker-compose.prod.yml up -d --build
+
+prod-down:
+	docker compose -f docker-compose.prod.yml down
+
+prod-migrate:
+	docker compose -f docker-compose.prod.yml exec api uv run alembic -c infra/migrations/alembic.ini upgrade head
+
+prod-smoke:
+	@echo "Frontend root:" && curl -fsS http://localhost:$${PUBLIC_HTTP_PORT:-80}/ > /dev/null && echo OK
+	@echo "Frontend healthz:" && curl -fsS http://localhost:$${PUBLIC_HTTP_PORT:-80}/healthz && echo
+	@echo "API proxy:" && curl -fsS -X POST http://localhost:$${PUBLIC_HTTP_PORT:-80}/api/v1/repos -H 'Content-Type: application/json' -d '{"url":"not-a-git-url"}' || true
 
 fmt:
 	uv run ruff format apps packages

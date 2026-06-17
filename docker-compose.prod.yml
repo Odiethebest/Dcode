@@ -1,6 +1,6 @@
-# Dcode service orchestration. See README.md for the 5-minute guide.
-# All env defaults match .env.example so a fresh checkout boots with
-# `docker compose up -d` and no manual config.
+# Dcode production compose stack.
+# Public surface: frontend only. The nginx frontend proxies `/api/*` to the
+# internal API service, so the browser never needs direct access to api:8000.
 
 services:
   postgres:
@@ -9,8 +9,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-dcode}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dcode}
       POSTGRES_DB: ${POSTGRES_DB:-dcode}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -19,27 +17,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 10s
       retries: 20
+    restart: unless-stopped
 
   api:
     build:
@@ -50,11 +46,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       AGENT_URL: http://agent:8001
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://dcode.odieyang.com}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,6 +61,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   worker:
     build:
@@ -95,6 +90,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
 
   agent:
     build:
@@ -109,8 +105,6 @@ services:
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "8001:8001"
     volumes:
       - repo_workdirs:/tmp/dcode-workdirs
     depends_on:
@@ -123,21 +117,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./apps/frontend
       dockerfile: ../../infra/docker/frontend.Dockerfile
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_API_BASE_URL: ""
     ports:
-      - "5173:80"
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/healthz"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 5s
+    restart: unless-stopped
 
 volumes:
   postgres_data:
