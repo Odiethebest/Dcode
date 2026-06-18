@@ -1,0 +1,32 @@
+{
+  "B2": {
+    "baseline": "B2",
+    "questions": 16,
+    "k": 5,
+    "recall_at_k": 0.19791666666666666,
+    "mrr": 0.2125,
+    "ndcg_at_k": 0.1917124920902645,
+    "groundedness": 1.0,
+    "pairwise_win_rate": null
+  },
+  "B3": {
+    "baseline": "B3",
+    "questions": 16,
+    "k": 5,
+    "recall_at_k": 0.19791666666666666,
+    "mrr": 0.2125,
+    "ndcg_at_k": 0.1917124920902645,
+    "groundedness": 1.0,
+    "pairwise_win_rate": null
+  },
+  "B4": {
+    "baseline": "B4",
+    "questions": 16,
+    "k": 5,
+    "recall_at_k": 0.19791666666666666,
+    "mrr": 0.2125,
+    "ndcg_at_k": 0.1917124920902645,
+    "groundedness": 0.95,
+    "pairwise_win_rate": null
+  }
+}

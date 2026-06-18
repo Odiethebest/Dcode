@@ -1,0 +1,32 @@
+{
+  "L1": {
+    "baseline": "B3",
+    "questions": 5,
+    "k": 5,
+    "recall_at_k": 0.2,
+    "mrr": 0.2,
+    "ndcg_at_k": 0.2,
+    "groundedness": 1.0,
+    "pairwise_win_rate": null
+  },
+  "L2": {
+    "baseline": "B3",
+    "questions": 8,
+    "k": 5,
+    "recall_at_k": 0.20833333333333331,
+    "mrr": 0.25,
+    "ndcg_at_k": 0.2206700796235777,
+    "groundedness": 1.0,
+    "pairwise_win_rate": null
+  },
+  "L3": {
+    "baseline": "B3",
+    "questions": 3,
+    "k": 5,
+    "recall_at_k": 0.16666666666666666,
+    "mrr": 0.13333333333333333,
+    "ndcg_at_k": 0.10067974548520349,
+    "groundedness": 1.0,
+    "pairwise_win_rate": null
+  }
+}
