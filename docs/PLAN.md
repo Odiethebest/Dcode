@@ -188,11 +188,43 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 **每周交付原则**：MVP 优先，每周一个能跑通的纵向切片；不追求模块"完美"再集成。
 
-### 7.2 准入与准出
+### 7.2 当前 Demo 实现说明
+
+当前 demo 是一个**本地可跑通的结构感知代码问答纵向切片**，用于展示系统形态与评测流程，而不是宣称所有模型能力都已接入生产实现。
+
+**可演示链路**：
+
+1. 在前端 `Index` 页提交 Git 仓库 URL；
+2. API 写入 repo job，RabbitMQ 投递索引任务；
+3. Worker 执行 `clone → parse → chunk → embed → graph`；
+4. Postgres 保存 `repos / chunks / symbols / edges`；
+5. 前端 `Query` 页对 ready repo 发起自然语言查询；
+6. Agent 通过 SSE 流式输出 `thought / tool_call / tool_result / citation / final_answer`；
+7. Groundedness guardrail 在返回前校验答案里的代码引用是否存在；
+8. `Compare` 页展示已记录的 B2/B3/B4 评测快照与 H1 判定。
+
+**Agent 当前实现**：
+
+- 已接通 LangGraph 状态机、8 个工具、工具结果缓存、SSE 事件流与 groundedness 校验；
+- planner 目前是**规则化 planner**，不是 LLM planner。它根据关键词选择工具，例如：
+  - `definition / where defined` → `find_definition`
+  - `who calls / references` → `find_references`
+  - `how / flow / end-to-end / auth / wired` → 多步执行 `search_code → read_file → find_references → get_file_outline`
+- synthesize 目前是**模板化汇总**，会把多步 observation 合成带引用的答案，但不是由 LLM 生成自然语言长答案。
+
+**模型接入状态**：
+
+- `EMBEDDING_MODEL=stub` 仍是默认值；chunk embedding 写入路径存在，但真实代码 embedding 客户端尚未接通；
+- query-side dense retrieval 已预留入口，但在 stub 模式下退化为 sparse-only；
+- `RERANKER_ENDPOINT` 是自托管 reranker 的占位配置，当前 rerank 仍是 identity；
+- `JUDGE_MODEL=stub` 表示 LLM-as-Judge 还只是接口占位，不会真正调用大模型评分或做 pairwise 判断；
+- 因此当前 H1 结论只基于已落地的 retrieval 指标与 groundedness，Judge / pairwise 不参与当前判定。
+
+### 7.3 准入与准出
 
 每个里程碑必须满足前一里程碑的 Exit Criteria 方可启动；任一 Exit Criteria 未达成不得跨周。
 
-### 7.3 并行度安排
+### 7.4 并行度安排
 
 - **W1**：Odie heads-down 索引管线 A；Yuxin 搭基建 + 与 Odie 共定数据模型；Yufan 独立构造问题集 + 评测脚手架（最可并行）；
 - **W2**：Odie 搭 Agent C（基于 Yuxin 的检索 API）；Yuxin 完成 hybrid + 图查询；Yufan 对着 mock agent 接口搭 UI 壳；
