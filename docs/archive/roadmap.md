@@ -1,5 +1,7 @@
 # Dcode Solo Roadmap
 
+> Historical note: this was Odie's execution log while the vertical slice was being built. It is archived for traceability and is no longer the active task list. Use [../TODO.md](../TODO.md) for current remaining work.
+>
 > 面向仓库管理员的独立推进清单。本文基于 [PLAN.md](PLAN.md) 的目标、优先级和里程碑重排，假设大部分实现由一人完成。
 >
 > 原则：先证明 H1 所需的最短闭环，再补平台化、前端和部署。每完成一阶段都必须能运行、能测试、能解释。
