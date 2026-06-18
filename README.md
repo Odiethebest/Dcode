@@ -376,7 +376,8 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 | **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
 | **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
 | **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
-| **[`docs/Structure.md`](docs/Structure.md)** | File-tree walkthrough | Per-service file inventory tagged Real / Skeleton / M1–M4, cross-cutting concerns (multi-tenancy, cache, SSE, OD placeholders) |
+| **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | As-built service inventory, current implementation boundaries, cross-cutting contracts, suggested ownership |
+| **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability, not active planning |
 
 ---
 
