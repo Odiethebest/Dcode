@@ -11,6 +11,22 @@ set draws from three complementary sources:
 
 Total target: **50–80 questions**, *small and clean*.
 
+## Current dataset
+
+The repository currently includes a small versioned `requests` dataset at
+`data/questions.jsonl`:
+
+| Field | Current value |
+|---|---|
+| Repository | `requests` |
+| Size | 16 questions |
+| Source | manual |
+| Taxonomy coverage | `L1`, `L2`, `L3` |
+| Recorded outputs | `results/eval-suite/` |
+
+This dataset is sufficient for a reproducible demo and for the current H1
+snapshot. It is not yet large enough to be treated as a stable final benchmark.
+
 ## Taxonomy
 
 Every question MUST carry one taxonomy label (DESIGN.md §2.4.2). The H1
@@ -38,9 +54,9 @@ One JSON object per line in `data/questions.jsonl`:
 }
 ```
 
-## TODO (M3)
+## Remaining work
 
-- [ ] Populate `data/questions.jsonl` with the curated set
-- [ ] Document the human-labeling protocol used for the 20 manual questions
-- [ ] Per-source size targets locked in (currently a range)
+- [ ] Expand `data/questions.jsonl` from 16 questions toward the 50-80 target
+- [ ] Document the human-labeling protocol used for manual questions
+- [ ] Lock per-source size targets instead of keeping them as ranges
 - [ ] Hold-out subset for unbiased evaluation
