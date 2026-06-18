@@ -5,14 +5,14 @@ defined in a single file.
 """
 
 from dcode_shared.schemas import Location
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dcode_agent.tools import common
 from dcode_agent.tools.base import Tool
 
 
 class GetFileOutlineArgs(BaseModel):
-    path: str
+    path: str = Field(..., description="Repo-relative path")
 
 
 class GetFileOutlineResult(BaseModel):
@@ -28,12 +28,13 @@ class GetFileOutlineTool(Tool[GetFileOutlineArgs, GetFileOutlineResult]):
     async def execute(
         self, repo_id: str, args: GetFileOutlineArgs
     ) -> GetFileOutlineResult:
+        normalized_path = common.normalize_repo_relative_path(args.path)
         payload = await common.fetch_internal_json(
             "get_file_outline",
             repo_id,
-            {"path": args.path},
+            {"path": normalized_path},
         )
         return GetFileOutlineResult(
-            path=args.path,
+            path=normalized_path,
             locations=[Location.model_validate(item) for item in payload],
         )

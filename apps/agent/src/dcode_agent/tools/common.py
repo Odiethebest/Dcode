@@ -1,6 +1,6 @@
 """Shared helpers for agent tool execution."""
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import httpx
@@ -41,14 +41,34 @@ def repo_root(repo_id: str) -> Path:
     return root
 
 
+def normalize_repo_relative_path(relative_path: str) -> str:
+    """Normalize a repo-relative path without touching the filesystem."""
+    normalized = relative_path.strip().replace("\\", "/")
+    if not normalized:
+        raise ValueError("path must not be empty")
+
+    posix_path = PurePosixPath(normalized)
+    windows_path = PureWindowsPath(normalized)
+    if posix_path.is_absolute() or windows_path.is_absolute():
+        raise ValueError("absolute paths are not allowed")
+
+    parts: list[str] = []
+    for part in posix_path.parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                raise ValueError("path escapes repo workdir")
+            parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts) or "."
+
+
 def resolve_repo_path(repo_id: str, relative_path: str) -> Path:
     """Resolve a repo-relative path and reject traversal outside the workdir."""
     root = repo_root(repo_id)
-    candidate_input = Path(relative_path)
-    if candidate_input.is_absolute():
-        raise ValueError("absolute paths are not allowed")
-
-    candidate = (root / candidate_input).resolve()
+    candidate = (root / normalize_repo_relative_path(relative_path)).resolve()
     if not candidate.is_relative_to(root):
         raise ValueError("path escapes repo workdir")
     return candidate

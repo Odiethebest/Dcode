@@ -106,6 +106,46 @@ async def test_graph_tools_call_internal_api(
     assert getattr(result, field_name)[0].file_path == "src/requests/auth.py"
 
 
+async def test_get_file_outline_normalizes_repo_relative_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = str(uuid4())
+
+    async def fake_fetch(
+        passed_endpoint: str,
+        passed_repo_id: str,
+        params: dict[str, object],
+    ) -> list[dict[str, object]]:
+        assert passed_endpoint == "get_file_outline"
+        assert passed_repo_id == repo_id
+        assert params == {"path": "src/requests/auth.py"}
+        return [
+            {
+                "symbol": "src.requests.auth.HTTPBasicAuth",
+                "file_path": "src/requests/auth.py",
+                "line": 85,
+                "chunk_id": None,
+            }
+        ]
+
+    monkeypatch.setattr(common, "fetch_internal_json", fake_fetch)
+
+    result = await GetFileOutlineTool().execute(
+        repo_id,
+        GetFileOutlineArgs(path="./src//requests/auth.py"),
+    )
+
+    assert result.path == "src/requests/auth.py"
+    assert result.locations[0].file_path == "src/requests/auth.py"
+
+
+async def test_get_file_outline_rejects_path_traversal() -> None:
+    repo_id = str(uuid4())
+
+    with pytest.raises(ValueError, match="path escapes repo workdir"):
+        await GetFileOutlineTool().execute(repo_id, GetFileOutlineArgs(path="../secret.py"))
+
+
 async def test_read_file_reads_inclusive_line_range(repo_workspace: tuple[str, Path]) -> None:
     repo_id, repo_root = repo_workspace
     file_path = repo_root / "pkg" / "mod.py"
