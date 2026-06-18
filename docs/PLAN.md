@@ -247,7 +247,7 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ## 9. 待决策事项 (Open Decisions)
 
-下列事项均已闭环，保留在此作为决策记录。技术占位策略见 [DESIGN.md §7](DESIGN.md#7-待决策事项-open-decisions)。
+下列事项均已闭环，保留在此作为决策记录。技术接入点见 [DESIGN.md §7](DESIGN.md#7-决策记录与接入点)。
 
 | 编号 | 事项 | 决策截止 | 负责人 |
 |---|---|---|---|
