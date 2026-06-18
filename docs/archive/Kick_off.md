@@ -1,5 +1,7 @@
 # Dcode 项目 Kick-off
 
+> Historical note: this was the original project kickoff document for the M0/W1 phase. It is archived for context and is no longer the current execution guide. Use [../PLAN.md](../PLAN.md), [../TODO.md](../TODO.md), and [../Structure.md](../Structure.md) for current work.
+>
 > 给两位队友的项目启动说明。用最短的篇幅讲清楚：**我们要做什么、为什么、怎么走、你管哪一段、第一周先动哪里**。
 >
 > **M0 骨架已经搭好**（2026-06-10）：全 7 服务 `docker compose up` healthy / Alembic schema 已施加 / 5 个 Python 包 + frontend 全 stubs 就位 / `make check` 全绿。下面 W1 任务在这个基础上接续；不需要再造轮子。详见 [Structure.md](Structure.md)（哪里是 stub）和 [TODO.md](TODO.md)（每个 stub 归属哪个里程碑）。
