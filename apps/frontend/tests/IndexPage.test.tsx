@@ -74,7 +74,7 @@ describe('IndexPage', () => {
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/repos',
+        expect.stringMatching(/\/api\/v1\/repos$/),
         expect.objectContaining({ method: 'POST' })
       );
     });

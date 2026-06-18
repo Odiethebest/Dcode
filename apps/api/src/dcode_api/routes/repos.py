@@ -42,9 +42,9 @@ async def submit_repo(
 ) -> RepoCreateResponse:
     """Submit a repository for indexing.
 
-    Persists a queued Repo row, then publishes the indexing job to RabbitMQ.
-    If publishing fails, the row is rolled back and the request fails rather
-    than leaving a repo that will never be consumed by the worker.
+    Persists a queued Repo row, commits it so the worker can read it, then
+    publishes the indexing job to RabbitMQ. If publishing fails after the row
+    is durable, the repo is marked failed rather than left queued forever.
     """
     repo_url = body.url.strip()
     if not _is_supported_git_url(repo_url):
@@ -59,11 +59,14 @@ async def submit_repo(
     repo = Repo(url=repo_url, status=RepoStatus.queued.value, progress=0)
     db.add(repo)
     await db.flush()
+    await db.commit()
 
     try:
         await publish_job(repo.id, repo_url)
     except Exception as exc:  # noqa: BLE001 — convert infra failures to API errors
-        await db.rollback()
+        repo.status = RepoStatus.failed.value
+        repo.error = "Repository was not queued because RabbitMQ publish failed."
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -72,7 +75,6 @@ async def submit_repo(
             },
         ) from exc
 
-    await db.commit()
     return RepoCreateResponse(repo_id=repo.id, status=RepoStatus(repo.status))
 
 

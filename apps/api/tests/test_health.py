@@ -17,20 +17,26 @@ class FakeSession:
     def __init__(self, repo: Repo | None = None) -> None:
         self.repo = repo
         self.committed = False
+        self.commit_count = 0
         self.rolled_back = False
+        self.events: list[str] = []
 
     def add(self, repo: Repo) -> None:
         self.repo = repo
 
     async def flush(self) -> None:
+        self.events.append("flush")
         if self.repo is not None and self.repo.id is None:
             self.repo.id = uuid.uuid4()
 
     async def commit(self) -> None:
         self.committed = True
+        self.commit_count += 1
+        self.events.append("commit")
 
     async def rollback(self) -> None:
         self.rolled_back = True
+        self.events.append("rollback")
 
     async def get(self, _: type[Repo], repo_id: uuid.UUID) -> Repo | None:
         if self.repo is not None and self.repo.id == repo_id:
@@ -47,11 +53,14 @@ class FakeRedis:
 
 
 class FakePublisher:
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, events: list[str] | None = None) -> None:
         self.fail = fail
+        self.events = events
         self.calls: list[tuple[uuid.UUID, str]] = []
 
     async def __call__(self, repo_id: uuid.UUID, repo_url: str) -> None:
+        if self.events is not None:
+            self.events.append("publish")
         if self.fail:
             raise RuntimeError("queue unavailable")
         self.calls.append((repo_id, repo_url))
@@ -93,7 +102,7 @@ def test_healthz_returns_ok() -> None:
 def test_submit_repo_returns_202_with_correct_shape() -> None:
     """DESIGN.md §4.1 POST /api/v1/repos must return 202 + RepoCreateResponse."""
     session = FakeSession()
-    publisher = FakePublisher()
+    publisher = FakePublisher(events=session.events)
     override_dependencies(session, publisher)
 
     client = TestClient(app)
@@ -108,6 +117,7 @@ def test_submit_repo_returns_202_with_correct_shape() -> None:
     assert session.repo is not None
     assert session.repo.url == "https://github.com/psf/requests.git"
     assert session.committed is True
+    assert session.events == ["flush", "commit", "publish"]
     assert publisher.calls == [(uuid.UUID(body["repo_id"]), "https://github.com/psf/requests.git")]
 
 
@@ -147,9 +157,9 @@ def test_submit_repo_rejects_local_or_private_git_urls(url: str) -> None:
     assert publisher.calls == []
 
 
-def test_submit_repo_rolls_back_when_publish_fails() -> None:
+def test_submit_repo_marks_repo_failed_when_publish_fails() -> None:
     session = FakeSession()
-    publisher = FakePublisher(fail=True)
+    publisher = FakePublisher(fail=True, events=session.events)
     override_dependencies(session, publisher)
 
     client = TestClient(app)
@@ -159,8 +169,12 @@ def test_submit_repo_rolls_back_when_publish_fails() -> None:
     )
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "INDEX_QUEUE_UNAVAILABLE"
-    assert session.committed is False
-    assert session.rolled_back is True
+    assert session.commit_count == 2
+    assert session.rolled_back is False
+    assert session.events == ["flush", "commit", "publish", "commit"]
+    assert session.repo is not None
+    assert session.repo.status == "failed"
+    assert session.repo.error == "Repository was not queued because RabbitMQ publish failed."
 
 
 def test_repo_status_returns_correct_shape() -> None:
