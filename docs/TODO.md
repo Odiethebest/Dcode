@@ -46,7 +46,7 @@
 
 - [ ] 默认环境仍是 `EMBEDDING_MODEL=stub`
 - [ ] 当前 graph 是 v1：definitions + module import edges
-- [ ] 当前 agent planner / synthesize 为规则与模板，不是 LLM planner
+- [ ] 当前 agent planner / synthesize 为规则与模板；已支持规则化多步循环，但不是 LLM planner
 - [ ] 当前 H1 判定只基于已落地指标，不含 Judge / pairwise
 
 ---

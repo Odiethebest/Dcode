@@ -21,13 +21,19 @@ logger = logging.getLogger("dcode.agent.graph")
 
 
 async def plan_node(state: AgentState) -> AgentState:
-    """First-pass rules router for tool selection."""
-    if state.step_count >= MAX_STEPS or state.observations:
+    """Rule-based planner for the next ReAct tool step."""
+    if state.step_count >= MAX_STEPS:
         state.pending_tool_name = None
         state.pending_tool_args = {}
         return state
 
-    tool_name, tool_args, thought = _select_tool(state.query)
+    next_step = _select_next_tool(state)
+    if next_step is None:
+        state.pending_tool_name = None
+        state.pending_tool_args = {}
+        return state
+
+    tool_name, tool_args, thought = next_step
     state.pending_tool_name = tool_name
     state.pending_tool_args = tool_args
     state.thoughts.append(thought)
@@ -130,8 +136,8 @@ async def groundedness_node(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 
 
-def decide_next(state: AgentState) -> str:
-    """Continue the ReAct loop, or stop and synthesize."""
+def decide_after_plan(state: AgentState) -> str:
+    """Run the planned tool, or stop and synthesize."""
     if state.error is not None:
         return "synthesize"
     if state.step_count >= MAX_STEPS:
@@ -140,7 +146,7 @@ def decide_next(state: AgentState) -> str:
         return "synthesize"
     if state.pending_tool_name is None:
         return "synthesize"
-    return "plan"
+    return "tool_call"
 
 
 # ---------------------------------------------------------------------------
@@ -160,10 +166,14 @@ def build_graph() -> Any:
     g.add_node("groundedness_check", groundedness_node)
 
     g.add_edge(START, "plan")
-    g.add_edge("plan", "tool_call")
+    g.add_conditional_edges(
+        "plan",
+        decide_after_plan,
+        {"tool_call": "tool_call", "synthesize": "synthesize"},
+    )
     g.add_conditional_edges(
         "tool_call",
-        decide_next,
+        lambda state: "synthesize" if state.error is not None else "plan",
         {"plan": "plan", "synthesize": "synthesize"},
     )
     g.add_edge("synthesize", "groundedness_check")
@@ -172,9 +182,34 @@ def build_graph() -> Any:
     return g.compile()
 
 
-def _select_tool(query: str) -> tuple[str, dict[str, Any], str]:
+def _select_next_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
+    if not state.observations:
+        return _select_initial_tool(state.query)
+    return _select_followup_tool(state)
+
+
+def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
     normalized = query.lower()
     subject = _extract_subject(query)
+    path = _extract_path(query)
+    if (
+        "outline" in normalized
+        or "symbols in" in normalized
+        or "functions in" in normalized
+        or "classes in" in normalized
+    ) and path is not None:
+        return (
+            "get_file_outline",
+            {"path": path},
+            f"Route query to get_file_outline for `{path}`.",
+        )
+    if "dependency" in normalized or "dependencies" in normalized or "imports" in normalized:
+        module = subject or query.strip()
+        return (
+            "get_dependencies",
+            {"module": module},
+            f"Route query to get_dependencies for `{module}`.",
+        )
     if "who calls" in normalized or "who references" in normalized or "references" in normalized:
         symbol = subject or query.strip()
         return (
@@ -196,6 +231,100 @@ def _select_tool(query: str) -> tuple[str, dict[str, Any], str]:
     )
 
 
+def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
+    if not _needs_multihop(state.query):
+        return None
+
+    search = _first_observation(state, "search_code")
+    top_chunk = _top_search_chunk(search)
+    if top_chunk is None:
+        return None
+
+    path = str(top_chunk["file_path"])
+    symbol = str(top_chunk["symbol_name"])
+    line_range = _chunk_line_range(top_chunk)
+
+    if not _has_tool_call(state, "read_file", {"path": path, "line_range": list(line_range)}):
+        return (
+            "read_file",
+            {"path": path, "line_range": line_range},
+            f"Read the top retrieved chunk `{path}:{line_range[0]}` for local context.",
+        )
+
+    if symbol != "__module_doc__" and not _has_tool_call(
+        state, "find_references", {"symbol": symbol}
+    ):
+        return (
+            "find_references",
+            {"symbol": symbol},
+            f"Follow graph references for `{symbol}` to expand cross-file context.",
+        )
+
+    if not _has_tool_call(state, "get_file_outline", {"path": path}):
+        return (
+            "get_file_outline",
+            {"path": path},
+            f"Inspect file outline for `{path}` to summarize nearby structure.",
+        )
+
+    return None
+
+
+def _needs_multihop(query: str) -> bool:
+    normalized = query.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "how",
+            "flow",
+            "end-to-end",
+            "end to end",
+            "architecture",
+            "wired",
+            "implemented",
+            "attach",
+            "auth",
+            "authentication",
+            "call",
+            "use",
+            "uses",
+        )
+    )
+
+
+def _first_observation(state: AgentState, tool_name: str) -> dict[str, Any] | None:
+    for observation in state.observations:
+        if observation["tool"] == tool_name:
+            return observation
+    return None
+
+
+def _top_search_chunk(observation: dict[str, Any] | None) -> dict[str, Any] | None:
+    if observation is None:
+        return None
+    chunks = observation["result"].get("chunks", [])
+    if not chunks:
+        return None
+    return cast(dict[str, Any], chunks[0])
+
+
+def _chunk_line_range(chunk: dict[str, Any]) -> tuple[int, int]:
+    start_line = int(chunk["start_line"])
+    end_line = int(chunk["end_line"])
+    return (start_line, min(end_line, start_line + 80))
+
+
+def _has_tool_call(state: AgentState, tool_name: str, args: dict[str, Any]) -> bool:
+    normalized_args = _jsonable_args(args)
+    return any(
+        call["tool"] == tool_name and call["args"] == normalized_args for call in state.tool_calls
+    )
+
+
+def _jsonable_args(args: dict[str, Any]) -> dict[str, Any]:
+    return cast(dict[str, Any], json.loads(json.dumps(args)))
+
+
 def _extract_subject(query: str) -> str | None:
     backticked = cast(list[str], re.findall(r"`([^`]+)`", query))
     if backticked:
@@ -209,6 +338,11 @@ def _extract_subject(query: str) -> str | None:
     if quoted:
         return quoted[0]
     return None
+
+
+def _extract_path(query: str) -> str | None:
+    matches = cast(list[str], re.findall(r"[\w./\\-]+\.py", query))
+    return matches[0] if matches else None
 
 
 async def _emit_thought(state: AgentState, thought: str) -> None:
@@ -282,6 +416,9 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
     if not state.observations:
         return ("No observations were produced for this query.", [])
 
+    if len(state.observations) > 1:
+        return _synthesize_multihop(state)
+
     observation = state.observations[-1]
     tool_name = observation["tool"]
     result = observation["result"]
@@ -349,3 +486,88 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
         return ("\n".join(lines), [])
 
     return ("Tool execution completed.", [])
+
+
+def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
+    lines = [f"Agent trace for `{state.query}`:"]
+    citations: list[dict[str, Any]] = []
+
+    for observation in state.observations:
+        tool_name = observation["tool"]
+        result = observation["result"]
+
+        if tool_name == "search_code":
+            chunks = result["chunks"]
+            if not chunks:
+                lines.append("- `search_code` found no indexed chunks.")
+                continue
+            lines.append("- `search_code` found these likely entry points:")
+            for chunk in chunks[:3]:
+                citation = _citation_from_chunk(chunk)
+                _append_unique_citation(citations, citation)
+                lines.append(
+                    f"  - `{chunk['symbol_name']}` in `{chunk['file_path']}:{chunk['start_line']}`"
+                )
+            continue
+
+        if tool_name == "read_file":
+            start_line, end_line = result["line_range"]
+            citation = {
+                "symbol": result["path"],
+                "file_path": result["path"],
+                "line": start_line,
+            }
+            _append_unique_citation(citations, citation)
+            lines.append(
+                f"- `read_file` inspected `{result['path']}:{start_line}`-`{end_line}` for local implementation context."
+            )
+            continue
+
+        if tool_name in {"find_definition", "find_references", "get_dependencies", "get_file_outline", "grep"}:
+            locations = result["locations"]
+            if not locations:
+                lines.append(f"- `{tool_name}` found no locations.")
+                continue
+            heading = {
+                "find_definition": "definition locations",
+                "find_references": "cross-file references",
+                "get_dependencies": "module dependencies",
+                "get_file_outline": "nearby file symbols",
+                "grep": "exact matches",
+            }[tool_name]
+            lines.append(f"- `{tool_name}` added {heading}:")
+            for location in locations[:5]:
+                citation = _citation_from_location(location)
+                _append_unique_citation(citations, citation)
+                lines.append(
+                    f"  - `{location['symbol']}` at `{location['file_path']}:{location['line']}`"
+                )
+            continue
+
+        if tool_name == "list_directory":
+            lines.append(f"- `list_directory` returned {len(result['entries'])} entries.")
+
+    return ("\n".join(lines), citations)
+
+
+def _citation_from_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "symbol": chunk["symbol_name"],
+        "file_path": chunk["file_path"],
+        "line": chunk["start_line"],
+    }
+
+
+def _citation_from_location(location: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "symbol": location["symbol"],
+        "file_path": location["file_path"],
+        "line": location["line"],
+    }
+
+
+def _append_unique_citation(citations: list[dict[str, Any]], citation: dict[str, Any]) -> None:
+    key = (citation["symbol"], citation["file_path"], citation["line"])
+    if any((item["symbol"], item["file_path"], item["line"]) == key for item in citations):
+        return
+    citations.append(citation)

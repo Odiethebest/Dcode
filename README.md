@@ -51,7 +51,7 @@ Dcode is a structure-aware retrieval platform. It asynchronously builds a dual i
 | Chunk granularity | AST-level chunks via Python `ast` (no fixed-window sliding) |
 | Call graph | AST-built symbol table + module import edges (v1) |
 | Hybrid retrieval | Sparse retrieval + RRF fusion path; dense query embedding and real rerank remain follow-up work |
-| Multi-hop reasoning | LangGraph state machine, 8 tools, first-pass single-tool loop per query |
+| Multi-hop reasoning | LangGraph state machine, 8 tools, rule-based multi-step ReAct loop |
 | Hallucination control | Programmatic groundedness check, ≥ 95% hard constraint (non-disableable) |
 | Reproducible evaluation | Five-tier baseline ladder + L1/L2/L3 question taxonomy |
 | Multi-tenancy | All chunks / symbols / jobs isolated by `repo_id` |

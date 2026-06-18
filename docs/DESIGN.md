@@ -150,7 +150,7 @@ query → [sparse 召回 (BM25)]    ─┘
 - **执行模式**：流式（SSE），中间步骤实时下发；
 - **最大步数**：单次查询上限 **8 步**（防止无限循环），超过即强制合成。
 
-当前实现说明：`plan_node` 为规则路由，`synthesize_node` 为 observation 模板拼接；graph 目前是一轮计划、一轮工具调用、再合成。
+当前实现说明：`plan_node` 为规则路由，`synthesize_node` 为 observation 模板拼接；graph 已支持规则化多步循环（如 `search_code` → `read_file` → `find_references` → `get_file_outline`），但仍不是 LLM planner。
 
 #### 2.3.2 工具清单
 

@@ -71,6 +71,76 @@ class DummySearchTool(Tool[DummySearchArgs, DummySearchResult]):
         )
 
 
+class DummyReadFileArgs(BaseModel):
+    path: str
+    line_range: tuple[int, int]
+
+
+class DummyReadFileResult(BaseModel):
+    path: str
+    line_range: tuple[int, int]
+    content: str
+
+
+class DummyReadFileTool(Tool[DummyReadFileArgs, DummyReadFileResult]):
+    name: ClassVar[str] = "read_file"
+    description: ClassVar[str] = "Dummy read_file tool for graph tests."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummyReadFileArgs
+
+    async def execute(self, repo_id: str, args: DummyReadFileArgs) -> DummyReadFileResult:
+        return DummyReadFileResult(
+            path=args.path,
+            line_range=args.line_range,
+            content="class HTTPBasicAuth(AuthBase): ...",
+        )
+
+
+class DummyReferencesTool(Tool[DummyArgs, DummyResult]):
+    name: ClassVar[str] = "find_references"
+    description: ClassVar[str] = "Dummy find_references tool for graph tests."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummyArgs
+
+    async def execute(self, repo_id: str, args: DummyArgs) -> DummyResult:
+        return DummyResult(
+            locations=[
+                {
+                    "symbol": "requests.models.PreparedRequest.prepare_auth",
+                    "file_path": "src/requests/models.py",
+                    "line": 589,
+                    "chunk_id": None,
+                }
+            ]
+        )
+
+
+class DummyOutlineArgs(BaseModel):
+    path: str
+
+
+class DummyOutlineResult(BaseModel):
+    path: str
+    locations: list[dict[str, Any]]
+
+
+class DummyOutlineTool(Tool[DummyOutlineArgs, DummyOutlineResult]):
+    name: ClassVar[str] = "get_file_outline"
+    description: ClassVar[str] = "Dummy get_file_outline tool for graph tests."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummyOutlineArgs
+
+    async def execute(self, repo_id: str, args: DummyOutlineArgs) -> DummyOutlineResult:
+        return DummyOutlineResult(
+            path=args.path,
+            locations=[
+                {
+                    "symbol": "requests.auth.HTTPBasicAuth",
+                    "file_path": args.path,
+                    "line": 85,
+                    "chunk_id": None,
+                }
+            ],
+        )
+
+
 class FakeEmitter:
     def __init__(self) -> None:
         self.thoughts: list[tuple[int, str]] = []
@@ -204,3 +274,36 @@ async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
     assert emitter.thoughts
     assert emitter.tool_calls
     assert emitter.tool_results
+
+
+async def test_build_graph_runs_multihop_for_architecture_query() -> None:
+    repo_id = str(uuid4())
+    emitter = FakeEmitter()
+    registry = _registry(
+        DummySearchTool(),
+        DummyReadFileTool(),
+        DummyReferencesTool(),
+        DummyOutlineTool(),
+    )
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=repo_id,
+            query="How is authentication wired end-to-end?",
+            runtime={"tool_registry": registry, "tool_cache": {}, "emitter": emitter},
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "read_file",
+        "find_references",
+        "get_file_outline",
+    ]
+    assert "Agent trace" in result["final_answer"]
+    assert "src/requests/auth.py:85" in result["final_answer"]
+    assert "src/requests/models.py:589" in result["final_answer"]
+    assert len(emitter.thoughts) == 4
+    assert len(emitter.tool_calls) == 4
+    assert len(emitter.tool_results) == 4
