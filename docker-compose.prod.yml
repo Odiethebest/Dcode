@@ -6,9 +6,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg15
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-dcode}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dcode}
-      POSTGRES_DB: ${POSTGRES_DB:-dcode}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env.production}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -30,6 +30,9 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env.production}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.production}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -42,12 +45,12 @@ services:
       context: .
       dockerfile: infra/docker/api.Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dcode}:${POSTGRES_PASSWORD:-dcode}@postgres:5432/${POSTGRES_DB:-dcode}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env.production}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env.production}
       REDIS_URL: redis://redis:6379/0
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?set RABBITMQ_USER in .env.production}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.production}@rabbitmq:5672/
       AGENT_URL: http://agent:8001
       CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://dcode.odieyang.com}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
@@ -68,13 +71,13 @@ services:
       context: .
       dockerfile: infra/docker/worker.Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dcode}:${POSTGRES_PASSWORD:-dcode}@postgres:5432/${POSTGRES_DB:-dcode}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env.production}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env.production}
       REDIS_URL: redis://redis:6379/0
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?set RABBITMQ_USER in .env.production}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.production}@rabbitmq:5672/
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
       WORKDIR_BASE: /tmp/dcode-workdirs
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - repo_workdirs:/tmp/dcode-workdirs
@@ -97,13 +100,13 @@ services:
       context: .
       dockerfile: infra/docker/agent.Dockerfile
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dcode}:${POSTGRES_PASSWORD:-dcode}@postgres:5432/${POSTGRES_DB:-dcode}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env.production}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env.production}
       REDIS_URL: redis://redis:6379/0
       JUDGE_MODEL: ${JUDGE_MODEL:-stub}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-change-me}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - repo_workdirs:/tmp/dcode-workdirs

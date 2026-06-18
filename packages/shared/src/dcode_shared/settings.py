@@ -18,15 +18,19 @@ class SharedSettings(BaseSettings):
     )
 
     # --- Infrastructure ---
-    database_url: str = "postgresql+asyncpg://dcode:dcode@localhost:5432/dcode"
+    database_url: str = (
+        "postgresql+asyncpg://dcode:__SET_LOCAL_DEV_POSTGRES_PASSWORD__@localhost:5432/dcode"
+    )
     redis_url: str = "redis://localhost:6379/0"
-    rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
+    rabbitmq_url: str = (
+        "amqp://dcode:__SET_LOCAL_DEV_RABBITMQ_PASSWORD__@localhost:5672/"
+    )
 
     # --- Logging ---
     log_level: str = "info"
 
     # --- Internal service auth / cache policy ---
-    internal_api_key: str = "dev-internal-key-change-me"
+    internal_api_key: str = "__SET_LOCAL_DEV_INTERNAL_API_KEY__"
     query_cache_ttl_seconds: int = 60 * 60
     tool_cache_ttl_seconds: int = 24 * 60 * 60
     job_state_ttl_seconds: int = 7 * 24 * 60 * 60

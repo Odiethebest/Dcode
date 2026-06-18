@@ -12,7 +12,7 @@ import pytest
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "requests_query_cases.json"
 _LIVE_REPO_ID = os.getenv("DCODE_LIVE_REPO_ID")
 _LIVE_API_BASE_URL = os.getenv("DCODE_LIVE_API_BASE_URL", "http://localhost:8000")
-_LIVE_INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "dev-internal-key-change-me")
+_LIVE_INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "__SET_LOCAL_DEV_INTERNAL_API_KEY__")
 _ALLOWED_ENDPOINTS = {
     "search",
     "find_definition",
