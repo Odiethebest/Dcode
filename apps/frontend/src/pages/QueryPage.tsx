@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { streamQuery } from '@/api/client';
 import type {
@@ -12,8 +13,11 @@ import { loadRecentRepos } from '@/lib/recentRepos';
 const DEFAULT_QUERY = 'Where is `HTTPBasicAuth` defined?';
 
 export default function QueryPage() {
+  const [searchParams] = useSearchParams();
   const recentRepos = useMemo(() => loadRecentRepos(), []);
-  const [repoId, setRepoId] = useState(recentRepos[0]?.repoId ?? '');
+  const [repoId, setRepoId] = useState(
+    searchParams.get('repoId') ?? recentRepos[0]?.repoId ?? ''
+  );
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [events, setEvents] = useState<QueryStreamEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);

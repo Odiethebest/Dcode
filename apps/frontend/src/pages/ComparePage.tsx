@@ -8,7 +8,7 @@ import {
   type Taxonomy,
 } from '@/demo/evalSnapshot';
 
-const BASELINE_ORDER: BaselineName[] = ['B2', 'B3', 'B4'];
+const BASELINE_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
 const TAXONOMY_ORDER: Taxonomy[] = ['L2', 'L3'];
 
 export default function ComparePage() {
