@@ -93,6 +93,7 @@ class RepoStatusResponse(BaseModel):
     """GET /api/v1/repos/{repo_id}/status response body."""
 
     repo_id: UUID
+    url: str = ""
     status: RepoStatus
     progress: int = Field(0, ge=0, le=100)
     stages: StagesStatus = Field(default_factory=StagesStatus)

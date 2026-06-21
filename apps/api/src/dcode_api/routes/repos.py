@@ -102,6 +102,7 @@ async def repo_status(
     live_state = await _read_job_state(redis, repo_id)
     return RepoStatusResponse(
         repo_id=repo_id,
+        url=repo.url,
         status=_status_from(repo.status, live_state),
         progress=_progress_from(repo.progress, live_state),
         stages=_stages_from(live_state),
