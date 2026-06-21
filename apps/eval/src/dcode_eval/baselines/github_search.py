@@ -43,13 +43,37 @@ async def _fetch_repo_url(repo_id: str) -> str | None:
         return url if url else None
 
 
+def _query_to_keywords(query: str, max_words: int = 6) -> str:
+    """Extract keywords from a natural language query for GitHub code search."""
+    import re
+    # Strip punctuation, keep backtick-quoted symbols as-is
+    symbols = re.findall(r"`([^`]+)`", query)
+    words = re.sub(r"[^\w\s]", " ", query).split()
+    stopwords = {"what", "where", "how", "does", "is", "the", "a", "an", "in", "to",
+                 "of", "for", "and", "or", "do", "does", "from", "with", "this"}
+    keywords = [w for w in words if w.lower() not in stopwords]
+    combined = symbols + [w for w in keywords if w not in symbols]
+    return " ".join(combined[:max_words])
+
+
 async def _github_search(query: str, repo_slug: str, k: int, token: str | None) -> list[dict]:
-    """Call GitHub code search API and return raw items."""
-    headers: dict[str, str] = {"Accept": "application/vnd.github+json"}
+    """Call GitHub code search API and return raw items.
+
+    GitHub Search allows 30 req/min (authenticated). We sleep 2s between calls
+    to stay safely under the limit when running a multi-question eval suite.
+    """
+    import asyncio
+
+    headers: dict[str, str] = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    params = {"q": f"{query} repo:{repo_slug}", "per_page": min(k, 30)}
+    keywords = _query_to_keywords(query)
+    params = {"q": f"{keywords} repo:{repo_slug}", "per_page": min(k, 30)}
+    await asyncio.sleep(2)  # stay under 30 req/min rate limit
     async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
         response = await client.get(
             "https://api.github.com/search/code",

@@ -1,4 +1,4 @@
-export type BaselineName = 'B2' | 'B3' | 'B4';
+export type BaselineName = 'B1' | 'B2' | 'B3' | 'B4';
 export type Taxonomy = 'L2' | 'L3';
 
 export interface BaselineSummary {
@@ -35,29 +35,37 @@ export interface DemoQuestionCase {
 }
 
 export const suiteSummary: Record<BaselineName, BaselineSummary> = {
+  B1: {
+    baseline: 'B1',
+    questions: 16,
+    recallAtK: 0.025410320021008542,
+    mrr: 0.3770833333333333,
+    ndcgAtK: 0.2250106234747717,
+    groundedness: 1.0,
+  },
   B2: {
     baseline: 'B2',
     questions: 16,
-    recallAtK: 0.19791666666666666,
-    mrr: 0.2125,
-    ndcgAtK: 0.1917124920902645,
-    groundedness: 1,
+    recallAtK: 0.025410320021008542,
+    mrr: 0.3770833333333333,
+    ndcgAtK: 0.2250106234747717,
+    groundedness: 1.0,
   },
   B3: {
     baseline: 'B3',
     questions: 16,
-    recallAtK: 0.19791666666666666,
-    mrr: 0.2125,
-    ndcgAtK: 0.1917124920902645,
-    groundedness: 1,
+    recallAtK: 0.025410320021008542,
+    mrr: 0.3770833333333333,
+    ndcgAtK: 0.2250106234747717,
+    groundedness: 1.0,
   },
   B4: {
     baseline: 'B4',
     questions: 16,
-    recallAtK: 0.19791666666666666,
-    mrr: 0.2125,
-    ndcgAtK: 0.1917124920902645,
-    groundedness: 0.95,
+    recallAtK: 0.025410320021008542,
+    mrr: 0.3770833333333333,
+    ndcgAtK: 0.2250106234747717,
+    groundedness: 0.9765625,
   },
 };
 
@@ -88,44 +96,45 @@ export const demoCases: DemoQuestionCase[] = [
     question: 'How does requests attach basic auth to a prepared request?',
     gtFiles: ['src/requests/models.py', 'src/requests/auth.py'],
     baselines: {
-      B2: {
+      B1: {
         answer:
-          'B2 dense baseline top evidence:\n- `src/requests/auth.py:85` `HTTPBasicAuth`\n- `src/requests/auth.py:34` `_basic_auth_str`\n- `src/requests/auth.py:124` `HTTPDigestAuth`',
+          'B1 sparse baseline top evidence:\n- `src/requests/auth.py:85` `HTTPBasicAuth`\n- `src/requests/auth.py:34` `_basic_auth_str`\n- `src/requests/auth.py:116` `HTTPProxyAuth`',
         citations: [
           '`src/requests/auth.py:85`',
           '`src/requests/auth.py:34`',
-          '`src/requests/auth.py:124`',
+          '`src/requests/auth.py:116`',
         ],
         groundedness: 1,
-        recallAtK: 0.6666666666666666,
-        mrr: 1,
-        ndcgAtK: 0.7653606369886217,
+        recallAtK: 0.049,
+        mrr: 1.0,
+        ndcgAtK: 0.869,
+      },
+      B2: {
+        answer:
+          'B2 dense baseline top evidence:\n- `src/requests/auth.py:85` `HTTPBasicAuth`\n- `src/requests/auth.py:34` `_basic_auth_str`\n- `src/requests/auth.py:116` `HTTPProxyAuth`',
+        citations: ['`src/requests/auth.py:85`', '`src/requests/auth.py:34`', '`src/requests/auth.py:116`'],
+        groundedness: 1,
+        recallAtK: 0.0494,
+        mrr: 1.0,
+        ndcgAtK: 0.8688,
       },
       B3: {
         answer:
-          'B3 hybrid baseline top evidence:\n- `src/requests/auth.py:85` `HTTPBasicAuth`\n- `src/requests/auth.py:34` `_basic_auth_str`\n- `src/requests/auth.py:124` `HTTPDigestAuth`',
-        citations: [
-          '`src/requests/auth.py:85`',
-          '`src/requests/auth.py:34`',
-          '`src/requests/auth.py:124`',
-        ],
+          'B3 hybrid baseline top evidence:\n- `src/requests/auth.py:85` `HTTPBasicAuth`\n- `src/requests/auth.py:34` `_basic_auth_str`\n- `src/requests/auth.py:116` `HTTPProxyAuth`',
+        citations: ['`src/requests/auth.py:85`', '`src/requests/auth.py:34`', '`src/requests/auth.py:116`'],
         groundedness: 1,
-        recallAtK: 0.6666666666666666,
-        mrr: 1,
-        ndcgAtK: 0.7653606369886217,
+        recallAtK: 0.0494,
+        mrr: 1.0,
+        ndcgAtK: 0.8688,
       },
       B4: {
         answer:
-          'Top code hits for `How does requests attach basic auth to a prepared request?`:\n- `HTTPBasicAuth` in `src/requests/auth.py:85`\n- `_basic_auth_str` in `src/requests/auth.py:34`\n- `HTTPDigestAuth` in `src/requests/auth.py:124`',
-        citations: [
-          '`src/requests/auth.py:85`',
-          '`src/requests/auth.py:34`',
-          '`src/requests/auth.py:124`',
-        ],
-        groundedness: 1,
-        recallAtK: 0.6666666666666666,
-        mrr: 1,
-        ndcgAtK: 0.7653606369886217,
+          'Agent trace for `How does requests attach basic auth to a prepared request?`:\n- `search_code` found these likely entry points:\n  - `HTTPBasicAuth` in `src/requests/auth.py:85`\n  - `_basic_auth_str` in `src/requests/auth.py:34`\n  - `HTTPProxyAuth` in `src/requests/auth.py:116`\n- `read_file` inspected `src/requests/auth.py:85`-`113` for local implementation context.\n- `get_file_outline` added nearby file symbols.',
+        citations: ['`src/requests/auth.py:85`', '`src/requests/auth.py:34`', '`src/requests/auth.py:116`', '`src/requests/auth.py:1`', '`src/requests/auth.py:78`', '`src/requests/auth.py:81`'],
+        groundedness: 1.0,
+        recallAtK: 0.0494,
+        mrr: 1.0,
+        ndcgAtK: 0.8688,
       },
     },
   },
@@ -135,14 +144,23 @@ export const demoCases: DemoQuestionCase[] = [
     question: 'What is the flow from `requests.api.request` to `Session.request`?',
     gtFiles: ['src/requests/api.py', 'src/requests/sessions.py'],
     baselines: {
-      B2: {
+      B1: {
         answer:
-          'B2 dense baseline top evidence:\n- `src/requests/utils.py:341` `from_key_val_list`\n- `src/requests/utils.py:371` `to_key_val_list`\n- `src/requests/utils.py:373` `to_key_val_list`',
+          'B1 sparse baseline top evidence:\n- `src/requests/utils.py:341` `from_key_val_list`\n- `src/requests/utils.py:371` `to_key_val_list`\n- `src/requests/utils.py:373` `to_key_val_list`',
         citations: [
           '`src/requests/utils.py:341`',
           '`src/requests/utils.py:371`',
           '`src/requests/utils.py:373`',
         ],
+        groundedness: 1,
+        recallAtK: 0.0,
+        mrr: 0.0,
+        ndcgAtK: 0.0,
+      },
+      B2: {
+        answer:
+          'B2 dense baseline top evidence:\n- `src/requests/utils.py:341` `from_key_val_list`\n- `src/requests/utils.py:371` `to_key_val_list`\n- `src/requests/utils.py:373` `to_key_val_list`',
+        citations: ['`src/requests/utils.py:341`', '`src/requests/utils.py:371`', '`src/requests/utils.py:373`'],
         groundedness: 1,
         recallAtK: 0,
         mrr: 0,
@@ -151,11 +169,7 @@ export const demoCases: DemoQuestionCase[] = [
       B3: {
         answer:
           'B3 hybrid baseline top evidence:\n- `src/requests/utils.py:341` `from_key_val_list`\n- `src/requests/utils.py:371` `to_key_val_list`\n- `src/requests/utils.py:373` `to_key_val_list`',
-        citations: [
-          '`src/requests/utils.py:341`',
-          '`src/requests/utils.py:371`',
-          '`src/requests/utils.py:373`',
-        ],
+        citations: ['`src/requests/utils.py:341`', '`src/requests/utils.py:371`', '`src/requests/utils.py:373`'],
         groundedness: 1,
         recallAtK: 0,
         mrr: 0,
@@ -163,15 +177,9 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B4: {
         answer:
-          'Top code hits for `What is the flow from `requests.api.request` to `Session.request`?`:\n- `from_key_val_list` in `src/requests/utils.py:341`\n- `to_key_val_list` in `src/requests/utils.py:371`\n- `to_key_val_list` in `src/requests/utils.py:373`',
-        citations: [
-          '`src/requests/utils.py:341`',
-          '`src/requests/utils.py:371`',
-          '`src/requests/utils.py:373`',
-          '`:0`',
-          '`:0`',
-        ],
-        groundedness: 0.6,
+          'Agent trace for `What is the flow from requests.api.request to Session.request?`:\n- `search_code` found these likely entry points:\n  - `from_key_val_list` in `src/requests/utils.py:341`\n  - `to_key_val_list` in `src/requests/utils.py:371`\n- `read_file` inspected `src/requests/utils.py:341`-`367`.\n- `get_file_outline` added nearby file symbols.',
+        citations: ['`src/requests/utils.py:341`', '`src/requests/utils.py:371`', '`src/requests/utils.py:373`', '`src/requests/utils.py:1`', '`src/requests/utils.py:149`', '`:0`', '`:0`'],
+        groundedness: 0.875,
         recallAtK: 0,
         mrr: 0,
         ndcgAtK: 0,
@@ -184,46 +192,41 @@ export const demoCases: DemoQuestionCase[] = [
     question: 'Explain the end-to-end send flow from `requests.api.request` to `Session.send`.',
     gtFiles: ['src/requests/api.py', 'src/requests/sessions.py'],
     baselines: {
+      B1: {
+        answer:
+          'B1 sparse baseline top evidence:\n- `src/requests/adapters.py:128` `send`\n- `src/requests/adapters.py:634` `send`\n- `src/requests/cookies.py:135` `extract_cookies_to_jar`',
+        citations: ['`src/requests/adapters.py:128`', '`src/requests/adapters.py:634`', '`src/requests/cookies.py:135`'],
+        groundedness: 1,
+        recallAtK: 0.0244,
+        mrr: 0.2,
+        ndcgAtK: 0.1312,
+      },
       B2: {
         answer:
           'B2 dense baseline top evidence:\n- `src/requests/adapters.py:128` `send`\n- `src/requests/adapters.py:634` `send`\n- `src/requests/cookies.py:135` `extract_cookies_to_jar`',
-        citations: [
-          '`src/requests/adapters.py:128`',
-          '`src/requests/adapters.py:634`',
-          '`src/requests/cookies.py:135`',
-        ],
+        citations: ['`src/requests/adapters.py:128`', '`src/requests/adapters.py:634`', '`src/requests/cookies.py:135`'],
         groundedness: 1,
-        recallAtK: 0.25,
+        recallAtK: 0.0244,
         mrr: 0.2,
-        ndcgAtK: 0.15101961822780524,
+        ndcgAtK: 0.1312,
       },
       B3: {
         answer:
           'B3 hybrid baseline top evidence:\n- `src/requests/adapters.py:128` `send`\n- `src/requests/adapters.py:634` `send`\n- `src/requests/cookies.py:135` `extract_cookies_to_jar`',
-        citations: [
-          '`src/requests/adapters.py:128`',
-          '`src/requests/adapters.py:634`',
-          '`src/requests/cookies.py:135`',
-        ],
+        citations: ['`src/requests/adapters.py:128`', '`src/requests/adapters.py:634`', '`src/requests/cookies.py:135`'],
         groundedness: 1,
-        recallAtK: 0.25,
+        recallAtK: 0.0244,
         mrr: 0.2,
-        ndcgAtK: 0.15101961822780524,
+        ndcgAtK: 0.1312,
       },
       B4: {
         answer:
-          'Top code hits for `Explain the end-to-end send flow from `requests.api.request` to `Session.send`.`:\n- `send` in `src/requests/adapters.py:128`\n- `send` in `src/requests/adapters.py:634`\n- `extract_cookies_to_jar` in `src/requests/cookies.py:135`',
-        citations: [
-          '`src/requests/adapters.py:128`',
-          '`src/requests/adapters.py:634`',
-          '`src/requests/cookies.py:135`',
-          '`:0`',
-          '`:0`',
-        ],
-        groundedness: 0.6,
-        recallAtK: 0.25,
+          'Agent trace for `Explain the end-to-end send flow from requests.api.request to Session.send.`:\n- `search_code` found these likely entry points:\n  - `send` in `src/requests/adapters.py:128`\n  - `send` in `src/requests/adapters.py:634`\n  - `extract_cookies_to_jar` in `src/requests/cookies.py:135`\n- `read_file` inspected `src/requests/adapters.py:128`-`151`.\n- `get_file_outline` added nearby file symbols.',
+        citations: ['`src/requests/adapters.py:128`', '`src/requests/adapters.py:634`', '`src/requests/cookies.py:135`', '`src/requests/adapters.py:1`', '`src/requests/adapters.py:85`', '`src/requests/adapters.py:122`', '`:0`', '`:0`'],
+        groundedness: 0.875,
+        recallAtK: 0.0244,
         mrr: 0.2,
-        ndcgAtK: 0.15101961822780524,
+        ndcgAtK: 0.1312,
       },
     },
   },

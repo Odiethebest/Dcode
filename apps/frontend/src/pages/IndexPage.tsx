@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 
 import { getRepoStatus, submitRepo } from '@/api/client';
 import type { RepoStatusResponse, StagesStatus, UUID } from '@/api/types';
@@ -16,6 +17,7 @@ const TERMINAL_STATUSES = new Set(['ready', 'failed']);
 const STAGE_ORDER: Array<keyof StagesStatus> = ['cloning', 'parsing', 'embedding', 'graphing'];
 
 export default function IndexPage() {
+  const navigate = useNavigate();
   const [repoUrl, setRepoUrl] = useState(DEFAULT_REPO_URL);
   const [currentRepoId, setCurrentRepoId] = useState<UUID | null>(null);
   const [recentRepos, setRecentRepos] = useState<RecentRepoRecord[]>(() => loadRecentRepos());
@@ -173,6 +175,15 @@ export default function IndexPage() {
 
             {statusQuery.isFetching && currentRepoId ? (
               <p className="text-xs text-stone-500">Polling status…</p>
+            ) : null}
+            {activeStatus?.status === 'ready' && currentRepoId ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/query?repoId=${currentRepoId}`)}
+                className="inline-flex items-center gap-2 rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500"
+              >
+                Query this repo →
+              </button>
             ) : null}
             {activeStatus?.error ? (
               <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
