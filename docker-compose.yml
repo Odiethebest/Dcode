@@ -81,6 +81,9 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?set RABBITMQ_USER in .env}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}@rabbitmq:5672/
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-http://host.docker.internal:8002}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
+      EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -93,11 +96,34 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      embedding:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "python", "-c", "print('ok')"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  embedding:
+    build:
+      context: .
+      dockerfile: infra/docker/embedding.Dockerfile
+    environment:
+      EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL:-jinaai/jina-embeddings-v2-base-code}
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    ports:
+      - "8002:8002"
+    profiles:
+      - embedding
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8002/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   agent:
     build:

@@ -38,6 +38,9 @@ class SharedSettings(BaseSettings):
     # --- Open Decisions (OD-2..OD-4) ---
     embedding_model: str = "stub"
     embedding_dim: int = 1024
+    embedding_endpoint: str = ""
+    embedding_batch_size: int = 4
+    embedding_max_retries: int = 12
     reranker_endpoint: str = "http://localhost:9999"
     judge_model: str = "stub"
 
