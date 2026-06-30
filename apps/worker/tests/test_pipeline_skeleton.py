@@ -8,6 +8,7 @@ from types import TracebackType
 from uuid import uuid4
 
 from dcode_shared.db.models import Repo
+from dcode_shared.embedding import StubEmbeddingClient
 from dcode_shared.schemas import RepoStatus, StageState
 from dcode_worker import pipeline
 from dcode_worker.context import PipelineContext
@@ -164,7 +165,7 @@ async def test_handle_job_emits_structured_stage_logs(caplog) -> None:
 
 
 async def test_embedding_stub_returns_zero_vectors_of_configured_dim() -> None:
-    stub = embed.StubEmbeddingClient(dim=16)
+    stub = StubEmbeddingClient(dim=16)
     vecs = await stub.embed_batch(["a", "b", "c"])
     assert len(vecs) == 3
     assert all(len(v) == 16 for v in vecs)

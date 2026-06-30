@@ -7,6 +7,7 @@ from types import TracebackType
 from uuid import uuid4
 
 from dcode_shared.cache import embedding_cache_key
+from dcode_shared.embedding import EmbeddingClient
 from dcode_shared.schemas import ChunkType
 from dcode_worker.context import PipelineContext
 from dcode_worker.models import CodeChunk
@@ -83,7 +84,7 @@ def _chunk(symbol_name: str, content: str) -> CodeChunk:
     )
 
 
-class RecordingEmbeddingClient(embed.EmbeddingClient):
+class RecordingEmbeddingClient(EmbeddingClient):
     def __init__(self, vectors: list[list[float]]) -> None:
         self.vectors = vectors
         self.calls: list[list[str]] = []

@@ -7,6 +7,8 @@
 help:
 	@echo "Targets:"
 	@echo "  up         Bring up all services via docker compose"
+	@echo "  up-embed   Bring up stack (Docker embedding — needs ~6GB Docker RAM)"
+	@echo "  embedding-host  Run embedding on Mac host (recommended for indexing)"
 	@echo "  down       Tear down services (keeps volumes)"
 	@echo "  down-all   Tear down services AND volumes (destructive)"
 	@echo "  logs       Tail logs for all services"
@@ -31,6 +33,12 @@ help:
 
 up:
 	docker compose up -d --build
+
+up-embed:
+	docker compose --profile embedding up -d --build
+
+embedding-host:
+	bash scripts/start-embedding-host.sh
 
 down:
 	docker compose down

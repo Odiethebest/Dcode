@@ -11,6 +11,7 @@ members = [
     "apps/worker",
     "apps/agent",
     "apps/eval",
+    "apps/embedding",
     "packages/shared",
 ]
 
@@ -29,6 +30,7 @@ dcode-api = { workspace = true }
 dcode-worker = { workspace = true }
 dcode-agent = { workspace = true }
 dcode-eval = { workspace = true }
+dcode-embedding = { workspace = true }
 
 [tool.ruff]
 target-version = "py311"
@@ -67,6 +69,7 @@ module = [
     "langgraph.*",
     "alembic.*",
     "pgvector.*",
+    "sentence_transformers.*",
 ]
 ignore_missing_imports = true
 
@@ -78,6 +81,7 @@ pythonpath = [
     "apps/worker/src",
     "apps/agent/src",
     "apps/eval/src",
+    "apps/embedding/src",
 ]
 testpaths = ["apps", "packages"]
 asyncio_mode = "auto"

@@ -50,13 +50,18 @@ def _query_to_keywords(query: str, max_words: int = 6) -> str:
     symbols = re.findall(r"`([^`]+)`", query)
     words = re.sub(r"[^\w\s]", " ", query).split()
     stopwords = {"what", "where", "how", "does", "is", "the", "a", "an", "in", "to",
-                 "of", "for", "and", "or", "do", "does", "from", "with", "this"}
+                 "of", "for", "and", "or", "do", "from", "with", "this"}
     keywords = [w for w in words if w.lower() not in stopwords]
     combined = symbols + [w for w in keywords if w not in symbols]
     return " ".join(combined[:max_words])
 
 
-async def _github_search(query: str, repo_slug: str, k: int, token: str | None) -> list[dict]:
+async def _github_search(
+    query: str,
+    repo_slug: str,
+    k: int,
+    token: str | None,
+) -> list[dict[str, object]]:
     """Call GitHub code search API and return raw items.
 
     GitHub Search allows 30 req/min (authenticated). We sleep 2s between calls
@@ -72,7 +77,10 @@ async def _github_search(query: str, repo_slug: str, k: int, token: str | None) 
         headers["Authorization"] = f"Bearer {token}"
 
     keywords = _query_to_keywords(query)
-    params = {"q": f"{keywords} repo:{repo_slug}", "per_page": min(k, 30)}
+    params: dict[str, str | int] = {
+        "q": f"{keywords} repo:{repo_slug}",
+        "per_page": min(k, 30),
+    }
     await asyncio.sleep(2)  # stay under 30 req/min rate limit
     async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
         response = await client.get(
@@ -81,13 +89,17 @@ async def _github_search(query: str, repo_slug: str, k: int, token: str | None) 
             headers=headers,
         )
         response.raise_for_status()
-        return response.json().get("items", [])
+        payload = response.json()
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        if not isinstance(items, list):
+            return []
+        return [item for item in items if isinstance(item, dict)]
 
 
-def _item_to_chunk(item: dict, rank: int) -> Chunk:
+def _item_to_chunk(item: dict[str, object], rank: int) -> Chunk:
     """Convert a GitHub Search result item to a Chunk."""
-    file_path = item.get("path", "")
-    name = item.get("name", "")
+    file_path = str(item.get("path", ""))
+    name = str(item.get("name", ""))
     score = 1.0 / (rank + 1)
     return Chunk(
         chunk_id=uuid.uuid4(),
@@ -95,7 +107,7 @@ def _item_to_chunk(item: dict, rank: int) -> Chunk:
         symbol_name=name,
         start_line=1,
         end_line=1,
-        content=item.get("url", ""),
+        content=str(item.get("url", "")),
         score=score,
         score_components=ScoreComponents(dense=0.0, sparse=score, rerank=score),
     )
