@@ -7,6 +7,7 @@ from uuid import UUID
 
 from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Edge, Repo, Symbol
+from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -184,14 +185,30 @@ async def _search_dense_candidates(
     return candidates
 
 
+_query_embedding_client: EmbeddingClient | None = None
+
+
+def _get_query_embedding_client() -> EmbeddingClient:
+    global _query_embedding_client
+    if _query_embedding_client is None:
+        _query_embedding_client = create_embedding_client(
+            model=api_settings.embedding_model,
+            dim=api_settings.embedding_dim,
+            endpoint=api_settings.embedding_endpoint,
+            batch_size=api_settings.embedding_batch_size,
+            max_retries=api_settings.embedding_max_retries,
+        )
+    return _query_embedding_client
+
+
 async def _embed_search_query(query: str) -> list[float] | None:
     if api_settings.embedding_model == "stub":
         return None
 
-    # The API has not yet been wired to the real OD-2 embedding model client.
-    # Until then, disable dense search rather than mixing incompatible vectors.
-    _ = query
-    return None
+    vectors = await _get_query_embedding_client().embed_batch([query])
+    if not vectors:
+        return None
+    return vectors[0]
 
 
 def _fuse_search_candidates(

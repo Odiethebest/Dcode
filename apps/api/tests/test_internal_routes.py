@@ -36,8 +36,10 @@ def override_db(session: FakeSession) -> None:
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Any:
     app.dependency_overrides.clear()
+    internal._query_embedding_client = None
     yield
     app.dependency_overrides.clear()
+    internal._query_embedding_client = None
 
 
 def _internal_headers() -> dict[str, str]:
@@ -222,6 +224,7 @@ async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
 
     monkeypatch.setattr(internal, "_search_sparse_candidates", fake_sparse)
     monkeypatch.setattr(internal, "_search_dense_candidates", fake_dense)
+    monkeypatch.setattr(internal.api_settings, "embedding_model", "stub")
 
     chunks = await internal._search_chunks(object(), repo_id, "HTTPBasicAuth", 2)
 
@@ -230,6 +233,63 @@ async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
     assert chunks[0].score_components.sparse == 88.0
     assert chunks[0].score_components.dense == 0.0
     assert chunks[0].score == chunks[0].score_components.rerank
+
+
+async def test_embed_search_query_returns_none_for_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(internal.api_settings, "embedding_model", "stub")
+
+    vector = await internal._embed_search_query("HTTP redirects")
+
+    assert vector is None
+
+
+async def test_embed_search_query_embeds_query_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeEmbeddingClient:
+        async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+            assert texts == ["HTTP redirects"]
+            return [[0.1, 0.2, 0.3]]
+
+    monkeypatch.setattr(internal.api_settings, "embedding_model", "jinaai/jina-embeddings-v2-base-code")
+    monkeypatch.setattr(internal, "_get_query_embedding_client", lambda: FakeEmbeddingClient())
+
+    vector = await internal._embed_search_query("HTTP redirects")
+
+    assert vector == [0.1, 0.2, 0.3]
+
+
+async def test_search_chunks_passes_query_vector_to_dense_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = uuid.uuid4()
+    row = _chunk_row("src/requests/sessions.py", "SessionRedirectMixin", 109, repo_id=repo_id)
+    query_vector = [0.1, 0.2, 0.3]
+
+    async def fake_embed(query: str) -> list[float]:
+        assert query == "HTTP redirects"
+        return query_vector
+
+    async def fake_sparse(
+        _: object, passed_repo_id: uuid.UUID, query: str, terms: list[str], *, limit: int
+    ) -> list[internal.SearchCandidate]:
+        return []
+
+    async def fake_dense(
+        _: object, passed_repo_id: uuid.UUID, passed_vector: list[float] | None, *, limit: int
+    ) -> list[internal.SearchCandidate]:
+        assert passed_repo_id == repo_id
+        assert passed_vector == query_vector
+        return [internal.SearchCandidate(row=row, dense_score=0.88)]
+
+    monkeypatch.setattr(internal, "_embed_search_query", fake_embed)
+    monkeypatch.setattr(internal, "_search_sparse_candidates", fake_sparse)
+    monkeypatch.setattr(internal, "_search_dense_candidates", fake_dense)
+
+    chunks = await internal._search_chunks(object(), repo_id, "HTTP redirects", 1)
+
+    assert len(chunks) == 1
+    assert chunks[0].symbol_name == "SessionRedirectMixin"
+    assert chunks[0].score_components.dense == 0.88
+    assert chunks[0].score_components.sparse == 0.0
 
 
 def test_select_symbol_matches_prefers_exact_qualified_name() -> None:
