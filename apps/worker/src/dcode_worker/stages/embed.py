@@ -3,14 +3,12 @@
 Implements DESIGN.md §2.1 'Embed' stage and D-2.1.3 (cache key
 `embed:{model_id}:{sha256(text)}`, TTL forever).
 
-The embedding model is Open Decision OD-2 (see PLAN.md §9). We expose an
-EmbeddingClient Protocol here so M2 can plug in jina-code / bge-code /
-voyage-code without touching this module.
+The embedding model is Open Decision OD-2 (see PLAN.md §9). Client
+implementations live in ``dcode_shared.embedding``.
 """
 
 import json
 import logging
-from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from typing import cast
@@ -19,6 +17,10 @@ from uuid import UUID
 from dcode_shared.cache import embedding_cache_key
 from dcode_shared.db.models import Chunk as DBChunk
 from dcode_shared.db.session import SessionLocal
+from dcode_shared.embedding import (
+    EmbeddingClient,
+    create_embedding_client,
+)
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from sqlalchemy import delete
@@ -33,28 +35,6 @@ logger = logging.getLogger("dcode.worker.stages.embed")
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
-class EmbeddingClient(ABC):
-    """Abstract client for the configured embedding model (OD-2)."""
-
-    @abstractmethod
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Return one vector per input text. Caller-driven batching."""
-
-
-class StubEmbeddingClient(EmbeddingClient):
-    """Skeleton placeholder — returns zero vectors of the configured dim.
-
-    Lets the pipeline shape be exercised end-to-end without a real model.
-    Replaced at M2 once OD-2 is resolved.
-    """
-
-    def __init__(self, dim: int) -> None:
-        self.dim = dim
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [[0.0] * self.dim for _ in texts]
-
-
 async def run(
     ctx: PipelineContext,
     *,
@@ -67,7 +47,13 @@ async def run(
     """Embed chunks, cache vectors, and persist chunk rows to Postgres."""
     dim = embedding_dim or worker_settings.embedding_dim
     model = model_id or worker_settings.embedding_model
-    client = embedding_client or StubEmbeddingClient(dim=dim)
+    client = embedding_client or create_embedding_client(
+        model=model,
+        dim=dim,
+        endpoint=worker_settings.embedding_endpoint,
+        batch_size=worker_settings.embedding_batch_size,
+        max_retries=worker_settings.embedding_max_retries,
+    )
 
     owns_redis = redis_client is None
     redis = redis_client or Redis.from_url(worker_settings.redis_url, decode_responses=True)

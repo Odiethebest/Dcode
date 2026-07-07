@@ -1,0 +1,27 @@
+[project]
+name = "dcode-embedding"
+version = "0.0.0"
+description = "Dcode embedding sidecar — self-hosted code embedding model (OD-2)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "sentence-transformers>=3.0.0,<5.0",
+    "transformers>=4.40.0,<5.0",
+    "torch>=2.0.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dcode_embedding"]

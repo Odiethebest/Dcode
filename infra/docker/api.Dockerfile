@@ -15,6 +15,7 @@ COPY apps/api ./apps/api
 COPY apps/worker ./apps/worker
 COPY apps/agent ./apps/agent
 COPY apps/eval ./apps/eval
+COPY apps/embedding ./apps/embedding
 COPY infra/migrations ./infra/migrations
 
 RUN uv sync --no-dev
