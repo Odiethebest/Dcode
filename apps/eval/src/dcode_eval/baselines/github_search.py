@@ -50,7 +50,7 @@ def _query_to_keywords(query: str, max_words: int = 6) -> str:
     symbols = re.findall(r"`([^`]+)`", query)
     words = re.sub(r"[^\w\s]", " ", query).split()
     stopwords = {"what", "where", "how", "does", "is", "the", "a", "an", "in", "to",
-                 "of", "for", "and", "or", "do", "does", "from", "with", "this"}
+                 "of", "for", "and", "or", "do", "from", "with", "this"}
     keywords = [w for w in words if w.lower() not in stopwords]
     combined = symbols + [w for w in keywords if w not in symbols]
     return " ".join(combined[:max_words])
