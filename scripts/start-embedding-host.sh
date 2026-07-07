@@ -9,6 +9,7 @@ export PATH="${HOME}/.local/bin:${PATH}"
 docker compose stop embedding 2>/dev/null || true
 
 export EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME:-jinaai/jina-embeddings-v2-base-code}"
+export EMBEDDING_MAX_SEQ_LENGTH="${EMBEDDING_MAX_SEQ_LENGTH:-1024}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export PYTORCH_ENABLE_MPS_FALLBACK=0

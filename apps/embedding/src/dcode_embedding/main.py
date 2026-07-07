@@ -38,7 +38,17 @@ async def lifespan(_app: FastAPI):
     )
     print(f"Loading embedding model: {_model_name} on CPU ...", flush=True)
     _model = SentenceTransformer(_model_name, trust_remote_code=True, device="cpu")
-    print("Embedding model ready.", flush=True)
+    # Cap sequence length so a single oversized code chunk cannot spike CPU
+    # memory into an OOM kill on constrained hosts. Jina v2 defaults to 8192
+    # tokens; that quadratic-ish attention footprint is what killed the
+    # sidecar mid-run. 0 disables the cap.
+    max_seq_length = int(os.environ.get("EMBEDDING_MAX_SEQ_LENGTH", "1024"))
+    if max_seq_length > 0:
+        _model.max_seq_length = max_seq_length
+    print(
+        f"Embedding model ready. max_seq_length={_model.max_seq_length}",
+        flush=True,
+    )
     yield
     _model = None
 
