@@ -18,11 +18,11 @@ jobs:
       - name: Install uv
         run: pip install uv
       - name: Sync workspace
-        run: uv sync
+        run: uv sync --all-packages --group dev
       - name: Lint (ruff)
         run: uv run ruff check apps packages
       - name: Typecheck (mypy --strict)
-        run: uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval
+        run: MYPYPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval
       - name: Test (pytest)
         run: uv run pytest
       - name: Eval smoke
