@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import QueryPage from '@/pages/QueryPage';
@@ -8,6 +10,23 @@ vi.mock('@/api/client', () => ({
 }));
 
 import { streamQuery } from '@/api/client';
+
+function renderPage(initialEntries = ['/query']) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <QueryClientProvider client={queryClient}>
+        <QueryPage />
+      </QueryClientProvider>
+    </MemoryRouter>
+  );
+}
 
 describe('QueryPage', () => {
   beforeEach(() => {
@@ -59,7 +78,7 @@ describe('QueryPage', () => {
       });
     });
 
-    render(<QueryPage />);
+    renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: /run query/i }));
 

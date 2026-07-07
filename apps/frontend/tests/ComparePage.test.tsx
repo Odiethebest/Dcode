@@ -22,6 +22,6 @@ describe('ComparePage', () => {
       )).length
     ).toBeGreaterThan(0);
     expect(screen.getAllByText('suspect').length).toBeGreaterThan(0);
-    expect(screen.getByText(/grounded 0.60/i)).toBeInTheDocument();
+    expect(screen.getByText(/grounded 0\.88/i)).toBeInTheDocument();
   });
 });
