@@ -8,7 +8,9 @@ help:
 	@echo "Targets:"
 	@echo "  up         Bring up all services via docker compose"
 	@echo "  up-embed   Bring up stack (Docker embedding — needs ~6GB Docker RAM)"
+	@echo "  up-rerank  Bring up stack with Docker reranker sidecar"
 	@echo "  embedding-host  Run embedding on Mac host (recommended for indexing)"
+	@echo "  reranker-host   Run reranker on Mac host (recommended for search)"
 	@echo "  down       Tear down services (keeps volumes)"
 	@echo "  down-all   Tear down services AND volumes (destructive)"
 	@echo "  logs       Tail logs for all services"
@@ -37,8 +39,14 @@ up:
 up-embed:
 	docker compose --profile embedding up -d --build
 
+up-rerank:
+	docker compose --profile reranker up -d --build
+
 embedding-host:
 	bash scripts/start-embedding-host.sh
+
+reranker-host:
+	bash scripts/start-reranker-host.sh
 
 down:
 	docker compose down

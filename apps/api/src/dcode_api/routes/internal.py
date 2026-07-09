@@ -9,6 +9,7 @@ from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Edge, Repo, Symbol
 from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
+from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import or_, select
@@ -125,7 +126,7 @@ async def _search_chunks(db: AsyncSession, repo_id: UUID, query: str, k: int) ->
         limit=max(k, _SEARCH_CANDIDATE_LIMIT),
     )
     fused = _fuse_search_candidates(sparse, dense)
-    reranked = _identity_rerank(fused)
+    reranked = await _rerank_candidates(query_text, fused)
     return [_chunk_from_candidate(candidate) for candidate in reranked[:k]]
 
 
@@ -209,6 +210,74 @@ async def _embed_search_query(query: str) -> list[float] | None:
     if not vectors:
         return None
     return vectors[0]
+
+
+_query_reranker_client: RerankerClient | None = None
+_query_reranker_client_initialized = False
+
+
+def _get_query_reranker_client() -> RerankerClient | None:
+    global _query_reranker_client, _query_reranker_client_initialized
+    if not _query_reranker_client_initialized:
+        _query_reranker_client = create_reranker_client(
+            model=api_settings.reranker_model,
+            endpoint=api_settings.reranker_endpoint,
+            max_retries=api_settings.reranker_max_retries,
+        )
+        _query_reranker_client_initialized = True
+    return _query_reranker_client
+
+
+def _passage_text(candidate: SearchCandidate) -> str:
+    row = candidate.row
+    return f"{row.symbol_name}\n{row.file_path}\n{row.content}"
+
+
+async def _rerank_candidates(
+    query: str,
+    candidates: list[SearchCandidate],
+) -> list[SearchCandidate]:
+    if not candidates:
+        return []
+
+    reranker = _get_query_reranker_client()
+    if reranker is None:
+        return _identity_rerank(candidates)
+
+    pool = sorted(
+        candidates,
+        key=lambda candidate: (
+            candidate.fused_score,
+            candidate.sparse_score,
+            candidate.dense_score,
+            candidate.row.file_path,
+            candidate.row.start_line,
+        ),
+        reverse=True,
+    )[: api_settings.reranker_candidate_limit]
+    scores = await reranker.rerank(query, [_passage_text(candidate) for candidate in pool])
+    reranked = [
+        SearchCandidate(
+            row=candidate.row,
+            sparse_score=candidate.sparse_score,
+            dense_score=candidate.dense_score,
+            fused_score=candidate.fused_score,
+            rerank_score=score,
+        )
+        for candidate, score in zip(pool, scores, strict=True)
+    ]
+    return sorted(
+        reranked,
+        key=lambda candidate: (
+            candidate.rerank_score,
+            candidate.fused_score,
+            candidate.sparse_score,
+            candidate.dense_score,
+            candidate.row.file_path,
+            candidate.row.start_line,
+        ),
+        reverse=True,
+    )
 
 
 def _fuse_search_candidates(

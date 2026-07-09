@@ -12,6 +12,7 @@ members = [
     "apps/agent",
     "apps/eval",
     "apps/embedding",
+    "apps/reranker",
     "packages/shared",
 ]
 
@@ -31,6 +32,7 @@ dcode-worker = { workspace = true }
 dcode-agent = { workspace = true }
 dcode-eval = { workspace = true }
 dcode-embedding = { workspace = true }
+dcode-reranker = { workspace = true }
 
 [tool.ruff]
 target-version = "py311"
@@ -82,6 +84,7 @@ pythonpath = [
     "apps/agent/src",
     "apps/eval/src",
     "apps/embedding/src",
+    "apps/reranker/src",
 ]
 testpaths = ["apps", "packages"]
 asyncio_mode = "auto"

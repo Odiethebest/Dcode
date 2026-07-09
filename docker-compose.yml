@@ -61,6 +61,10 @@ services:
       EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-http://host.docker.internal:8002}
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
       EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
+      RERANKER_MODEL: ${RERANKER_MODEL:-stub}
+      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://host.docker.internal:8003}
+      RERANKER_CANDIDATE_LIMIT: ${RERANKER_CANDIDATE_LIMIT:-50}
+      RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-12}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"
@@ -133,6 +137,27 @@ services:
       retries: 5
       start_period: 120s
 
+  reranker:
+    build:
+      context: .
+      dockerfile: infra/docker/reranker.Dockerfile
+    environment:
+      RERANKER_MODEL_NAME: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      RERANKER_MAX_SEQ_LENGTH: ${RERANKER_MAX_SEQ_LENGTH:-512}
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    ports:
+      - "8003:8003"
+    profiles:
+      - reranker
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8003/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   agent:
     build:
       context: .
@@ -143,7 +168,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       JUDGE_MODEL: ${JUDGE_MODEL:-stub}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
-      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
+      RERANKER_MODEL: ${RERANKER_MODEL:-stub}
+      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://host.docker.internal:8003}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}
