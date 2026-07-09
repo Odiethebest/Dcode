@@ -34,7 +34,10 @@ def override_db(session: FakeSession) -> None:
 
 
 @pytest.fixture(autouse=True)
-def clear_dependency_overrides() -> Any:
+def clear_dependency_overrides(monkeypatch: pytest.MonkeyPatch) -> Any:
+    # Local .env may point at real sidecars; tests must not make network calls.
+    monkeypatch.setattr(internal.api_settings, "embedding_model", "stub")
+    monkeypatch.setattr(internal.api_settings, "reranker_model", "stub")
     app.dependency_overrides.clear()
     internal._query_embedding_client = None
     internal._query_reranker_client = None
