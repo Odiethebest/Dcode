@@ -36,6 +36,13 @@ class ImportRecord:
     line: int
 
 
+@dataclass(frozen=True)
+class CallRecord:
+    source_symbol: str
+    target_symbol: str
+    line: int
+
+
 async def run(
     ctx: PipelineContext,
     *,
@@ -55,11 +62,25 @@ async def run(
         symbol_records.extend(_symbols_for_file(parsed_file, module_name))
         import_records.extend(_imports_for_file(parsed_file, module_name, internal_modules))
 
+    internal_symbols = {record.qualified_name for record in symbol_records}
+    call_records: list[CallRecord] = []
+    for parsed_file in ctx.parsed_files:
+        module_name = module_by_file[parsed_file.file_path]
+        call_records.extend(
+            _calls_for_file(
+                parsed_file,
+                module_name,
+                internal_symbols=internal_symbols,
+                internal_modules=internal_modules,
+            )
+        )
+
     async with session_factory() as db:
         chunks = await _load_chunks(db, repo_id)
         symbols = _build_symbols(repo_id, symbol_records, chunks)
         symbol_by_qname = {symbol.qualified_name: symbol for symbol in symbols}
-        edges = _build_edges(repo_id, import_records, symbol_by_qname)
+        edges = _build_import_edges(repo_id, import_records, symbol_by_qname)
+        edges.extend(_build_call_edges(repo_id, call_records, symbol_by_qname))
 
         await db.execute(delete(Edge).where(Edge.repo_id == repo_id))
         await db.execute(delete(Symbol).where(Symbol.repo_id == repo_id))
@@ -123,6 +144,163 @@ def _symbols_for_file(parsed_file: ParsedPythonFile, module_name: str) -> list[S
             )
 
     return records
+
+
+def _calls_for_file(
+    parsed_file: ParsedPythonFile,
+    module_name: str,
+    *,
+    internal_symbols: set[str],
+    internal_modules: set[str],
+) -> list[CallRecord]:
+    aliases = _import_aliases_for_file(parsed_file, module_name, internal_modules)
+    local_functions = _module_local_function_names(parsed_file)
+    calls: list[CallRecord] = []
+
+    for node in parsed_file.tree.body:
+        if isinstance(node, ast.ClassDef):
+            class_name = node.name
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                    caller = f"{module_name}.{class_name}.{child.name}"
+                    calls.extend(
+                        _calls_in_body(
+                            child,
+                            caller=caller,
+                            module_name=module_name,
+                            class_name=class_name,
+                            local_functions=local_functions,
+                            import_aliases=aliases,
+                            internal_symbols=internal_symbols,
+                        )
+                    )
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            caller = f"{module_name}.{node.name}"
+            calls.extend(
+                _calls_in_body(
+                    node,
+                    caller=caller,
+                    module_name=module_name,
+                    class_name=None,
+                    local_functions=local_functions,
+                    import_aliases=aliases,
+                    internal_symbols=internal_symbols,
+                )
+            )
+
+    return _unique_calls(calls)
+
+
+def _calls_in_body(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    caller: str,
+    module_name: str,
+    class_name: str | None,
+    local_functions: set[str],
+    import_aliases: dict[str, str],
+    internal_symbols: set[str],
+) -> list[CallRecord]:
+    calls: list[CallRecord] = []
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        target = _resolve_call_target(
+            child.func,
+            module_name=module_name,
+            class_name=class_name,
+            local_functions=local_functions,
+            import_aliases=import_aliases,
+            internal_symbols=internal_symbols,
+        )
+        if target is None:
+            continue
+        calls.append(CallRecord(source_symbol=caller, target_symbol=target, line=child.lineno))
+    return calls
+
+
+def _resolve_call_target(
+    func: ast.expr,
+    *,
+    module_name: str,
+    class_name: str | None,
+    local_functions: set[str],
+    import_aliases: dict[str, str],
+    internal_symbols: set[str],
+) -> str | None:
+    if isinstance(func, ast.Name):
+        if func.id in import_aliases:
+            candidate = import_aliases[func.id]
+            return candidate if candidate in internal_symbols else None
+        if func.id in local_functions:
+            candidate = f"{module_name}.{func.id}"
+            return candidate if candidate in internal_symbols else None
+        return None
+
+    if not isinstance(func, ast.Attribute):
+        return None
+
+    if isinstance(func.value, ast.Name) and func.value.id == "self" and class_name is not None:
+        candidate = f"{module_name}.{class_name}.{func.attr}"
+        return candidate if candidate in internal_symbols else None
+
+    prefix: str | None = None
+    if isinstance(func.value, ast.Name):
+        if func.value.id in import_aliases:
+            prefix = import_aliases[func.value.id]
+        elif func.value.id in local_functions:
+            prefix = f"{module_name}.{func.value.id}"
+    elif isinstance(func.value, ast.Attribute) and isinstance(func.value.value, ast.Name):
+        base_name = func.value.value.id
+        if base_name in import_aliases:
+            prefix = f"{import_aliases[base_name]}.{func.value.attr}"
+
+    if prefix is None:
+        return None
+
+    candidate = f"{prefix}.{func.attr}"
+    return candidate if candidate in internal_symbols else None
+
+
+def _import_aliases_for_file(
+    parsed_file: ParsedPythonFile,
+    module_name: str,
+    internal_modules: set[str],
+) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for node in parsed_file.tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                target_module = _best_internal_module(alias.name, internal_modules)
+                if target_module is None:
+                    continue
+                local_name = alias.asname or alias.name.split(".")[0]
+                aliases[local_name] = target_module
+            continue
+
+        if not isinstance(node, ast.ImportFrom):
+            continue
+
+        base_module = _resolve_import_from_base(module_name, node)
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            local_name = alias.asname or alias.name
+            if base_module and _best_internal_module(base_module, internal_modules):
+                aliases[local_name] = f"{base_module}.{alias.name}"
+                continue
+            target_module = _best_internal_module(alias.name, internal_modules)
+            if target_module is not None:
+                aliases[local_name] = target_module
+    return aliases
+
+
+def _module_local_function_names(parsed_file: ParsedPythonFile) -> set[str]:
+    names: set[str] = set()
+    for node in parsed_file.tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            names.add(node.name)
+    return names
 
 
 def _imports_for_file(
@@ -244,7 +422,7 @@ def _build_symbols(
     return symbols
 
 
-def _build_edges(
+def _build_import_edges(
     repo_id: UUID,
     imports: list[ImportRecord],
     symbol_by_qname: dict[str, Symbol],
@@ -268,6 +446,35 @@ def _build_edges(
     return edges
 
 
+def _build_call_edges(
+    repo_id: UUID,
+    calls: list[CallRecord],
+    symbol_by_qname: dict[str, Symbol],
+) -> list[Edge]:
+    edges: list[Edge] = []
+    seen: set[tuple[UUID, UUID, int]] = set()
+    for record in calls:
+        source = symbol_by_qname.get(record.source_symbol)
+        target = symbol_by_qname.get(record.target_symbol)
+        if source is None or target is None or source.id == target.id:
+            continue
+        key = (source.id, target.id, record.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(
+            Edge(
+                id=uuid4(),
+                repo_id=repo_id,
+                source_id=source.id,
+                target_id=target.id,
+                edge_type=EdgeType.calls.value,
+                source_line=record.line,
+            )
+        )
+    return edges
+
+
 def _module_name(file_path: str) -> str:
     path = PurePosixPath(file_path)
     without_suffix = path.with_suffix("")
@@ -282,6 +489,18 @@ def _unique_imports(imports: list[ImportRecord]) -> list[ImportRecord]:
     unique: list[ImportRecord] = []
     for record in imports:
         key = (record.source_module, record.target_module, record.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
+
+
+def _unique_calls(calls: list[CallRecord]) -> list[CallRecord]:
+    seen: set[tuple[str, str, int]] = set()
+    unique: list[CallRecord] = []
+    for record in calls:
+        key = (record.source_symbol, record.target_symbol, record.line)
         if key in seen:
             continue
         seen.add(key)
