@@ -1,5 +1,6 @@
 """AST graph stage tests."""
 
+import ast
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from types import TracebackType
@@ -69,12 +70,17 @@ def top() -> str:
     assert symbols["pkg.alpha.top"].chunk_id is not None
 
     edges = session_factory.session.edges
-    assert len(edges) == 1
-    assert edges[0].repo_id == repo_id
-    assert edges[0].edge_type == EdgeType.imports.value
-    assert edges[0].source_id == symbols["pkg.alpha"].id
-    assert edges[0].target_id == symbols["pkg.beta"].id
-    assert edges[0].source_line == 1
+    assert len(edges) == 2
+    import_edges = [edge for edge in edges if edge.edge_type == EdgeType.imports.value]
+    call_edges = [edge for edge in edges if edge.edge_type == EdgeType.calls.value]
+    assert len(import_edges) == 1
+    assert len(call_edges) == 1
+    assert import_edges[0].repo_id == repo_id
+    assert import_edges[0].source_id == symbols["pkg.alpha"].id
+    assert import_edges[0].target_id == symbols["pkg.beta"].id
+    assert import_edges[0].source_line == 1
+    assert call_edges[0].source_id == symbols["pkg.alpha.top"].id
+    assert call_edges[0].target_id == symbols["pkg.beta.helper"].id
 
     assert result.symbols == session_factory.session.symbols
     assert result.edges == session_factory.session.edges
@@ -94,6 +100,33 @@ def test_graph_symbol_building_deduplicates_qualified_names() -> None:
     assert len(symbols) == 1
     assert symbols[0].qualified_name == "pkg.mod.fn"
     assert symbols[0].line == 1
+
+
+def test_resolve_call_target_handles_imported_attribute_call() -> None:
+    internal_symbols = {"pkg.alpha.top", "pkg.beta.helper"}
+    aliases = {"beta": "pkg.beta"}
+    target = graph._resolve_call_target(
+        ast.Attribute(value=ast.Name(id="beta", ctx=ast.Load()), attr="helper", ctx=ast.Load()),
+        module_name="pkg.alpha",
+        class_name=None,
+        local_functions=set(),
+        import_aliases=aliases,
+        internal_symbols=internal_symbols,
+    )
+    assert target == "pkg.beta.helper"
+
+
+def test_resolve_call_target_handles_self_method_call() -> None:
+    internal_symbols = {"pkg.alpha.Alpha.method", "pkg.alpha.Alpha.other"}
+    target = graph._resolve_call_target(
+        ast.Attribute(value=ast.Name(id="self", ctx=ast.Load()), attr="other", ctx=ast.Load()),
+        module_name="pkg.alpha",
+        class_name="Alpha",
+        local_functions=set(),
+        import_aliases={},
+        internal_symbols=internal_symbols,
+    )
+    assert target == "pkg.alpha.Alpha.other"
 
 
 def _db_chunk(repo_id: UUID, item: CodeChunk) -> DBChunk:
