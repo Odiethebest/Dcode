@@ -1,6 +1,6 @@
 """Shared application settings — read from env, never hardcoded.
 
-Open Decision placeholders (OD-2 EMBEDDING_*, OD-3 RERANKER_ENDPOINT, OD-4
+Open Decision placeholders (OD-2 EMBEDDING_*, OD-3 RERANKER_*, OD-4
 JUDGE_MODEL) live here so every service reads them uniformly.
 """
 
@@ -41,7 +41,10 @@ class SharedSettings(BaseSettings):
     embedding_endpoint: str = ""
     embedding_batch_size: int = 4
     embedding_max_retries: int = 12
-    reranker_endpoint: str = "http://localhost:9999"
+    reranker_model: str = "stub"
+    reranker_endpoint: str = ""
+    reranker_candidate_limit: int = 50
+    reranker_max_retries: int = 12
     judge_model: str = "stub"
 
 

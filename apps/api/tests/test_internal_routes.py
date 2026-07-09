@@ -37,9 +37,13 @@ def override_db(session: FakeSession) -> None:
 def clear_dependency_overrides() -> Any:
     app.dependency_overrides.clear()
     internal._query_embedding_client = None
+    internal._query_reranker_client = None
+    internal._query_reranker_client_initialized = False
     yield
     app.dependency_overrides.clear()
     internal._query_embedding_client = None
+    internal._query_reranker_client = None
+    internal._query_reranker_client_initialized = False
 
 
 def _internal_headers() -> dict[str, str]:
@@ -197,6 +201,49 @@ def test_hybrid_search_fuses_sparse_and_dense_scores() -> None:
     assert fused[0].rerank_score == fused[0].fused_score
     assert fused[1].sparse_score == 0.0
     assert fused[1].dense_score == 0.91
+
+
+async def test_rerank_candidates_uses_identity_rerank_when_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(internal.api_settings, "reranker_model", "stub")
+    internal._query_reranker_client = None
+    internal._query_reranker_client_initialized = False
+
+    row = _chunk_row("auth.py", "HTTPBasicAuth", 85)
+    candidates = [internal.SearchCandidate(row=row, sparse_score=42.0, fused_score=0.5)]
+
+    reranked = await internal._rerank_candidates("auth", candidates)
+
+    assert len(reranked) == 1
+    assert reranked[0].rerank_score == 0.5
+
+
+async def test_rerank_candidates_applies_cross_encoder_scores(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            assert query == "HTTP redirects"
+            assert len(passages) == 2
+            # Pool is fused-score order: low first, high second.
+            return [0.42, 0.91]
+
+    high = _chunk_row("sessions.py", "SessionRedirectMixin", 109)
+    low = _chunk_row("auth.py", "HTTPBasicAuth", 85)
+    candidates = [
+        internal.SearchCandidate(row=low, sparse_score=100.0, fused_score=0.9),
+        internal.SearchCandidate(row=high, sparse_score=10.0, fused_score=0.1),
+    ]
+
+    monkeypatch.setattr(internal.api_settings, "reranker_model", "BAAI/bge-reranker-v2-m3")
+    monkeypatch.setattr(internal, "_get_query_reranker_client", lambda: FakeReranker())
+
+    reranked = await internal._rerank_candidates("HTTP redirects", candidates)
+
+    assert [candidate.row.id for candidate in reranked] == [high.id, low.id]
+    assert reranked[0].rerank_score == 0.91
+    assert reranked[1].rerank_score == 0.42
 
 
 async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
