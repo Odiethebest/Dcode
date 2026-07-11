@@ -180,17 +180,17 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 | 周次 | 里程碑 | Exit Criteria |
 |---|---|---|
-| pre-W1 | **M0 — 骨架搭建** ✅ 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Structure.md](Structure.md) / [TODO.md](TODO.md) |
-| W1 | **M1 — 数据通路打通** ✅ 2026-06-15 | `requests` 可从 API 提交到 worker 完成 `repos / chunks / symbols / edges` 落库；§4.1 冒烟通过 |
-| W2 | **M2 — 端到端可问答** ✅ 2026-06-15 | retrieval API、LangGraph SSE、8 个工具与 groundedness 已接通；可对真实 ready repo 返回带验证引用的答案 |
-| W3 | **M3 — 评测可复现** ✅ 2026-06-15 | 16 题 `requests` 题集与 `B2/B3/B4` harness 产出稳定结果；UI `Index / Query / Compare` 可用 |
-| W4 | **M4 — 上线与交付** 部分完成 2026-06-16 | 生产 compose、README/DESIGN/PLAN/TODO、最终报告、H1 判定已完成；外部域名 `dcode.odieyang.com` 仍未解析，因此公网 demo 尚未闭环 |
+| pre-W1 | **M0 — 骨架搭建** Completed 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Structure.md](Structure.md) / [TODO.md](TODO.md) |
+| W1 | **M1 — 数据通路打通** Completed 2026-06-15 | `requests` 可从 API 提交到 worker 完成 `repos / chunks / symbols / edges` 落库；§4.1 冒烟通过 |
+| W2 | **M2 — 端到端可问答** Completed 2026-06-15 | retrieval API、LangGraph SSE、8 个工具与 groundedness 已接通；可对真实 ready repo 返回带验证引用的答案 |
+| W3 | **M3 — 评测可复现** Completed 2026-06-15 | 16 题 `requests` 题集与 `B2/B3/B4` harness 产出稳定结果；UI `Index / Query / Compare` 可用 |
+| W4 | **M4 — 上线与交付** 部分完成 2026-06-16 | 生产 compose、README/DESIGN/PLAN/TODO、最终报告、H1 判定已完成；截至 2026-07-11，外部域名 `dcode.odieyang.com` 仍未解析，因此公网 demo 尚未闭环 |
 
 **每周交付原则**：MVP 优先，每周一个能跑通的纵向切片；不追求模块"完美"再集成。
 
 ### 7.2 当前 Demo 实现说明
 
-当前 demo 是一个**本地可跑通的结构感知代码问答纵向切片**，用于展示系统形态与评测流程，而不是宣称所有模型能力都已接入生产实现。
+当前 demo 是一个**本地可跑通的结构感知代码问答纵向切片**，用于展示系统形态与评测流程。默认配置仍以 stub 模型保持低成本可运行；真实 embedding/reranker 路径已经有 sidecar 和 HTTP client，但需要显式配置并重新索引。
 
 **可演示链路**：
 
@@ -214,11 +214,11 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 **模型接入状态**：
 
-- `EMBEDDING_MODEL=stub` 仍是默认值；chunk embedding 写入路径存在，但真实代码 embedding 客户端尚未接通；
-- query-side dense retrieval 已预留入口，但在 stub 模式下退化为 sparse-only；
-- `RERANKER_ENDPOINT` 是自托管 reranker 的占位配置，当前 rerank 仍是 identity；
+- `EMBEDDING_MODEL=stub` 仍是默认值；chunk embedding 和 query-side embedding 已可通过 HTTP sidecar 调用 `jinaai/jina-embeddings-v2-base-code`；
+- 在 stub 模式下，query-side dense retrieval 退化为 sparse-only；真实模式需要 `EMBEDDING_DIM=768` 并重新索引；
+- `RERANKER_MODEL=stub` 仍是默认值；自托管 `BAAI/bge-reranker-v2-m3` reranker sidecar 和 API client 已接入，stub 模式下仍为 identity rerank；
 - `JUDGE_MODEL=stub` 表示 LLM-as-Judge 还只是接口占位，不会真正调用大模型评分或做 pairwise 判断；
-- 因此当前 H1 结论只基于已落地的 retrieval 指标与 groundedness，Judge / pairwise 不参与当前判定。
+- 因此当前 H1 结论只基于已记录的 retrieval 指标与 groundedness，Judge / pairwise 不参与当前判定；该结论尚未用 real embedding/reranker 路径重新评测。
 
 ### 7.3 准入与准出
 
@@ -252,10 +252,10 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 | 编号 | 事项 | 决策截止 | 负责人 |
 |---|---|---|---|
 | OD-1 | 主目标仓库（requests / flask / fastapi 中选一） | 已选 `requests` | Odie |
-| OD-2 | Embedding 模型最终选型 | `jinaai/jina-embeddings-v2-base-code`（尚未接通实现） | Yuxin Liang |
-| OD-3 | Reranker：自托管 vs 商业 API | `BAAI/bge-reranker-v2-m3`（尚未接通实现） | Yuxin Liang |
+| OD-2 | Embedding 模型最终选型 | `jinaai/jina-embeddings-v2-base-code`（HTTP sidecar/client 已实现；默认仍为 stub） | Yuxin Liang |
+| OD-3 | Reranker：自托管 vs 商业 API | `BAAI/bge-reranker-v2-m3`（HTTP sidecar/client 已实现；默认仍为 identity rerank） | Yuxin Liang |
 | OD-4 | Judge 模型选型与稳定性验证结论 | `gpt-5.4-mini`（Judge 尚未接通实现） | Yufan Li |
-| OD-5 | 项目域名与代码仓库可用性确认 | 目标域名保留 `dcode.odieyang.com`；2026-06-16 DNS 未解析 | Odie |
+| OD-5 | 项目域名与代码仓库可用性确认 | 目标域名保留 `dcode.odieyang.com`；2026-07-11 DNS 未解析 | Odie |
 
 ---
 

@@ -1,6 +1,6 @@
 # Dcode Current Repository Structure
 
-> 当前仓库结构说明。本文面向接手开发的组员，描述 **2026-06-17** 的实际代码状态，不再保留 M0 skeleton 标注。
+> 当前仓库结构说明。本文面向接手开发的组员，描述 **2026-07-11** 的实际代码状态，不再保留 M0 skeleton 标注。
 >
 > 权威关系：
 > - [DESIGN.md](DESIGN.md)：目标架构、接口契约、数据模型
@@ -19,6 +19,8 @@ Dcode/
 ├── apps/worker/       RabbitMQ consumer and repository indexing pipeline
 ├── apps/agent/        LangGraph agent service with tools and groundedness checks
 ├── apps/eval/         offline evaluation harness and baseline runners
+├── apps/embedding/    optional self-hosted embedding sidecar
+├── apps/reranker/     optional self-hosted cross-encoder reranker sidecar
 ├── apps/frontend/     React/Vite UI for indexing, querying, and comparison
 ├── infra/             Dockerfiles, Alembic migrations, Postgres init
 ├── scripts/           local helper scripts
@@ -57,13 +59,15 @@ Local `.env` is intentionally ignored and should not be committed.
 | `src/dcode_shared/schemas.py` | Pydantic API schemas and enums used by API, agent, worker, eval, and frontend mirrors |
 | `src/dcode_shared/events.py` | typed SSE event payloads and `sse_encode` wire helper |
 | `src/dcode_shared/cache.py` | canonical Redis key builders for embeddings, tool cache, query cache, and job state |
-| `src/dcode_shared/settings.py` | shared pydantic-settings configuration, including embedding/reranker/judge placeholders |
+| `src/dcode_shared/settings.py` | shared pydantic-settings configuration for embedding/reranker/judge/runtime knobs |
+| `src/dcode_shared/embedding.py` | stub and HTTP embedding clients shared by worker and API |
+| `src/dcode_shared/reranker.py` | identity/stub-compatible reranker boundary plus HTTP reranker client |
 | `src/dcode_shared/internal.py` | internal API key dependency helper |
 | `src/dcode_shared/db/models.py` | SQLAlchemy models for `repos`, `chunks`, `symbols`, `edges` |
 | `src/dcode_shared/db/session.py` | async engine/session factory |
 | `tests/` | schema roundtrip, metadata, cache key, and config hardening tests |
 
-Current boundary: `EMBEDDING_MODEL=stub` remains the default. Real embedding and reranker integration should preserve these shared settings as the contract.
+Current boundary: `EMBEDDING_MODEL=stub` and `RERANKER_MODEL=stub` remain the defaults. Real embedding and reranker clients are implemented, but enabling them requires sidecar endpoints, a matching `EMBEDDING_DIM`, and re-indexing.
 
 ---
 
@@ -85,7 +89,7 @@ Important current behavior:
 - Repo submission rejects localhost/private IP targets.
 - Repo row is committed before RabbitMQ publish, avoiding the worker race where a job could be consumed before the DB row exists.
 - If RabbitMQ publish fails after commit, the repo is marked failed instead of remaining queued forever.
-- Query-side dense retrieval is wired as a future path, but in stub embedding mode the route degrades to sparse retrieval plus identity rerank.
+- Query-side dense retrieval and reranker calls are wired through shared HTTP clients, but in stub mode the route degrades to sparse retrieval plus identity rerank.
 
 ---
 
@@ -102,16 +106,16 @@ Important current behavior:
 | `src/dcode_worker/stages/clone.py` | shallow git clone |
 | `src/dcode_worker/stages/parse.py` | Python file discovery and stdlib `ast` parsing |
 | `src/dcode_worker/stages/chunk.py` | AST-boundary chunks for module docs, functions, classes, and methods |
-| `src/dcode_worker/stages/embed.py` | embedding cache and persistence path; currently defaults to `StubEmbeddingClient` |
-| `src/dcode_worker/stages/graph.py` | symbol table and module import edges |
+| `src/dcode_worker/stages/embed.py` | embedding cache and persistence path; defaults to `StubEmbeddingClient`, supports HTTP sidecar client |
+| `src/dcode_worker/stages/graph.py` | symbol table, module import edges, and best-effort intra-repo call edges |
 | `tests/` | clone/parse/chunk, embedding, graph, and pipeline tests |
 
 Current boundaries:
 
 - Parsing uses Python `ast`, not tree-sitter.
-- Graph v1 persists modules, functions, classes, methods, and internal module import edges.
-- Calls, richer references, and inheritance are still high-priority follow-up work.
-- Real code embedding is not connected yet.
+- Graph v1 persists modules, functions, classes, methods, internal module import edges, and best-effort intra-repo call edges.
+- Richer references, inheritance, dynamic calls, and complex attribute-chain resolution are still follow-up work.
+- Real code embedding is connected through a sidecar path, but the default environment still uses stub vectors.
 
 ---
 
@@ -169,17 +173,36 @@ Current baseline status:
 
 | Baseline | Status |
 |---|---|
-| B0 GitHub Search | interface exists; live GitHub Search integration not implemented |
+| B0 GitHub Search | implemented through GitHub code search API; practical use depends on network access and rate limits |
 | B1 BM25 | available as sparse retrieval reference path |
-| B2 Vanilla RAG | implemented for current harness, but dense path collapses while embeddings are stubbed |
-| B3 Hybrid RAG | implemented for current harness, but dense/rerank gains are not present in stub mode |
+| B2 Vanilla RAG | implemented for current harness, but the current path still shares `/internal/search` rather than a fully isolated dense-only retriever |
+| B3 Hybrid RAG | implemented for current harness; dense/rerank gains appear only when real embedding/reranker sidecars are enabled and the repo is re-indexed |
 | B4 Full System | calls the agent/internal system path |
 
-Current results are committed under `results/eval-suite/`. The recorded H1 conclusion is unsupported because B4 does not beat B2/B3 on L2/L3 under the current stub embedding and identity rerank constraints.
+Current results are committed under `results/eval-suite/`. The recorded H1 conclusion is unsupported because B4 does not beat B2/B3 on L2/L3 in that snapshot. Treat the snapshot as a committed baseline; it has not yet been regenerated with the real embedding/reranker sidecar path.
 
 ---
 
-## 8. Frontend
+## 8. Model Sidecars
+
+| Path | Current role |
+|---|---|
+| `apps/embedding/src/dcode_embedding/main.py` | FastAPI sidecar exposing `POST /embed` over a SentenceTransformers embedding model |
+| `apps/reranker/src/dcode_reranker/main.py` | FastAPI sidecar exposing `POST /rerank` over a SentenceTransformers CrossEncoder |
+| `scripts/start-embedding-host.sh` | host-side embedding runner, intended for Mac/local development to avoid Docker memory pressure |
+| `scripts/start-reranker-host.sh` | host-side reranker runner, intended for Mac/local development |
+| `infra/docker/embedding.Dockerfile` | Docker image for the embedding sidecar |
+| `infra/docker/reranker.Dockerfile` | Docker image for the reranker sidecar |
+
+Current boundaries:
+
+- The development compose file exposes optional `embedding` and `reranker` profiles.
+- The production compose file does not yet include a complete production model-serving path.
+- `jinaai/jina-embeddings-v2-base-code` uses 768-dimensional vectors. A database initialized with `EMBEDDING_DIM=1024` must be rebuilt before indexing with that model.
+
+---
+
+## 9. Frontend
 
 `apps/frontend` is a React 18 + TypeScript + Vite SPA.
 
@@ -203,7 +226,7 @@ Current boundaries:
 
 ---
 
-## 9. Infra
+## 10. Infra
 
 | Path | Current role |
 |---|---|
@@ -224,7 +247,7 @@ Deployment status:
 
 ---
 
-## 10. Cross-Cutting Contracts
+## 11. Cross-Cutting Contracts
 
 ### Repo Isolation
 
@@ -261,20 +284,20 @@ The project keeps model/provider decisions behind environment variables and abst
 
 | Area | Current setting | Current implementation boundary |
 |---|---|---|
-| Embeddings | `EMBEDDING_MODEL`, `EMBEDDING_DIM` | defaults to stub vectors |
-| Reranker | `RERANKER_ENDPOINT` | identity rerank |
+| Embeddings | `EMBEDDING_MODEL`, `EMBEDDING_DIM`, `EMBEDDING_ENDPOINT` | defaults to stub vectors; HTTP sidecar path is implemented |
+| Reranker | `RERANKER_MODEL`, `RERANKER_ENDPOINT` | defaults to identity rerank; HTTP sidecar path is implemented |
 | Judge | `JUDGE_MODEL` | stub judge only |
 | Internal auth | `INTERNAL_API_KEY` | required for internal routes |
 
 ---
 
-## 11. Recommended Next Owners
+## 12. Recommended Next Owners
 
 | Area | Best owner | Reason |
 |---|---|---|
-| Real embedding and query-side dense retrieval | Yuxin | retrieval quality and infra boundary |
-| Real reranker | Yuxin | same retrieval API contract |
-| Calls/references/inheritance graph expansion | Yuxin with Odie review | shared worker/retrieval contract |
+| Real-model re-index and dense retrieval evaluation | Yuxin | retrieval quality and infra boundary |
+| Real reranker evaluation | Yuxin | same retrieval API contract |
+| Richer references/inheritance graph expansion | Yuxin with Odie review | shared worker/retrieval contract |
 | Question set expansion and Judge/pairwise | Yufan | eval ownership |
 | Compare UI result refresh | Yufan | frontend/eval boundary |
 | Integration, agent boundary, final documentation | Odie | cross-service consistency |

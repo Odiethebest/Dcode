@@ -9,10 +9,11 @@ Dcode is a structure-aware code understanding stack built around four runtime su
 - SSE-based agent answers with grounded citations
 - an evaluation harness and comparison UI
 
-As of **2026-06-16**, the repository delivers a complete local vertical slice:
+As of **2026-07-11**, the repository delivers a complete local vertical slice:
 
 - a real indexing pipeline for Python repositories
 - retrieval and graph lookup endpoints
+- optional self-hosted embedding and reranker sidecars
 - a working agent loop with 8 tools
 - a frontend for indexing, querying, and baseline comparison
 - a production-shaped Docker Compose package with static frontend serving
@@ -25,11 +26,13 @@ As of **2026-06-16**, the repository delivers a complete local vertical slice:
 - Python `ast` parse
 - AST-boundary chunking for module docstrings, functions, classes, and methods
 - chunk persistence with embedding cache
-- graph rebuild with symbol definitions and module-level import edges
+- optional real code embedding through the embedding sidecar
+- graph rebuild with symbol definitions, module-level import edges, and best-effort intra-repo call edges
 
 ### Retrieval and Agent
 
 - `/internal/search`
+- sparse retrieval, dense retrieval hook, RRF fusion, and optional reranking
 - `/internal/find_definition`
 - `/internal/find_references`
 - `/internal/get_dependencies`
@@ -48,6 +51,8 @@ As of **2026-06-16**, the repository delivers a complete local vertical slice:
 ## Evaluation Snapshot
 
 The recorded suite in `results/eval-suite/` uses 16 manually curated `requests` questions.
+It should be treated as the committed baseline snapshot. It has not yet been
+regenerated after enabling the real embedding/reranker sidecar path.
 
 Aggregate metrics:
 
@@ -69,24 +74,27 @@ Result: **H1 unsupported**.
 ## What Worked
 
 - The repo now has a defensible vertical slice rather than disconnected stubs.
+- Real embedding and reranker clients are implemented behind environment-driven sidecar boundaries.
+- Graph coverage has moved beyond module imports with best-effort intra-repo call edges.
 - `repo_id` isolation, caches, and internal-route protection are enforced in code and tests.
 - The production packaging path is now explicit and locally smoke-tested.
 - Groundedness stayed at the threshold floor for B4 (`0.95`), so citation verification is doing useful work.
 
 ## What Did Not Land
 
-- real query-side dense retrieval
-- real reranker
-- richer graph edges (`calls`, broader references, inheritance)
+- a fresh full evaluation after real embedding/reranker enablement
+- fully isolated B1/B2/B3/B4 retrieval implementations in the eval harness
+- richer graph edges beyond best-effort calls, such as broader references and inheritance
 - Judge / pairwise answer scoring
+- production model-serving configuration for embedding/reranker
 - public DNS / external demo availability
 
-Those missing pieces explain why the current evaluation does not support H1.
+Those missing pieces explain why the current evaluation result should remain H1 unsupported.
 
 ## Recommended Next Steps
 
-1. Replace stub embedding with the selected code embedding model.
-2. Wire a real reranker.
-3. Expand graph coverage beyond module imports.
-4. Re-run the suite before touching prompt-level answer generation.
-5. Only after retrieval quality moves, finish external DNS and public deployment.
+1. Re-index `requests` with `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code` and `EMBEDDING_DIM=768`.
+2. Re-run B1/B2/B3/B4 with the reranker enabled and write a new versioned result snapshot.
+3. Separate dense-only, sparse-only, hybrid, and full-system retrieval paths in the eval harness.
+4. Expand graph coverage for richer references and inheritance.
+5. After retrieval quality is remeasured, finish Judge / pairwise scoring and public deployment.

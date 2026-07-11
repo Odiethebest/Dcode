@@ -2,7 +2,7 @@
 
 ## Decision
 
-**H1 is unsupported** on the current recorded evaluation suite.
+**H1 remains unsupported** on the current recorded evaluation suite.
 
 ## Basis
 
@@ -25,22 +25,28 @@ Observed result from `results/eval-suite/h1_report.json`:
 
 B4 therefore failed the acceptance rule on both target taxonomies.
 
+This decision is scoped to the checked-in `results/eval-suite/` snapshot. The
+snapshot has not yet been regenerated after enabling the real embedding and
+reranker sidecar path.
+
 ## Interpretation
 
 The current stack is a valid engineering baseline, but not yet evidence for the original hypothesis.
 
 Most likely reasons:
 
-1. query-side dense retrieval is still effectively disabled in the default stack
-2. reranking is still identity
-3. the graph is still shallow, centered on definitions and module imports
-4. planner / synthesize remain rule/template-based
+1. the recorded suite was produced before a fresh real embedding/reranker evaluation
+2. default local configuration still uses stub embedding and identity rerank
+3. the eval harness does not yet cleanly isolate dense-only, sparse-only, hybrid, and full-system retrieval paths
+4. the graph remains shallow beyond best-effort imports and calls
+5. planner / synthesize remain rule/template-based
 
 ## Required To Re-open H1
 
-- connect real code embedding for retrieval
-- connect real reranking
-- deepen graph edges
+- re-index the target repo with real code embeddings and matching `EMBEDDING_DIM`
+- enable the reranker and record its configuration
+- separate the baseline retrieval paths in the eval harness
+- deepen graph edges where they materially support L2/L3 questions
 - rerun the same suite or a stronger versioned successor
 
 Until then, the honest project conclusion remains: **unsupported**.

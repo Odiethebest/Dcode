@@ -64,16 +64,16 @@ Dcode 是一个**结构感知的代码理解平台**。系统接收 Git 仓库�
 3. **答案级可验证性**：所有 Agent 答案中的代码引用必须经程序化校验，作为系统级 guardrail（实现细节见 §2.3.4）。
 4. **存储集中化**：向量与代码图统一落 PostgreSQL，避免引入独立向量服务，简化部署与一致性管理。
 
-### 1.4 当前实现快照（2026-06-16）
+### 1.4 当前实现快照（2026-07-11）
 
 本设计文档仍保留了项目目标形态，但当前仓库的已实现基线与原始设计存在一些明确偏差，后续阅读应以此为准：
 
 - **Parse / Chunk**：当前实现使用 Python `ast`，不是 tree-sitter。
-- **Graph**：当前图层完成了 module / function / class / method symbol 落库，以及仓库内模块级 `imports` edges；`calls` / richer references 仍未做深解析。
-- **Retrieval**：接口已经是 hybrid 形态，但默认 `EMBEDDING_MODEL=stub` 时 query-side dense retrieval 退化为 sparse-only，rerank 仍是 identity。
+- **Graph**：当前图层完成了 module / function / class / method symbol 落库、仓库内模块级 `imports` edges，以及 best-effort intra-repo `calls` edges；richer references / inheritance 仍未做深解析。
+- **Retrieval**：接口已经是 hybrid 形态，worker 和 API 均可通过 HTTP sidecar 调用真实 embedding；API 可通过 HTTP sidecar 调用 reranker。默认 `EMBEDDING_MODEL=stub` / `RERANKER_MODEL=stub` 时仍退化为 sparse-only 与 identity rerank。
 - **Agent**：LangGraph 已接通 SSE 与 8 个工具，但 planner / synthesize 是规则与模板实现，不是 LLM planner。
 - **Evaluation**：Recall@k / MRR / nDCG / groundedness 已落地；Judge / pairwise 仍未接通，因此 H1 当前只基于已实现指标做诚实判定。
-- **Deployment**：`docker-compose.prod.yml` 和 nginx static frontend 已完成；外部域名 `dcode.odieyang.com` 在 2026-06-16 仍未解析。
+- **Deployment**：`docker-compose.prod.yml` 和 nginx static frontend 已完成；外部域名 `dcode.odieyang.com` 在 2026-07-11 仍未解析。生产 compose 尚未完整纳入 embedding/reranker sidecar。
 
 ---
 
@@ -91,7 +91,7 @@ Dcode 是一个**结构感知的代码理解平台**。系统接收 Git 仓库�
 | Parse | 源文件 | AST 节点 | Python `ast` |
 | Chunk | AST | Chunk 记录（含元数据） | AST 级切块（函数 / 方法 / 类 / 模块级 docstring） |
 | Embed | Chunk 文本 | 向量 | 自托管代码 embedding 模型（详见 §6） |
-| Graph | AST + 符号 | 图节点 / 边 | AST symbol extraction + module-level import linking（v1） |
+| Graph | AST + 符号 | 图节点 / 边 | AST symbol extraction + module imports + best-effort call edges（v1） |
 | Persist | Chunk + 向量 + 图 | DB 落库 | PostgreSQL + pgvector |
 
 **元数据抽取**：文件路径、语言、所属类、函数签名、import 列表均在 Parse / Chunk 阶段填入，写入 chunks 表（见 §3.2）。
@@ -122,7 +122,7 @@ query → [sparse 召回 (BM25)]    ─┘
 - **融合**：Reciprocal Rank Fusion (RRF)，常数 k=60；
 - **重排**：cross-encoder reranker（候选模型见 §6）。
 
-当前实现说明：dense query embedding 入口已预留，但默认 `stub` 环境下实际只返回 sparse 候选；rerank 暂为 identity。
+当前实现说明：dense query embedding 和 reranker client 已接入 HTTP sidecar 抽象；默认 `stub` 环境下实际只返回 sparse 候选，rerank 为 identity。启用真实模型时必须保证 `EMBEDDING_DIM` 与数据库 schema 一致，并重新索引目标仓库。
 
 **设计决策**：
 
@@ -480,11 +480,11 @@ results/{run_id}/
 |---|---|---|
 | API 框架 | FastAPI | SSE 原生支持 |
 | Agent 框架 | LangGraph | 状态机表达力优于纯 ReAct 实现 |
-| 静态分析 | 当前为 Python `ast` 切块 + graph v1 imports；后续可增强 calls / references / inheritance | 早期 tree-sitter / jedi 方案未落地，不应作为当前实现假设 |
+| 静态分析 | 当前为 Python `ast` 切块 + graph v1 imports / best-effort calls；后续可增强 richer references / inheritance | 早期 tree-sitter / jedi 方案未落地，不应作为当前实现假设 |
 | 向量库 | PostgreSQL + pgvector | 与代码图同库，避免独立向量服务 |
 | 消息队列 | RabbitMQ（首选） / Redis Streams（备选） | |
-| Embedding 模型 | 计划接入 `jinaai/jina-embeddings-v2-base-code` | 当前仍是 `StubEmbeddingClient`，真实客户端未接通 |
-| Reranker | 计划接入 `BAAI/bge-reranker-v2-m3` 自托管 reranker | 当前 rerank 为 identity |
+| Embedding 模型 | `jinaai/jina-embeddings-v2-base-code` | HTTP sidecar client 已实现；默认仍为 `stub`，真实模式需设置 endpoint 与 `EMBEDDING_DIM=768` 并重新索引 |
+| Reranker | `BAAI/bge-reranker-v2-m3` 自托管 reranker | HTTP sidecar client 已实现；默认仍为 identity rerank |
 | Judge 模型 | 计划用商业 LLM 做 Judge / pairwise | 当前只有 `StubJudge`，不参与 H1 判定 |
 | 前端 | React + Tailwind | 与 odieyang.com 风格一致 |
 | 容器化 | Docker Compose | 部署目标：`dcode.odieyang.com` |
@@ -506,21 +506,21 @@ results/{run_id}/
 
 - **Embedding 走本地自托管**：单 repo 索引产生数千次调用，自托管省成本、绕过速率限制，同时构成"自部署 embedding 服务"的工程亮点；
 - **向量与代码图同库**：用 PostgreSQL + pgvector 一库到底，避免独立向量服务（如 Qdrant），更体现数据库深度，简化部署与一致性管理；
-- **代码 embedding 模型后续接入仍需实测**：模型选择已记录在 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)，但真实客户端接通后仍需要重新跑评测确认收益。
+- **代码 embedding 模型接入后仍需实测**：模型选择已记录在 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)，客户端和 sidecar 已接入，但需要用真实配置重新索引并跑完整评测确认收益。
 
 ---
 
 ## 7. 决策记录与接入点
 
-下列事项已经在计划文档中闭环为决策记录，但部分实现仍是接口占位。负责人和最终选择见 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)。
+下列事项已经在计划文档中闭环为决策记录。负责人和最终选择见 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)。
 
 ### 7.1 决策清单
 
 | 编号 | 决策 | 当前实现状态 |
 |---|---|---|
 | OD-1 | 主目标仓库选 `requests` | 已用于题集和评测快照 |
-| OD-2 | Embedding 选 `jinaai/jina-embeddings-v2-base-code` | 未接通；当前默认 stub |
-| OD-3 | Reranker 选 `BAAI/bge-reranker-v2-m3` 自托管 | 未接通；当前 identity rerank |
+| OD-2 | Embedding 选 `jinaai/jina-embeddings-v2-base-code` | HTTP sidecar 已接通；默认 stub，真实评测需重新索引 |
+| OD-3 | Reranker 选 `BAAI/bge-reranker-v2-m3` 自托管 | HTTP sidecar 已接通；默认 identity rerank |
 | OD-4 | Judge 选商业 LLM | 未接通；当前 `StubJudge` |
 | OD-5 | 域名使用 `dcode.odieyang.com` | 生产 compose 已有；DNS 未解析 |
 

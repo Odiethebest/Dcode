@@ -49,8 +49,8 @@ Dcode is a structure-aware retrieval platform. It asynchronously builds a dual i
 |---|---|
 | Async indexing | Job queue + worker with monotonic state machine (`queued → cloning → parsing → embedding → graphing → ready`) |
 | Chunk granularity | AST-level chunks via Python `ast` (no fixed-window sliding) |
-| Call graph | AST-built symbol table + module import edges (v1) |
-| Hybrid retrieval | Sparse retrieval + RRF fusion path; dense query embedding and real rerank remain follow-up work |
+| Call graph | AST-built symbol table, module import edges, and best-effort intra-repo call edges |
+| Hybrid retrieval | Sparse + dense candidate retrieval, RRF fusion, optional cross-encoder reranking |
 | Multi-hop reasoning | LangGraph state machine, 8 tools, rule-based multi-step ReAct loop |
 | Hallucination control | Programmatic groundedness check, ≥ 95% hard constraint (non-disableable) |
 | Reproducible evaluation | Five-tier baseline ladder + L1/L2/L3 question taxonomy |
@@ -105,10 +105,10 @@ The project's entire engineering investment serves this **falsifiable** hypothes
 - **Database**: PostgreSQL 15 with the pgvector extension (HNSW on `embedding`, GIN on `tsv`)
 - **ORM / Migrations**: SQLAlchemy 2.0 async + Alembic
 - **Queue**: RabbitMQ with `aio-pika` client
-- **Python workspace**: `uv` workspaces (5 members) + Hatch backend
+- **Python workspace**: `uv` workspaces (7 members) + Hatch backend
 - **Frontend**: React 18 + TypeScript (strict) + Vite + Tailwind + TanStack Query
-- **Apps**: FastAPI gateway + worker + standalone agent service + frontend, orchestrated by Docker Compose
-- **Deployment target**: `dcode.odieyang.com` (DNS unresolved as of 2026-06-16)
+- **Apps**: FastAPI gateway + worker + standalone agent service + embedding sidecar + reranker sidecar + frontend, orchestrated by Docker Compose
+- **Deployment target**: `dcode.odieyang.com` (DNS unresolved as of 2026-07-11)
 
 Full architecture, component design, and design decisions: [`docs/DESIGN.md`](docs/DESIGN.md).
 
@@ -222,12 +222,13 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 
 ## Getting Started
 
-> **Status (2026-06-16)**: the end-to-end indexing, retrieval, agent SSE, frontend,
-> evaluation harness, and production packaging are implemented. `make check`,
-> `make frontend-build`, `make eval-smoke`, and `make migrate` all pass locally.
-> Current limitations are explicit: the default stack still runs `EMBEDDING_MODEL=stub`,
-> dense query embedding and real reranking are not wired, the graph is definition/import
-> focused, and the current H1 decision is **unsupported** on the recorded 16-question suite.
+> **Status (2026-07-11)**: the end-to-end indexing, retrieval, agent SSE, frontend,
+> evaluation harness, local sidecar model path, and production packaging are implemented.
+> `make check`, `make frontend-build`, and `make eval-smoke` pass locally.
+> The default stack still runs `EMBEDDING_MODEL=stub` and `RERANKER_MODEL=stub`;
+> real embedding and reranking require explicit sidecar configuration and re-indexing.
+> The current recorded H1 decision remains **unsupported** on the checked-in
+> 16-question suite, which predates a fresh evaluation of the real model path.
 > See [`docs/final_report.md`](docs/final_report.md), [`docs/h1_decision.md`](docs/h1_decision.md),
 > and [`docs/TODO.md`](docs/TODO.md) for the as-built status.
 
@@ -248,7 +249,7 @@ cd Dcode
 #    JUDGE_MODEL — see .env.example for all keys and OD-2..OD-4 placeholders)
 cp .env.example .env
 
-# 2. Bring up the full stack
+# 2. Bring up the default stub-model stack
 docker compose up -d
 
 # 3. Apply database schema
@@ -258,9 +259,19 @@ make migrate
 make check
 ```
 
+### Real Model Mode
+
+The default stack uses stub embedding and identity rerank so local development
+stays lightweight. To evaluate the real retrieval path:
+
+1. Set `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code`, `EMBEDDING_DIM=768`, and `RERANKER_MODEL=BAAI/bge-reranker-v2-m3` in `.env`.
+2. Recreate the database if it was initialized with another embedding dimension.
+3. Start `make embedding-host` and `make reranker-host` in separate terminals, or use the `embedding` and `reranker` Docker Compose profiles.
+4. Re-index the target repository before running evaluation.
+
 ### Quick Smoke Test
 
-These commands exercise the real stack.
+These commands exercise the running stack.
 
 ```bash
 # Submit a repo
@@ -295,9 +306,11 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
   uv run alembic -c infra/migrations/alembic.ini upgrade head
 ```
 
-As of **2026-06-16**, the production compose stack is validated locally, but
+As of **2026-07-11**, the production compose stack is validated locally, but
 `dcode.odieyang.com` does **not** resolve publicly yet, so the external-demo
-exit criterion is still open.
+exit criterion is still open. The production compose file currently keeps the
+public frontend/API shape separate from the optional embedding and reranker
+sidecars used in local development.
 
 ---
 
@@ -345,6 +358,12 @@ The recorded suite under `results/eval-suite/` currently yields:
 
 The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
 either L2 or L3. Details: [`docs/h1_decision.md`](docs/h1_decision.md).
+
+This result should be treated as the current committed evaluation snapshot, not
+as a fresh measurement of the real embedding/reranker sidecar path. A new H1
+run should re-index the target repository with `EMBEDDING_DIM=768`, enable the
+reranker, and regenerate `results/eval-suite/` and the frontend comparison
+snapshot from the same run.
 
 ---
 
