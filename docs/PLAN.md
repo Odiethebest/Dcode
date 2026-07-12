@@ -140,14 +140,14 @@
 | 角色 | 负责人 | 主负责组件（DESIGN.md §引用） | 接口拥有 |
 |---|---|---|---|
 | Tech Lead / Indexing & Agent Owner | Odie | §2.1、§2.3、架构集成 | §4.1、§4.3 |
-| Retrieval & Infra Owner | Yuxin Liang | §2.2、§2.6、§3 | §4.2 |
+| Retrieval & Infra Owner | Yuxin(Lacey)Liang | §2.2、§2.6、§3 | §4.2 |
 | Evaluation & Frontend Owner | Yufan Li | §2.4、§2.5 | §4.4 |
 
 Tech Lead 同时负责组件间集成与冲突仲裁。
 
 ### 6.2 职责矩阵 (RACI 简化版)
 
-| 工作项 | Odie | Yuxin | Yufan |
+| 工作项 | Odie | Yuxin(Lacey)Liang | Yufan |
 |---|---|---|---|
 | 数据模型设计（DESIGN §3） | A | R | C |
 | 索引管线实现（DESIGN §2.1） | R | C | I |
@@ -166,8 +166,8 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 | 同步点 | 截止时间 | 涉及方 | 冻结产物 |
 |---|---|---|---|
-| **S-1** | W1 周末 | Odie + Yuxin | DESIGN §3 数据模型 + §4.1 索引 API |
-| **S-2** | W2 周中 | Odie + Yuxin | DESIGN §4.2 检索 API |
+| **S-1** | W1 周末 | Odie + Yuxin(Lacey)Liang | DESIGN §3 数据模型 + §4.1 索引 API |
+| **S-2** | W2 周中 | Odie + Yuxin(Lacey)Liang | DESIGN §4.2 检索 API |
 | **S-3** | W2 周末 | Odie + Yufan | DESIGN §4.3 Agent SSE 格式 |
 
 任一同步点延迟将触发 §4.1 降级路径评估，并触发当日跨角色会议。
@@ -226,9 +226,9 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ### 7.4 并行度安排
 
-- **W1**：Odie heads-down 索引管线 A；Yuxin 搭基建 + 与 Odie 共定数据模型；Yufan 独立构造问题集 + 评测脚手架（最可并行）；
-- **W2**：Odie 搭 Agent C（基于 Yuxin 的检索 API）；Yuxin 完成 hybrid + 图查询；Yufan 对着 mock agent 接口搭 UI 壳；
-- **W3**：Yufan 主场，跑全量 baseline + UI 收尾；Odie + Yuxin 提供性能与稳定性保障；
+- **W1**：Odie heads-down 索引管线 A；Yuxin(Lacey)Liang 搭基建 + 与 Odie 共定数据模型；Yufan 独立构造问题集 + 评测脚手架（最可并行）；
+- **W2**：Odie 搭 Agent C（基于 Yuxin(Lacey)Liang 的检索 API）；Yuxin(Lacey)Liang 完成 hybrid + 图查询；Yufan 对着 mock agent 接口搭 UI 壳；
+- **W3**：Yufan 主场，跑全量 baseline + UI 收尾；Odie + Yuxin(Lacey)Liang 提供性能与稳定性保障；
 - **W4**：集成、部署、最终结果产出、文档收尾。
 
 ---
@@ -252,8 +252,8 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 | 编号 | 事项 | 决策截止 | 负责人 |
 |---|---|---|---|
 | OD-1 | 主目标仓库（requests / flask / fastapi 中选一） | 已选 `requests` | Odie |
-| OD-2 | Embedding 模型最终选型 | `jinaai/jina-embeddings-v2-base-code`（HTTP sidecar/client 已实现；默认仍为 stub） | Yuxin Liang |
-| OD-3 | Reranker：自托管 vs 商业 API | `BAAI/bge-reranker-v2-m3`（HTTP sidecar/client 已实现；默认仍为 identity rerank） | Yuxin Liang |
+| OD-2 | Embedding 模型最终选型 | `jinaai/jina-embeddings-v2-base-code`（HTTP sidecar/client 已实现；默认仍为 stub） | Yuxin(Lacey)Liang |
+| OD-3 | Reranker：自托管 vs 商业 API | `BAAI/bge-reranker-v2-m3`（HTTP sidecar/client 已实现；默认仍为 identity rerank） | Yuxin(Lacey)Liang |
 | OD-4 | Judge 模型选型与稳定性验证结论 | `gpt-5.4-mini`（Judge 尚未接通实现） | Yufan Li |
 | OD-5 | 项目域名与代码仓库可用性确认 | 目标域名保留 `dcode.odieyang.com`；2026-07-11 DNS 未解析 | Odie |
 

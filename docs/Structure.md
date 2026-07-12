@@ -295,9 +295,9 @@ The project keeps model/provider decisions behind environment variables and abst
 
 | Area | Best owner | Reason |
 |---|---|---|
-| Real-model re-index and dense retrieval evaluation | Yuxin | retrieval quality and infra boundary |
-| Real reranker evaluation | Yuxin | same retrieval API contract |
-| Richer references/inheritance graph expansion | Yuxin with Odie review | shared worker/retrieval contract |
+| Real-model re-index and dense retrieval evaluation | Yuxin(Lacey)Liang | retrieval quality and infra boundary |
+| Real reranker evaluation | Yuxin(Lacey)Liang | same retrieval API contract |
+| Richer references/inheritance graph expansion | Yuxin(Lacey)Liang with Odie review | shared worker/retrieval contract |
 | Question set expansion and Judge/pairwise | Yufan | eval ownership |
 | Compare UI result refresh | Yufan | frontend/eval boundary |
 | Integration, agent boundary, final documentation | Odie | cross-service consistency |
