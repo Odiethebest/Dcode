@@ -1,6 +1,6 @@
-# Dcode: Structure-Aware Code Understanding Platform
+# Dcode: Structure Aware Code Understanding Platform
 
-> A retrieval platform for codebase onboarding — pairing semantic vector indexing with a static call graph, queried through a multi-tool ReAct agent that returns programmatically verified citations.
+> A retrieval platform for codebase onboarding. Dcode pairs semantic vector indexing with a static call graph, then queries both through a ReAct agent that returns programmatically verified citations.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -10,7 +10,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-**AI-assisted development workflow:** [How the team cross-checked Claude Code, Codex, and Cursor during implementation](docs/agentic_ai_workflow.md)
+**Development workflow:** [How the team cross checked Claude Code, Codex, and Cursor during implementation](docs/agentic_ai_workflow.md)
 
 ---
 
@@ -35,36 +35,36 @@
 
 ## Overview
 
-When a new engineer joins a mature codebase, the questions they ask are *relational*, not *similarity-based*: "how is auth implemented end-to-end?", "what depends on this module?", "who calls this function?". Today's mainstream tools answer the wrong question:
+When a new engineer joins a mature codebase, the useful questions are relational: "how is auth implemented end to end?", "what depends on this module?", "who calls this function?". Mainstream tools usually optimize for literal search or text similarity, which misses the structure behind those questions.
 
 | Tool category | Representative | Limitation |
 |---|---|---|
-| Keyword search | GitHub Search, ripgrep | Literal match only; no semantic intent |
+| Keyword search | GitHub Search, ripgrep | Literal match only; lacks semantic intent |
 | Flat vector RAG | Standard RAG implementations | Text similarity only; loses call relationships |
-| General chat assistants | Generic LLM apps | No grounded codebase context; citation hallucination |
+| General chat assistants | Generic LLM apps | Lacks grounded codebase context; citation hallucination |
 
-Dcode is a structure-aware retrieval platform. It asynchronously builds a dual index — semantic vectors and a static call graph — and exposes it through a multi-tool ReAct agent. Every code reference in a final answer is verified against the index before reaching the user.
+Dcode is a structure aware retrieval platform. It asynchronously builds a dual index with semantic vectors and a static call graph, then exposes that index through a ReAct agent with multiple tools. Every code reference in a final answer is verified against the index before reaching the user.
 
 ### What it handles
 
 | Concern | Mechanism |
 |---|---|
 | Async indexing | Job queue + worker with monotonic state machine (`queued → cloning → parsing → embedding → graphing → ready`) |
-| Chunk granularity | AST-level chunks via Python `ast` (no fixed-window sliding) |
+| Chunk granularity | AST boundary chunks via Python `ast` |
 | Call graph | AST-built symbol table, module import edges, and best-effort intra-repo call edges |
 | Hybrid retrieval | Sparse + dense candidate retrieval, RRF fusion, optional cross-encoder reranking |
-| Multi-hop reasoning | LangGraph state machine, 8 tools, rule-based multi-step ReAct loop |
-| Hallucination control | Programmatic groundedness check, ≥ 95% hard constraint (non-disableable) |
-| Reproducible evaluation | Five-tier baseline ladder + L1/L2/L3 question taxonomy |
+| Multi step reasoning | LangGraph state machine, 8 tools, rule based ReAct loop |
+| Hallucination control | Programmatic groundedness check with a required ≥ 95% threshold |
+| Reproducible evaluation | Five level baseline ladder + L1/L2/L3 question taxonomy |
 | Multi-tenancy | All chunks / symbols / jobs isolated by `repo_id` |
 
 ---
 
 ## Core Hypothesis (H1)
 
-> **On cross-file and architecture-level code understanding tasks, the combination of structure-aware indexing (semantic vectors + a code call graph) with multi-tool agent orchestration achieves significant and reproducible improvements over flat vector RAG and keyword search baselines — measured by standard IR metrics and end-to-end answer quality.**
+> **On cross file and architecture level code understanding tasks, the combination of structure aware indexing (semantic vectors + a code call graph) with tool based agent orchestration achieves significant and reproducible improvements over flat vector RAG and keyword search baselines, measured by standard IR metrics and end to end answer quality.**
 
-The project's entire engineering investment serves this **falsifiable** hypothesis. If acceptance metrics in the [evaluation protocol](#evaluation-protocol) are not met, H1 is recorded as unsupported. No threshold tuning, no patches.
+The project's engineering investment serves this **falsifiable** hypothesis. If acceptance metrics in the [evaluation protocol](#evaluation-protocol) fail, H1 is recorded as unsupported. Thresholds stay fixed after evaluation begins.
 
 ---
 
@@ -95,12 +95,12 @@ The project's entire engineering investment serves this **falsifiable** hypothes
 
 **Components**
 
-- **API Gateway** (FastAPI) — auth, multi-tenant routing, SSE termination
-- **Index Worker** — `clone → Python AST chunk → embed → graph rebuild → persist`
-- **Agent Orchestrator** — LangGraph state machine with 8 tools and a groundedness guardrail
-- **Retrieval Layer** — hybrid search + atomic graph queries (`find_definition`, `find_references`, `get_dependencies`, `get_file_outline`)
-- **Storage** — PostgreSQL + pgvector (single store for vectors and graph), Redis for embedding / tool-result / query caches
-- **Evaluation Harness** (offline) — five-tier baseline runner with stratified metrics
+- **API Gateway** (FastAPI): auth, tenant scoped routing, SSE termination
+- **Index Worker**: `clone → Python AST chunk → embed → graph rebuild → persist`
+- **Agent Orchestrator**: LangGraph state machine with 8 tools and a groundedness guardrail
+- **Retrieval Layer**: hybrid search + atomic graph queries (`find_definition`, `find_references`, `get_dependencies`, `get_file_outline`)
+- **Storage**: PostgreSQL + pgvector as the single store for vectors and graph data, plus Redis for embedding, tool result, and query caches
+- **Evaluation Harness** (offline): five level baseline runner with stratified metrics
 
 **Infrastructure**
 
@@ -133,7 +133,7 @@ repos (1) ──── (N) chunks
 ### Schema Highlights
 
 ```sql
--- Chunks: AST-level slices, vector and tsvector colocated for hybrid retrieval
+-- Chunks: AST boundary slices, vector and tsvector colocated for hybrid retrieval
 CREATE TABLE chunks (
     id          UUID PRIMARY KEY,
     repo_id     UUID REFERENCES repos(id),
@@ -172,7 +172,7 @@ Full schema, indexes, and Redis key naming conventions: [`docs/DESIGN.md` §3](d
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/repos` | Submit a repo URL for indexing — returns `202 Accepted` with `repo_id` |
+| `POST` | `/api/v1/repos` | Submit a repo URL for indexing; returns `202 Accepted` with `repo_id` |
 | `GET`  | `/api/v1/repos/{repo_id}/status` | Index progress and per-stage status |
 
 ```http
@@ -193,7 +193,7 @@ Content-Type: application/json
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/query` | Ask a natural-language question — server-sent event stream |
+| `POST` | `/api/v1/query` | Ask a natural language question; returns an SSE stream |
 
 ```http
 POST /api/v1/query
@@ -202,7 +202,7 @@ Accept: text/event-stream
 
 {
   "repo_id": "uuid",
-  "query": "How is authentication wired end-to-end?"
+  "query": "How is authentication wired end to end?"
 }
 ```
 
@@ -224,7 +224,7 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 
 ## Getting Started
 
-> **Status (2026-07-11)**: the end-to-end indexing, retrieval, agent SSE, frontend,
+> **Status (2026-07-11)**: the end to end indexing, retrieval, agent SSE, frontend,
 > evaluation harness, local sidecar model path, and production packaging are implemented.
 > `make check`, `make frontend-build`, and `make eval-smoke` pass locally.
 > The default stack still runs `EMBEDDING_MODEL=stub` and `RERANKER_MODEL=stub`;
@@ -232,14 +232,14 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 > The current recorded H1 decision remains **unsupported** on the checked-in
 > 16-question suite, which predates a fresh evaluation of the real model path.
 > See [`docs/final_report.md`](docs/final_report.md), [`docs/h1_decision.md`](docs/h1_decision.md),
-> and [`docs/TODO.md`](docs/TODO.md) for the as-built status.
+> and [`docs/TODO.md`](docs/TODO.md) for the current implementation status.
 
 ### Prerequisites
 
 - Python 3.11+
 - Node.js 20+ (for the frontend)
 - Docker + Docker Compose
-- ≥ 16 GB RAM (for the self-hosted embedding model)
+- ≥ 16 GB RAM (for the locally hosted embedding model)
 
 ### Local Setup
 
@@ -248,7 +248,7 @@ git clone git@github.com:Odiethebest/Dcode.git
 cd Dcode
 
 # 1. Configure environment (EMBEDDING_MODEL, EMBEDDING_DIM, RERANKER_ENDPOINT,
-#    JUDGE_MODEL — see .env.example for all keys and OD-2..OD-4 placeholders)
+#    JUDGE_MODEL; see .env.example for all keys and OD-2..OD-4 placeholders)
 cp .env.example .env
 
 # 2. Bring up the default stub-model stack
@@ -296,8 +296,8 @@ curl -N -X POST http://localhost:8000/api/v1/query \
 
 Two compose entrypoints are now tracked:
 
-- `docker-compose.yml`: developer stack, with the frontend served as an nginx-hosted static SPA on `http://localhost:5173` and proxied `/api/*` calls.
-- `docker-compose.prod.yml`: production-shaped stack, where only the frontend is public and `/api/*` is reverse-proxied to the internal API service.
+- `docker-compose.yml`: developer stack, with the frontend served as an nginx static SPA on `http://localhost:5173` and proxied `/api/*` calls.
+- `docker-compose.prod.yml`: production oriented stack, where only the frontend is public and `/api/*` is proxied to the internal API service.
 
 Production setup:
 
@@ -309,7 +309,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
 ```
 
 As of **2026-07-11**, the production compose stack is validated locally, but
-`dcode.odieyang.com` does **not** resolve publicly yet, so the external-demo
+`dcode.odieyang.com` does **not** resolve publicly yet, so the external demo
 exit criterion is still open. The production compose file currently keeps the
 public frontend/API shape separate from the optional embedding and reranker
 sidecars used in local development.
@@ -324,9 +324,9 @@ The evaluation harness is the core deliverable for verifying H1. It runs five ba
 
 | Tier | System | Purpose |
 |---|---|---|
-| B0 | GitHub Search | Industry-standard keyword baseline |
+| B0 | GitHub Search | Industry standard keyword baseline |
 | B1 | BM25 | Sparse retrieval reference |
-| B2 | Vanilla Dense RAG | Single-path vector retrieval |
+| B2 | Vanilla Dense RAG | Single path vector retrieval |
 | B3 | Hybrid RAG | Dense + sparse + rerank |
 | B4 | **Dcode** (hybrid + call graph + agent) | Full system |
 
@@ -334,9 +334,9 @@ The evaluation harness is the core deliverable for verifying H1. It runs five ba
 
 | Label | Reasoning scope | H1 relevance |
 |---|---|---|
-| L1 | Single-file factual | Control bucket |
-| L2 | Cross-file structural | **Primary H1 check** |
-| L3 | Architecture-level | **Primary H1 check** |
+| L1 | Single file factual | Control bucket |
+| L2 | Cross file structural | **Primary H1 check** |
+| L3 | Architecture level | **Primary H1 check** |
 
 H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down.
 
@@ -344,11 +344,11 @@ H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval
 
 | Metric | Target |
 |---|---|
-| Retrieval (Recall@k / MRR / nDCG) | B4 strictly improves over every B0–B3; statistically significant on L2 / L3 |
+| Retrieval (Recall@k / MRR / nDCG) | B4 strictly improves over every B0 through B3; statistically significant on L2 / L3 |
 | Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% |
 | Groundedness (programmatic) | ≥ 95% |
 
-Question-set construction (manual / function-reverse-synthesis / GitHub issue mining), result schema, and the LLM-as-Judge protocol: [`docs/DESIGN.md` §2.4](docs/DESIGN.md) and [`docs/PLAN.md` §3](docs/PLAN.md).
+Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/DESIGN.md` §2.4](docs/DESIGN.md) and [`docs/PLAN.md` §3](docs/PLAN.md).
 
 ### Current Result
 
@@ -361,30 +361,29 @@ The recorded suite under `results/eval-suite/` currently yields:
 The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
 either L2 or L3. Details: [`docs/h1_decision.md`](docs/h1_decision.md).
 
-This result should be treated as the current committed evaluation snapshot, not
-as a fresh measurement of the real embedding/reranker sidecar path. A new H1
-run should re-index the target repository with `EMBEDDING_DIM=768`, enable the
-reranker, and regenerate `results/eval-suite/` and the frontend comparison
-snapshot from the same run.
+This result is the current committed evaluation snapshot. A fresh measurement
+of the real embedding/reranker sidecar path requires re-indexing the target
+repository with `EMBEDDING_DIM=768`, enabling the reranker, and regenerating
+`results/eval-suite/` and the frontend comparison snapshot from the same run.
 
 ---
 
 ## Key Design Decisions
 
-**AST-level chunking, no fixed-window sliding**
-A fixed-window slicer destroys function boundaries and drops import context, which makes retrieved chunks semantically meaningless once removed from their call site (`D-2.1.1`). Dcode chunks at function, method, class, and module-docstring boundaries via Python `ast`. The current implementation is Python-only and keeps the chunk boundary contract intact.
+**AST boundary chunking**
+Dcode chunks code at function, method, class, and module docstring boundaries via Python `ast` (`D-2.1.1`). This keeps import context and symbol boundaries attached to retrieved chunks, which makes the evidence easier to cite and verify.
 
 **Vectors and call graph in a single PostgreSQL instance**
-A typical "RAG + graph" project would deploy Qdrant for vectors and a separate graph store for relationships. We co-locate both in PostgreSQL — pgvector for embeddings (HNSW + GIN), normal relational tables for symbols and edges. The win is operational: one connection pool, one backup boundary, one consistency story. The cost is some hand-rolling around hybrid retrieval, which we'd write either way.
+Vectors and graph relationships live in PostgreSQL. `pgvector` stores embeddings with HNSW and GIN indexes, while normal relational tables store symbols and edges. This gives the system one connection pool, one backup boundary, and one consistency model. The tradeoff is additional custom logic around hybrid retrieval.
 
-**Hybrid retrieval is non-negotiable**
-Code search needs both exact symbol match (`validate_token`) and semantic intent ("auth-related code"). Dense-only loses the first; sparse-only loses the second (`D-2.2.1`). Dcode runs both in parallel, fuses by Reciprocal Rank Fusion (k=60), then reranks with a cross-encoder. This also keeps the comparison against GitHub Search honest — GitHub Search is sparse-only, so beating it with hybrid is fair rather than a strawman.
+**Hybrid retrieval is required**
+Code search needs exact symbol matching (`validate_token`) and semantic intent ("auth related code"). Dcode runs sparse and dense retrieval in parallel, fuses the candidates by Reciprocal Rank Fusion (`k=60`), then reranks them with a cross encoder (`D-2.2.1`). This keeps the comparison against GitHub Search fair because GitHub Search remains a sparse retrieval baseline.
 
-**Groundedness as a hard guardrail, not just a metric**
-For code-domain answers, inventing a symbol that doesn't exist is a project-killing failure mode. The groundedness check (`D-2.3.1`) is not optional — every citation in a final answer is regex-extracted, queried against the indexed symbol table, and stripped or flagged if missing. The same check produces the ≥ 95% acceptance number rather than reading from a model's self-report.
+**Groundedness as a hard guardrail**
+For code answers, inventing a symbol that does not exist is a critical failure. The groundedness check (`D-2.3.1`) extracts every citation in a final answer, checks it against the indexed symbol table, and strips or flags missing references. The same check produces the ≥ 95% acceptance number from indexed evidence.
 
-**Async indexing is for engineering credibility, not H1 validation**
-The async pipeline (queue + worker + state machine + Redis-cached embeddings) does not contribute to H1 — a synchronous script could index the evaluation corpus and pass every metric. We build it anyway because (a) it makes the "platform" narrative coherent, and (b) it is where the engineering-interview signal lives. Priority order is strict: H1-critical work first, infrastructure second. See [`docs/PLAN.md` §4](docs/PLAN.md) for the full degradation path.
+**Async indexing supports the platform story**
+The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second. See [`docs/PLAN.md` §4](docs/PLAN.md) for the full degradation path.
 
 ---
 
@@ -393,13 +392,13 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 | Document | Role | Contents |
 |---|---|---|
 | **[`docs/DESIGN.md`](docs/DESIGN.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
-| **[`docs/PLAN.md`](docs/PLAN.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1–M4), risk register, open-decision timeline |
+| **[`docs/PLAN.md`](docs/PLAN.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
 | **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
 | **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
 | **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
-| **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | As-built service inventory, current implementation boundaries, cross-cutting contracts, suggested ownership |
-| **[`docs/agentic_ai_workflow.md`](docs/agentic_ai_workflow.md)** | AI-assisted workflow | How Claude Code, Codex, and Cursor were cross-checked during development |
-| **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability, not active planning |
+| **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
+| **[`docs/agentic_ai_workflow.md`](docs/agentic_ai_workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
+| **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability only |
 
 ---
 
@@ -407,7 +406,7 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 
 | Name | Role |
 |---|---|
-| Ziqi (Odie) Yang | Tech Lead — indexing pipeline, agent orchestrator, system integration |
+| Ziqi (Odie) Yang | Tech Lead: indexing pipeline, agent orchestrator, system integration |
 | Yuxin(Lacey)Liang | Retrieval & graph API, infrastructure, deployment |
 | Yufan Li | Evaluation harness, frontend |
 
