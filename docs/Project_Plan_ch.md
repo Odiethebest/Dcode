@@ -5,9 +5,9 @@
 | **文档类型** | Project Plan |
 | **版本** | v1.0 |
 | **状态** | Approved for Execution |
-| **关联文档** | [DESIGN.md](DESIGN.md)（技术设计）、[../README.md](../README.md)（项目导览） |
+| **关联文档** | [Technical_Design_ch.md](Technical_Design_ch.md)（技术设计）、[../README.md](../README.md)（项目导览） |
 | **范围** | 项目目标、范围、验收、优先级、约束、团队组织、里程碑、风险、待决策事项 |
-| **不涉及** | 系统架构、组件接口、数据模型（见 DESIGN.md） |
+| **不涉及** | 系统架构、组件接口、数据模型（见 Technical_Design_ch.md） |
 
 ---
 
@@ -81,7 +81,7 @@
 | Agent 答案质量 | LLM-as-Judge 评分、Pairwise Win-Rate | 完整系统对裸 RAG 基线的 Win-Rate 高于 60%（具体阈值依问题集规模调整） |
 | 答案可信度 | Groundedness（引用符号 / 路径在仓库内可程序化验证存在的比例） | ≥ 95% |
 
-基线阶梯依次为：GitHub Search → BM25 → Vanilla Dense RAG → Hybrid RAG → Hybrid + 结构图（完整系统）。每一级的增量贡献需独立报告。详见 [DESIGN.md §2.4 评测子系统](DESIGN.md#24-评测子系统-evaluation-harness)与 [§4.4 评测协议](DESIGN.md#44-评测协议)。
+基线阶梯依次为：GitHub Search → BM25 → Vanilla Dense RAG → Hybrid RAG → Hybrid + 结构图（完整系统）。每一级的增量贡献需独立报告。详见 [Technical_Design_ch.md §2.4 评测子系统](Technical_Design_ch.md#24-评测子系统-evaluation-harness)与 [§4.4 评测协议](Technical_Design_ch.md#44-评测协议)。
 
 ### 3.2 定性产出
 
@@ -137,7 +137,7 @@
 
 ### 6.1 角色与负责范围
 
-| 角色 | 负责人 | 主负责组件（DESIGN.md §引用） | 接口拥有 |
+| 角色 | 负责人 | 主负责组件（Technical_Design_ch.md §引用） | 接口拥有 |
 |---|---|---|---|
 | Tech Lead / Indexing & Agent Owner | Odie | §2.1、§2.3、架构集成 | §4.1、§4.3 |
 | Retrieval & Infra Owner | Yuxin(Lacey)Liang | §2.2、§2.6、§3 | §4.2 |
@@ -180,7 +180,7 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 | 周次 | 里程碑 | Exit Criteria |
 |---|---|---|
-| pre-W1 | **M0 — 骨架搭建** Completed 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Structure.md](Structure.md) / [TODO.md](TODO.md) |
+| pre-W1 | **M0 — 骨架搭建** Completed 2026-06-10 | uv workspace + Docker stack（7 服务全 healthy）+ DESIGN §3 数据模型 SQLAlchemy 落地 + Alembic migration 001 + 全部 stubs + `make check` 全绿。详见 [Repository_Structure_ch.md](Repository_Structure_ch.md) / [Outstanding_Work_ch.md](Outstanding_Work_ch.md) |
 | W1 | **M1 — 数据通路打通** Completed 2026-06-15 | `requests` 可从 API 提交到 worker 完成 `repos / chunks / symbols / edges` 落库；§4.1 冒烟通过 |
 | W2 | **M2 — 端到端可问答** Completed 2026-06-15 | retrieval API、LangGraph SSE、8 个工具与 groundedness 已接通；可对真实 ready repo 返回带验证引用的答案 |
 | W3 | **M3 — 评测可复现** Completed 2026-06-15 | 16 题 `requests` 题集与 `B2/B3/B4` harness 产出稳定结果；UI `Index / Query / Compare` 可用 |
@@ -247,7 +247,7 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ## 9. 待决策事项 (Open Decisions)
 
-下列事项均已闭环，保留在此作为决策记录。技术接入点见 [DESIGN.md §7](DESIGN.md#7-决策记录与接入点)。
+下列事项均已闭环，保留在此作为决策记录。技术接入点见 [Technical_Design_ch.md §7](Technical_Design_ch.md#7-决策记录与接入点)。
 
 | 编号 | 事项 | 决策截止 | 负责人 |
 |---|---|---|---|
@@ -271,4 +271,4 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ---
 
-*本文档为项目执行的计划基线。如出现与具体执行方案的冲突，以本文档为准；执行方案需相应更新。技术细节见 [DESIGN.md](DESIGN.md)，项目导览见 [README.md](../README.md)。*
+*本文档为项目执行的计划基线。如出现与具体执行方案的冲突，以本文档为准；执行方案需相应更新。技术细节见 [Technical_Design_ch.md](Technical_Design_ch.md)，项目导览见 [README.md](../README.md)。*

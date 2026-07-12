@@ -1,6 +1,6 @@
 # Question set construction
 
-Per [DESIGN.md §2.4.1](../../../../../docs/DESIGN.md), the evaluation question
+Per [Technical_Design.md §2.4.1](../../../../../docs/en/Technical_Design.md), the evaluation question
 set draws from three complementary sources:
 
 | Source | Target size | Ground Truth |
@@ -29,7 +29,7 @@ snapshot. It is not yet large enough to be treated as a stable final benchmark.
 
 ## Taxonomy
 
-Every question MUST carry one taxonomy label (DESIGN.md §2.4.2). The H1
+Every question MUST carry one taxonomy label (Technical_Design.md §2.4.2). The H1
 hypothesis is checked primarily on the **L2 + L3** subset.
 
 | Label | Reasoning scope |

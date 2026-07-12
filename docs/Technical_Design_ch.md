@@ -5,9 +5,9 @@
 | **文档类型** | Technical Design Document |
 | **版本** | v1.0 |
 | **状态** | Approved for Execution |
-| **关联文档** | [PLAN.md](PLAN.md)（项目计划）、[../README.md](../README.md)（项目导览） |
+| **关联文档** | [Project_Plan_ch.md](Project_Plan_ch.md)（项目计划）、[../README.md](../README.md)（项目导览） |
 | **范围** | 系统架构、组件设计、数据模型、接口契约、非功能性需求、技术选型、决策记录与接入点 |
-| **不涉及** | 项目目标、范围、团队分工、里程碑、风险（见 PLAN.md） |
+| **不涉及** | 项目目标、范围、团队分工、里程碑、风险（见 Project_Plan_ch.md） |
 
 ---
 
@@ -186,14 +186,14 @@ query → [sparse 召回 (BM25)]    ─┘
 
 **设计决策**：
 
-- **D-2.3.1 Groundedness 校验为强制硬约束，不可禁用。** 代码场景下编造不存在的符号是项目致命缺陷；该校验同时承担 [PLAN.md §3.1](PLAN.md#31-定量指标) 验收标准（≥95%）的实现路径。
+- **D-2.3.1 Groundedness 校验为强制硬约束，不可禁用。** 代码场景下编造不存在的符号是项目致命缺陷；该校验同时承担 [Project_Plan_ch.md §3.1](Project_Plan_ch.md#31-定量指标) 验收标准（≥95%）的实现路径。
 - **D-2.3.2 工具调用结果必须缓存。** 缓存键为 `tool:{tool_name}:{repo_id}:{hash(args)}`，TTL 24h；显著降低重复查询成本。
 
 **对外接口**：见 §4.3。
 
 ### 2.4 评测子系统 (Evaluation Harness)
 
-**职责**：离线执行 [PLAN.md §3](PLAN.md#3-验收标准) 定义的全部验收指标。
+**职责**：离线执行 [Project_Plan_ch.md §3](Project_Plan_ch.md#3-验收标准) 定义的全部验收指标。
 
 #### 2.4.1 问题集构造
 
@@ -241,7 +241,7 @@ H1 假设的关键检验落在 L2、L3 子集上。
 
 ### 2.5 前端展示层 (Frontend)
 
-**职责**：承载 [PLAN.md §3.2](PLAN.md#32-定性产出) 定义的代表性演示场景。
+**职责**：承载 [Project_Plan_ch.md §3.2](Project_Plan_ch.md#32-定性产出) 定义的代表性演示场景。
 
 **功能清单（按优先级）**：
 
@@ -353,7 +353,7 @@ repos (1) ─── (N) chunks
 
 ## 4. 接口契约
 
-> 以下契约为团队成员间的硬约束。任何字段名、类型、错误码变更需经接口拥有者（见 [PLAN.md §6.1](PLAN.md#61-角色与负责范围)）评审。
+> 以下契约为团队成员间的硬约束。任何字段名、类型、错误码变更需经接口拥有者（见 [Project_Plan_ch.md §6.1](Project_Plan_ch.md#61-角色与负责范围)）评审。
 
 ### 4.1 索引 API
 
@@ -465,7 +465,7 @@ results/{run_id}/
 | NFR-1 | 索引性能 | 单仓库（≤50k LOC）端到端索引时间 ≤ 30 分钟（含 embedding） |
 | NFR-2 | 查询延迟 | Agent 首字节响应（TTFB）≤ 3 秒；中位完成时间 ≤ 20 秒 |
 | NFR-3 | 多租户隔离 | 任一查询路径不得返回非请求 `repo_id` 范围内的数据 |
-| NFR-4 | 答案可验证性 | Groundedness ≥ 95%（与 [PLAN.md §3.1](PLAN.md#31-定量指标) 一致） |
+| NFR-4 | 答案可验证性 | Groundedness ≥ 95%（与 [Project_Plan_ch.md §3.1](Project_Plan_ch.md#31-定量指标) 一致） |
 | NFR-5 | 可观测性 | 全部 API 与 worker 阶段须有结构化日志；关键计数器（索引耗时、工具调用次数、缓存命中率）须可读取 |
 | NFR-6 | 成本约束 | 单次端到端查询的外部 API 成本（生成 + 重排）≤ $0.05；embedding 走自托管 |
 | NFR-7 | 部署可重现 | 系统须可通过单一 `docker compose up` 在本地完整启动 |
@@ -506,13 +506,13 @@ results/{run_id}/
 
 - **Embedding 走本地自托管**：单 repo 索引产生数千次调用，自托管省成本、绕过速率限制，同时构成"自部署 embedding 服务"的工程亮点；
 - **向量与代码图同库**：用 PostgreSQL + pgvector 一库到底，避免独立向量服务（如 Qdrant），更体现数据库深度，简化部署与一致性管理；
-- **代码 embedding 模型接入后仍需实测**：模型选择已记录在 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)，客户端和 sidecar 已接入，但需要用真实配置重新索引并跑完整评测确认收益。
+- **代码 embedding 模型接入后仍需实测**：模型选择已记录在 [Project_Plan_ch.md §9](Project_Plan_ch.md#9-待决策事项-open-decisions)，客户端和 sidecar 已接入，但需要用真实配置重新索引并跑完整评测确认收益。
 
 ---
 
 ## 7. 决策记录与接入点
 
-下列事项已经在计划文档中闭环为决策记录。负责人和最终选择见 [PLAN.md §9](PLAN.md#9-待决策事项-open-decisions)。
+下列事项已经在计划文档中闭环为决策记录。负责人和最终选择见 [Project_Plan_ch.md §9](Project_Plan_ch.md#9-待决策事项-open-decisions)。
 
 ### 7.1 决策清单
 
@@ -540,4 +540,4 @@ results/{run_id}/
 
 ---
 
-*本文档为执行层基线。实施过程中产生的接口、模式、选型变更须以 PR 形式更新本文档并经接口拥有者确认。项目目标与里程碑见 [PLAN.md](PLAN.md)，项目导览见 [README.md](../README.md)。*
+*本文档为执行层基线。实施过程中产生的接口、模式、选型变更须以 PR 形式更新本文档并经接口拥有者确认。项目目标与里程碑见 [Project_Plan_ch.md](Project_Plan_ch.md)，项目导览见 [README.md](../README.md)。*

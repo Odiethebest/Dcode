@@ -110,7 +110,7 @@ The team followed a few practical rules:
 These rules were important in this repository. For example, the real
 embedding/reranker path existed in code, but the checked-in evaluation snapshot
 still came from an older state. That distinction affected README language,
-`docs/final_report.md`, and the H1 decision.
+`docs/en/Final_Report.md`, and the H1 decision.
 
 ## Example: Retrieval and Agent Integration
 

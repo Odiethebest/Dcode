@@ -10,7 +10,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
-**Development workflow:** [How the team cross checked Claude Code, Codex, and Cursor during implementation](docs/agentic_ai_workflow.md)
+**Development workflow:** [How the team cross checked Claude Code, Codex, and Cursor during implementation](docs/en/Agentic_Workflow.md)
 
 ---
 
@@ -25,10 +25,10 @@
 - [Deployment](#deployment)
 - [Evaluation Protocol](#evaluation-protocol)
 - [Key Design Decisions](#key-design-decisions)
-- [Technical Design](docs/DESIGN.md)
-- [Project Plan](docs/PLAN.md)
-- [Outstanding Work (TODO)](docs/TODO.md)
-- [Repository Structure](docs/Structure.md)
+- [Technical Design](docs/en/Technical_Design.md)
+- [Project Plan](docs/en/Project_Plan.md)
+- [Outstanding Work (TODO)](docs/en/Outstanding_Work.md)
+- [Repository Structure](docs/en/Repository_Structure.md)
 - [Team](#team)
 
 ---
@@ -112,7 +112,7 @@ The project's engineering investment serves this **falsifiable** hypothesis. If 
 - **Apps**: FastAPI gateway + worker + standalone agent service + embedding sidecar + reranker sidecar + frontend, orchestrated by Docker Compose
 - **Deployment target**: `dcode.odieyang.com` (DNS unresolved as of 2026-07-11)
 
-Full architecture, component design, and design decisions: [`docs/DESIGN.md`](docs/DESIGN.md).
+Full architecture, component design, and design decisions: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
 ---
 
@@ -162,7 +162,7 @@ CREATE INDEX ON edges (repo_id, source_id, edge_type);
 CREATE INDEX ON edges (repo_id, target_id, edge_type);  -- reverse lookups
 ```
 
-Full schema, indexes, and Redis key naming conventions: [`docs/DESIGN.md` §3](docs/DESIGN.md).
+Full schema, indexes, and Redis key naming conventions: [`docs/en/Technical_Design.md` §3](docs/en/Technical_Design.md).
 
 ---
 
@@ -218,7 +218,7 @@ Accept: text/event-stream
 | `final_answer` | Complete answer + citations + groundedness score |
 | `error` | Failure code + message |
 
-Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](docs/DESIGN.md).
+Full request / response contracts and error semantics: [`docs/en/Technical_Design.md` §4](docs/en/Technical_Design.md).
 
 ---
 
@@ -231,8 +231,8 @@ Full request / response contracts and error semantics: [`docs/DESIGN.md` §4](do
 > real embedding and reranking require explicit sidecar configuration and re-indexing.
 > The current recorded H1 decision remains **unsupported** on the checked-in
 > 16-question suite, which predates a fresh evaluation of the real model path.
-> See [`docs/final_report.md`](docs/final_report.md), [`docs/h1_decision.md`](docs/h1_decision.md),
-> and [`docs/TODO.md`](docs/TODO.md) for the current implementation status.
+> See [`docs/en/Final_Report.md`](docs/en/Final_Report.md), [`docs/en/H1_Decision.md`](docs/en/H1_Decision.md),
+> and [`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md) for the current implementation status.
 
 ### Prerequisites
 
@@ -348,7 +348,7 @@ H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval
 | Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% |
 | Groundedness (programmatic) | ≥ 95% |
 
-Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/DESIGN.md` §2.4](docs/DESIGN.md) and [`docs/PLAN.md` §3](docs/PLAN.md).
+Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/en/Technical_Design.md` §2.4](docs/en/Technical_Design.md) and [`docs/en/Project_Plan.md` §3](docs/en/Project_Plan.md).
 
 ### Current Result
 
@@ -359,7 +359,7 @@ The recorded suite under `results/eval-suite/` currently yields:
 - `B4`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `0.95`
 
 The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
-either L2 or L3. Details: [`docs/h1_decision.md`](docs/h1_decision.md).
+either L2 or L3. Details: [`docs/en/H1_Decision.md`](docs/en/H1_Decision.md).
 
 This result is the current committed evaluation snapshot. A fresh measurement
 of the real embedding/reranker sidecar path requires re-indexing the target
@@ -383,7 +383,7 @@ Code search needs exact symbol matching (`validate_token`) and semantic intent (
 For code answers, inventing a symbol that does not exist is a critical failure. The groundedness check (`D-2.3.1`) extracts every citation in a final answer, checks it against the indexed symbol table, and strips or flags missing references. The same check produces the ≥ 95% acceptance number from indexed evidence.
 
 **Async indexing supports the platform story**
-The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second. See [`docs/PLAN.md` §4](docs/PLAN.md) for the full degradation path.
+The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second. See [`docs/en/Project_Plan.md` §4](docs/en/Project_Plan.md) for the full degradation path.
 
 ---
 
@@ -391,14 +391,14 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 
 | Document | Role | Contents |
 |---|---|---|
-| **[`docs/DESIGN.md`](docs/DESIGN.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
-| **[`docs/PLAN.md`](docs/PLAN.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
-| **[`docs/TODO.md`](docs/TODO.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
-| **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
-| **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
-| **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
-| **[`docs/real_sidecar_integration_smoke.md`](docs/real_sidecar_integration_smoke.md)** | Integration smoke | 中文复现指南：Jina v2、BGE reranker、768 维重新索引与 agent 验证 |
-| **[`docs/agentic_ai_workflow.md`](docs/agentic_ai_workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
+| **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
+| **[`docs/en/Project_Plan.md`](docs/en/Project_Plan.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
+| **[`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
+| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
+| **[`docs/en/H1_Decision.md`](docs/en/H1_Decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
+| **[`docs/en/Repository_Structure.md`](docs/en/Repository_Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
+| **[`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)** | Integration smoke | Reproducible Jina v2, BGE reranker, 768-dim re-index, and agent smoke guide |
+| **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
 | **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability only |
 
 ---

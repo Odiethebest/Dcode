@@ -2,9 +2,9 @@
 
 > 当前仓库状态基于 **2026-07-11** 的代码审查与本地验证，不再保留早期 M0 skeleton 清单。
 >
-> 关联文档：[README.md](../README.md)、[DESIGN.md](DESIGN.md)、[PLAN.md](PLAN.md)、[final_report.md](final_report.md)、[h1_decision.md](h1_decision.md)。
+> 关联文档：[README.md](../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](Final_Report_ch.md)、[H1_Decision_ch.md](H1_Decision_ch.md)。
 >
-> 历史执行日志已归档到 [archive/roadmap.md](archive/roadmap.md)。新的剩余工作只在本文维护。
+> 历史执行日志已归档到 [archive/执行路线.md](archive/执行路线.md)。新的剩余工作只在本文维护。
 
 ---
 
