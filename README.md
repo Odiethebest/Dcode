@@ -396,6 +396,7 @@ The async pipeline (queue + worker + state machine + Redis-cached embeddings) do
 | **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
 | **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
 | **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | As-built service inventory, current implementation boundaries, cross-cutting contracts, suggested ownership |
+| **[`docs/agentic_ai_workflow.md`](docs/agentic_ai_workflow.md)** | AI-assisted workflow | How Claude Code, Codex, and Cursor were cross-checked during development |
 | **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability, not active planning |
 
 ---
