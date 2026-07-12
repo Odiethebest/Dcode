@@ -397,6 +397,7 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 | **[`docs/final_report.md`](docs/final_report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
 | **[`docs/h1_decision.md`](docs/h1_decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
 | **[`docs/Structure.md`](docs/Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
+| **[`docs/real_sidecar_integration_smoke.md`](docs/real_sidecar_integration_smoke.md)** | Integration smoke | 中文复现指南：Jina v2、BGE reranker、768 维重新索引与 agent 验证 |
 | **[`docs/agentic_ai_workflow.md`](docs/agentic_ai_workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
 | **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability only |
 
