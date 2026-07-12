@@ -3,7 +3,7 @@
     "id": "search-auth",
     "endpoint": "search",
     "params": {
-      "query": "auth",
+      "query": "HTTPBasicAuth Authorization header",
       "k": 5
     },
     "expect": {
