@@ -5,7 +5,7 @@
 | **文档类型** | Project Plan |
 | **版本** | v1.0 |
 | **状态** | Approved for Execution |
-| **关联文档** | [Technical_Design_ch.md](Technical_Design_ch.md)（技术设计）、[../README.md](../README.md)（项目导览） |
+| **关联文档** | [Technical_Design_ch.md](Technical_Design_ch.md)（技术设计）、[README.md](../../README.md)（项目导览） |
 | **范围** | 项目目标、范围、验收、优先级、约束、团队组织、里程碑、风险、待决策事项 |
 | **不涉及** | 系统架构、组件接口、数据模型（见 Technical_Design_ch.md） |
 
@@ -19,7 +19,7 @@
 
 | 编号 | 目标 |
 |---|---|
-| O1 | 在受控评测集上量化验证核心假设 H1（见 [README §核心假设](../README.md#核心假设-h1)） |
+| O1 | 在受控评测集上量化验证核心假设 H1（见 [README §核心假设](../../README.md#核心假设-h1)） |
 | O2 | 建立可复现的评测协议（问题集、基线阶梯、指标体系） |
 | O3 | 提供按问题类型分层的差异化分析（单文件 / 跨文件 / 架构级） |
 
@@ -271,4 +271,4 @@ R = Responsible, A = Accountable, C = Consulted, I = Informed
 
 ---
 
-*本文档为项目执行的计划基线。如出现与具体执行方案的冲突，以本文档为准；执行方案需相应更新。技术细节见 [Technical_Design_ch.md](Technical_Design_ch.md)，项目导览见 [README.md](../README.md)。*
+*本文档为项目执行的计划基线。如出现与具体执行方案的冲突，以本文档为准；执行方案需相应更新。技术细节见 [Technical_Design_ch.md](Technical_Design_ch.md)，项目导览见 [README.md](../../README.md)。*

@@ -391,6 +391,7 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 
 | Document | Role | Contents |
 |---|---|---|
+| **[`docs/README.md`](docs/README.md)** | Documentation map | Reading order, en/ch document pairs, and archive boundaries |
 | **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
 | **[`docs/en/Project_Plan.md`](docs/en/Project_Plan.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
 | **[`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |

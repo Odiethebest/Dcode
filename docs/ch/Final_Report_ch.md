@@ -53,7 +53,7 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 - `find_references(symbol=send)` 返回真实调用方；
 - `/api/v1/query` 可走 agent query flow。
 
-复现流程见 [docs/en/Sidecar_Smoke.md](en/Sidecar_Smoke.md)。
+复现流程见 [docs/en/Sidecar_Smoke.md](../en/Sidecar_Smoke.md)。
 
 ## 后续工作
 
