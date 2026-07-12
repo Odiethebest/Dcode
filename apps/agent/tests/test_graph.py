@@ -174,6 +174,23 @@ async def test_plan_node_routes_definition_queries() -> None:
     assert "find_definition" in updated.thoughts[0]
 
 
+async def test_plan_node_extracts_symbols_from_reference_queries() -> None:
+    queries = [
+        "Who calls send in requests?",
+        "who references send",
+        "find callers of send",
+        "Who calls `send`?",
+    ]
+
+    for query in queries:
+        state = AgentState(repo_id=str(uuid4()), query=query)
+
+        updated = await plan_node(state)
+
+        assert updated.pending_tool_name == "find_references"
+        assert updated.pending_tool_args == {"symbol": "send"}
+
+
 async def test_plan_node_defaults_to_search_code() -> None:
     state = AgentState(repo_id=str(uuid4()), query="auth related code")
 

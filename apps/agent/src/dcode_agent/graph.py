@@ -210,8 +210,8 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
             {"module": module},
             f"Route query to get_dependencies for `{module}`.",
         )
-    if "who calls" in normalized or "who references" in normalized or "references" in normalized:
-        symbol = subject or query.strip()
+    if _is_reference_query(normalized):
+        symbol = subject or _extract_reference_subject(query) or query.strip()
         return (
             "find_references",
             {"symbol": symbol},
@@ -337,6 +337,32 @@ def _extract_subject(query: str) -> str | None:
     quoted = cast(list[str], re.findall(r'"([^"]+)"', query))
     if quoted:
         return quoted[0]
+    return None
+
+
+def _is_reference_query(normalized_query: str) -> bool:
+    return any(
+        marker in normalized_query
+        for marker in (
+            "who calls",
+            "who references",
+            "references",
+            "caller",
+            "callers",
+        )
+    )
+
+
+def _extract_reference_subject(query: str) -> str | None:
+    patterns = (
+        r"\bwho\s+(?:calls|references)\s+([A-Za-z_][\w.]*)\b",
+        r"\bfind\s+callers?\s+(?:of\s+)?([A-Za-z_][\w.]*)\b",
+        r"\breferences\s+(?:to\s+|of\s+)?([A-Za-z_][\w.]*)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, query, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
     return None
 
 
