@@ -3,11 +3,10 @@
 ## Purpose
 
 This project was built in an agent-assisted development environment. The team
-used Claude Code, Codex, and Cursor as complementary engineering tools rather
-than as independent owners of the codebase.
+used Claude Code, Codex, and Cursor as complementary engineering tools within
+the normal review and commit process.
 
-The workflow was not "ask one model to build the project." It was closer to a
-review loop:
+The workflow followed a review loop:
 
 1. define the intended system behavior;
 2. ask an agent to implement or inspect a bounded slice;
@@ -16,8 +15,9 @@ review loop:
 5. commit only the changes that survive review.
 
 The repository history should be read with that context. AI tools contributed
-drafts, edits, analysis, and debugging assistance, but the team remained
-responsible for scope, architecture, verification, and final commits.
+drafts, edits, analysis, and debugging assistance. The team remained
+responsible for scope, architecture, verification, and final commits throughout
+the project.
 
 ## Tool Roles
 
@@ -35,15 +35,15 @@ Typical uses:
 - finding stale assumptions in docs or tests;
 - producing first-pass fixes that still needed local validation.
 
-Claude Code was strongest when the question was: "Given this subsystem, what
-needs to change together?"
+Claude Code was most useful for subsystem-level questions: what files were
+connected, what assumptions were stale, and what changes needed to land
+together.
 
 ### Codex
 
-Codex was used as the stricter local integration and verification agent. It was
-especially useful for terminal-driven work: reading the repository, running
-tests, rebuilding services, checking git history, and making small scoped
-changes with evidence.
+Codex was used as the local integration and verification agent. It was useful
+for terminal-driven work: reading the repository, running tests, rebuilding
+services, checking git history, and making small scoped changes with evidence.
 
 Typical uses:
 
@@ -54,8 +54,9 @@ Typical uses:
 - fixing agent orchestration issues exposed by live smoke tests;
 - creating professional commits with focused messages.
 
-Codex was strongest when the question was: "Does this actually work in the
-local repository right now?"
+Codex was most useful for current-state questions: whether the code worked in
+the local repository, whether the services could start, and whether the tests
+matched the claimed behavior.
 
 ### Cursor
 
@@ -71,13 +72,13 @@ Typical uses:
 - keeping frontend, docs, and tests visible during review;
 - manually inspecting generated diffs before commit.
 
-Cursor was strongest when the question was: "Can I understand and refine this
-change while looking directly at the code?"
+Cursor was most useful for close editing: reading code in place, refining a
+local change, and checking whether a diff matched nearby patterns.
 
 ## Cross-Checking Pattern
 
-The team avoided trusting any single agent output as final. The common pattern
-was cross-checking:
+The team treated every agent output as a draft until it passed an independent
+check. The common pattern was:
 
 | Step | Primary Tool | Verification |
 |---|---|---|
@@ -90,8 +91,8 @@ was cross-checking:
 This mattered because each tool had different failure modes. A model could
 summarize a planned architecture that no longer matched the code. A local test
 could pass while a live Docker path failed. A frontend snapshot could drift from
-the recorded evaluation result. The workflow treated disagreement between tools
-as a signal to inspect the source of truth.
+the recorded evaluation result. Disagreement between tools became a signal to
+inspect the source of truth.
 
 ## Source-of-Truth Rules
 
@@ -117,9 +118,9 @@ A concrete example was the integration pass after the retrieval and graph stack
 landed on `main`.
 
 The retrieval side added real Jina embeddings, query-side dense search, BGE
-reranking, and call edges in the worker graph stage. The integration work did
-not rewrite that logic. Instead, it verified that the agent could consume the
-unchanged internal API contract.
+reranking, and call edges in the worker graph stage. The integration pass
+verified that the agent could consume the unchanged internal API contract after
+those retrieval-side changes landed.
 
 The local smoke process was:
 
@@ -135,26 +136,22 @@ The local smoke process was:
 10. run `/api/v1/query` through the agent SSE path.
 
 That smoke exposed an agent-side issue: `Who calls send in requests?` passed
-the whole sentence as a symbol. The fix was not in retrieval. It was a small
-agent planner change that extracts `send` from reference-style natural language
-queries while preserving the existing backtick behavior.
+the whole sentence as a symbol. The fix stayed within the agent planner:
+extract `send` from reference-style natural language queries while preserving
+the existing backtick behavior.
 
 ## How Programming Changes in the Agentic AI Era
 
-Agentic AI changes programming less by replacing engineers and more by changing
-the unit of work.
+Agentic AI changes the unit of programming work. The focus shifts from a single
+edit to a short evidence loop:
 
-The old unit was often a single edit. The new unit is closer to an evidence
-loop:
-
-1. state the intended behavior;
+1. state the intended behavior and ownership boundary;
 2. let an agent search, edit, or test;
 3. inspect the diff;
 4. run the system;
 5. decide whether the evidence is strong enough to commit.
 
-This makes engineers spend less time typing boilerplate and more time defining
-boundaries:
+This workflow makes boundary-setting part of the daily engineering task:
 
 - What is the real source of truth?
 - Which subsystem owns this behavior?
@@ -164,8 +161,8 @@ boundaries:
 
 For Dcode, that distinction mattered. Retrieval quality, graph extraction,
 agent orchestration, eval harness behavior, and frontend display were separate
-ownership areas. Agentic tools helped move faster, but only when the team kept
-those boundaries explicit.
+ownership areas. Agentic tools were effective when those boundaries stayed
+explicit.
 
 ## Practical Lessons
 
@@ -178,6 +175,5 @@ those boundaries explicit.
   technical.
 - Prefer small commits with clear messages over large mixed changes.
 
-The most productive pattern was not "AI writes, human accepts." It was
-"AI proposes, another tool or test challenges, human decides."
-
+The most productive pattern was: AI proposes, another tool or test challenges,
+and the engineer decides what is safe to commit.

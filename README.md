@@ -10,6 +10,8 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
+**AI-assisted development workflow:** [How the team cross-checked Claude Code, Codex, and Cursor during implementation](docs/agentic_ai_workflow.md)
+
 ---
 
 ## Table of Contents
