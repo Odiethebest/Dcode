@@ -14,6 +14,7 @@ from dcode_shared.observability import log_event
 from dcode_eval.baselines import build_baseline
 from dcode_eval.metrics.retrieval import mrr, ndcg_at_k, recall_at_k
 from dcode_eval.questions import load_questions
+from dcode_eval.questions.resolve import resolve_questions
 
 logger = logging.getLogger("dcode.eval.run")
 
@@ -24,9 +25,12 @@ async def run_eval(
     questions_path: str,
     output_dir: str,
     k: int,
+    repo_id_override: str | None = None,
 ) -> dict[str, Any]:
     baseline = build_baseline(baseline_id)
-    questions = load_questions(questions_path)
+    questions = await resolve_questions(
+        load_questions(questions_path), repo_id_override=repo_id_override
+    )
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     run_config = {
@@ -35,6 +39,7 @@ async def run_eval(
         "questions_path": questions_path,
         "output_dir": output_dir,
         "k": k,
+        "repo_id_override": repo_id_override,
     }
     _write_json(out_dir / "run_config.json", run_config)
     log_event(logger, "eval_run_start", **run_config)
@@ -53,6 +58,7 @@ async def run_eval(
             "taxonomy": question.taxonomy,
             "source": question.source,
             "gt_chunk_ids": question.gt_chunk_ids,
+            "gt_targets": [target.model_dump(exclude_none=True) for target in question.gt_targets],
             "gt_files": question.gt_files,
             "retrieved_chunk_ids": retrieved_chunk_ids,
             "retrieved_files": retrieved_files,
@@ -99,6 +105,7 @@ async def run_suite(
     questions_path: str,
     output_dir: str,
     k: int,
+    repo_id_override: str | None = None,
 ) -> dict[str, Any]:
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -108,6 +115,7 @@ async def run_suite(
         "questions_path": questions_path,
         "output_dir": output_dir,
         "k": k,
+        "repo_id_override": repo_id_override,
     }
     _write_json(out_dir / "run_config.json", run_config)
     log_event(logger, "eval_suite_start", **run_config)
@@ -118,11 +126,10 @@ async def run_suite(
             questions_path=questions_path,
             output_dir=str(out_dir / baseline_id),
             k=k,
+            repo_id_override=repo_id_override,
         )
 
-    summary = {
-        baseline_id: result["metrics"] for baseline_id, result in suite_results.items()
-    }
+    summary = {baseline_id: result["metrics"] for baseline_id, result in suite_results.items()}
     _write_json(out_dir / "suite_summary.json", summary)
 
     report: dict[str, Any] | None = None
@@ -243,6 +250,13 @@ def main(argv: list[str] | None = None) -> int:
         default=5,
         help="Retrieval cutoff k for Recall@k / nDCG@k",
     )
+    parser.add_argument(
+        "--repo-id",
+        default=None,
+        help=(
+            "Override the fixture repo_id and resolve gt_targets against this current index repo id"
+        ),
+    )
     args = parser.parse_args(argv)
 
     baselines = args.baseline
@@ -253,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
                 questions_path=args.questions,
                 output_dir=args.output,
                 k=args.k,
+                repo_id_override=args.repo_id,
             )
         )
         metrics = result["metrics"]
@@ -278,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
             questions_path=args.questions,
             output_dir=args.output,
             k=args.k,
+            repo_id_override=args.repo_id,
         )
     )
     print(json.dumps(result["summary"], ensure_ascii=False))

@@ -37,9 +37,7 @@ class StubBaseline(Baseline):
         )
 
 
-async def test_run_eval_writes_expected_artifacts(
-    tmp_path: Path, monkeypatch, caplog
-) -> None:
+async def test_run_eval_writes_expected_artifacts(tmp_path: Path, monkeypatch, caplog) -> None:
     caplog.set_level(logging.INFO, logger="dcode.eval.run")
     questions_path = tmp_path / "questions.jsonl"
     questions_path.write_text(
@@ -80,6 +78,82 @@ async def test_run_eval_writes_expected_artifacts(
     assert metrics["groundedness"] == 1.0
     assert result["taxonomy_breakdown"]["L1"]["questions"] == 1
     assert any('"event": "eval_run_start"' in record.message for record in caplog.records)
+
+
+async def test_run_eval_uses_resolved_repo_override(tmp_path: Path, monkeypatch) -> None:
+    questions_path = tmp_path / "questions.jsonl"
+    resolved_chunk_id = "11111111-1111-1111-1111-111111111111"
+    override_repo_id = "22222222-2222-2222-2222-222222222222"
+    questions_path.write_text(
+        json.dumps(
+            {
+                "id": "q-001",
+                "repo_id": "old-repo",
+                "question": "What does auth do?",
+                "taxonomy": "L1",
+                "gt_chunk_ids": ["33333333-3333-3333-3333-333333333333"],
+                "gt_targets": [
+                    {
+                        "file_path": "src/requests/auth.py",
+                        "symbol_name": "HTTPBasicAuth",
+                        "start_line": 85,
+                    }
+                ],
+                "gt_files": ["src/requests/auth.py"],
+                "source": "manual",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class OverrideBaseline(Baseline):
+        id = "B9"
+        description = "override stub"
+
+        async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
+            assert repo_id == override_repo_id
+            return [
+                Chunk(
+                    chunk_id=resolved_chunk_id,
+                    file_path="src/requests/auth.py",
+                    symbol_name="HTTPBasicAuth",
+                    start_line=85,
+                    end_line=113,
+                    content="class HTTPBasicAuth(AuthBase): ...",
+                    score=1.0,
+                    score_components=ScoreComponents(dense=0.0, sparse=1.0, rerank=1.0),
+                )
+            ]
+
+        async def answer(self, repo_id: str, query: str) -> AnswerResult:
+            assert repo_id == override_repo_id
+            return AnswerResult(answer="resolved", citations=[], groundedness=1.0)
+
+    async def fake_resolve_questions(questions, *, repo_id_override):
+        assert repo_id_override == override_repo_id
+        assert questions[0].gt_targets[0].symbol_name == "HTTPBasicAuth"
+        return [
+            questions[0].model_copy(
+                update={"repo_id": override_repo_id, "gt_chunk_ids": [resolved_chunk_id]}
+            )
+        ]
+
+    monkeypatch.setattr("dcode_eval.run.build_baseline", lambda baseline_id: OverrideBaseline())
+    monkeypatch.setattr("dcode_eval.run.resolve_questions", fake_resolve_questions)
+
+    result = await run_eval(
+        baseline_id="B9",
+        questions_path=str(questions_path),
+        output_dir=str(tmp_path / "out"),
+        k=5,
+        repo_id_override=override_repo_id,
+    )
+
+    row = result["per_question"][0]
+    assert row["repo_id"] == override_repo_id
+    assert row["gt_chunk_ids"] == [resolved_chunk_id]
+    assert row["recall_at_k"] == 1.0
 
 
 async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -> None:

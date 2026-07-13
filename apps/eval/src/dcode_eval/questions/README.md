@@ -49,10 +49,24 @@ One JSON object per line in `data/questions.jsonl`:
   "question": "How does Flask register URL rules?",
   "taxonomy": "L2",
   "gt_chunk_ids": ["<uuid>", "<uuid>"],
+  "gt_targets": [
+    {
+      "file_path": "src/flask/app.py",
+      "symbol_name": "add_url_rule",
+      "start_line": 1210
+    }
+  ],
   "gt_files": ["src/flask/app.py"],
   "source": "manual"
 }
 ```
+
+`gt_chunk_ids` are index-specific and exist for backwards compatibility with
+recorded snapshots. New or regenerated eval runs should prefer `gt_targets`,
+which are stable anchors based on source location. When the CLI is run with
+`--repo-id <current_repo_uuid>`, the harness resolves each target against the
+current `chunks` table and computes retrieval metrics from the resolved chunk
+ids.
 
 ## Remaining work
 
