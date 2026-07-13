@@ -11,9 +11,9 @@ class VanillaRAGBaseline(Baseline):
     description = "Single-path dense retrieval + LLM answer (DESIGN.md §2.4.3)."
 
     async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
-        # The current index still uses stub embeddings, so this dense baseline
-        # temporarily reuses the retrieval API until real query embeddings land.
-        return await common.internal_search(repo_id, query, k)
+        # Requests mode=dense; degrades to sparse under stub embeddings until a
+        # real embedding model is wired in.
+        return await common.internal_search(repo_id, query, k, mode="dense")
 
     async def answer(self, repo_id: str, query: str) -> AnswerResult:
         chunks = await self.retrieve(repo_id, query, 5)
