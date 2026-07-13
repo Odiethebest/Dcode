@@ -1,0 +1,12 @@
+{
+  "mode": "suite",
+  "baselines": [
+    "B1",
+    "B2",
+    "B3",
+    "B4"
+  ],
+  "questions_path": "/tmp/questions_real.jsonl",
+  "output_dir": "results/eval-suite",
+  "k": 5
+}

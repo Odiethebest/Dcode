@@ -2,9 +2,9 @@
   "baseline": "B4",
   "questions": 16,
   "k": 5,
-  "recall_at_k": 0.19791666666666666,
-  "mrr": 0.2125,
-  "ndcg_at_k": 0.1917124920902645,
-  "groundedness": 0.95,
+  "recall_at_k": 0.06728134935397131,
+  "mrr": 0.7083333333333334,
+  "ndcg_at_k": 0.4260447454804978,
+  "groundedness": 0.984375,
   "pairwise_win_rate": null
 }

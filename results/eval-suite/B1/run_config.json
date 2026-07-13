@@ -1,0 +1,7 @@
+{
+  "mode": "single",
+  "baseline": "B1",
+  "questions_path": "/tmp/questions_real.jsonl",
+  "output_dir": "results/eval-suite/B1",
+  "k": 5
+}
