@@ -12,11 +12,13 @@ from dcode_eval.baselines.base import AnswerResult
 from dcode_eval.settings import eval_settings
 
 
-async def internal_search(repo_id: str, query: str, k: int) -> list[Chunk]:
+async def internal_search(
+    repo_id: str, query: str, k: int, *, mode: str = "hybrid"
+) -> list[Chunk]:
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
         response = await client.get(
             f"{eval_settings.api_base_url.rstrip('/')}/internal/search",
-            params={"repo_id": repo_id, "query": query, "k": k},
+            params={"repo_id": repo_id, "query": query, "k": k, "mode": mode},
             headers=internal_auth_headers(eval_settings.internal_api_key),
         )
     response.raise_for_status()

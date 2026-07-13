@@ -53,10 +53,11 @@ async def search(
     repo_id: UUID,
     query: str = Query(..., min_length=1),
     k: int = Query(10, ge=1, le=50),
+    mode: str = Query("hybrid", pattern="^(sparse|dense|hybrid)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[Chunk]:
     await _require_repo(db, repo_id)
-    return await _search_chunks(db, repo_id, query, k)
+    return await _search_chunks(db, repo_id, query, k, mode=mode)
 
 
 @router.get("/find_definition", response_model=list[Location])
@@ -109,22 +110,36 @@ async def _require_repo(db: AsyncSession, repo_id: UUID) -> Repo:
     return repo
 
 
-async def _search_chunks(db: AsyncSession, repo_id: UUID, query: str, k: int) -> list[Chunk]:
+async def _search_chunks(
+    db: AsyncSession, repo_id: UUID, query: str, k: int, *, mode: str = "hybrid"
+) -> list[Chunk]:
     query_text = query.strip()
     if not query_text:
         return []
 
     terms = _query_terms(query_text)
-    sparse = await _search_sparse_candidates(
-        db, repo_id, query_text, terms, limit=max(k, _SEARCH_CANDIDATE_LIMIT)
-    )
+    candidate_limit = max(k, _SEARCH_CANDIDATE_LIMIT)
+
+    if mode == "sparse":
+        sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+        reranked = _identity_rerank(sparse)
+        return [_chunk_from_candidate(c) for c in reranked[:k]]
+
     query_vector = await _embed_search_query(query_text)
-    dense = await _search_dense_candidates(
-        db,
-        repo_id,
-        query_vector,
-        limit=max(k, _SEARCH_CANDIDATE_LIMIT),
-    )
+
+    if mode == "dense":
+        dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
+        # Degrade to sparse when stub embeddings are active (no query vector).
+        if not dense:
+            sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+            reranked = _identity_rerank(sparse)
+        else:
+            reranked = _identity_rerank(dense)
+        return [_chunk_from_candidate(c) for c in reranked[:k]]
+
+    # mode == "hybrid": sparse + dense → RRF fusion → rerank
+    sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+    dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
     fused = _fuse_search_candidates(sparse, dense)
     reranked = await _rerank_candidates(query_text, fused)
     return [_chunk_from_candidate(candidate) for candidate in reranked[:k]]
