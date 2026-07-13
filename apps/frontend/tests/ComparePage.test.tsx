@@ -21,7 +21,7 @@ describe('ComparePage', () => {
         /Explain the end-to-end send flow from `requests\.api\.request` to `Session\.send`/i
       )).length
     ).toBeGreaterThan(0);
-    expect(screen.getAllByText('suspect').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('grounded').length).toBeGreaterThan(0);
     expect(screen.getByText(/grounded 0\.88/i)).toBeInTheDocument();
   });
 });

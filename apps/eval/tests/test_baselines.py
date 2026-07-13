@@ -22,10 +22,13 @@ def _chunk() -> Chunk:
 
 
 async def test_b1_b2_b3_template_answers(monkeypatch) -> None:
-    async def fake_search(repo_id: str, query: str, k: int) -> list[Chunk]:
+    modes: list[str] = []
+
+    async def fake_search(repo_id: str, query: str, k: int, *, mode: str) -> list[Chunk]:
         assert repo_id == "repo-1"
         assert query == "auth"
         assert k == 5
+        modes.append(mode)
         return [_chunk()]
 
     monkeypatch.setattr("dcode_eval.baselines.common.internal_search", fake_search)
@@ -37,6 +40,7 @@ async def test_b1_b2_b3_template_answers(monkeypatch) -> None:
     assert "B1 sparse baseline" in b1.answer
     assert "B2 dense baseline" in b2.answer
     assert "B3 hybrid baseline" in b3.answer
+    assert modes == ["sparse", "dense", "hybrid"]
     assert b1.citations == ["`src/requests/auth.py:85`"]
 
 

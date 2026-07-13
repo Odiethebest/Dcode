@@ -139,9 +139,12 @@ def _decode_cached_vector(raw: object, embedding_dim: int) -> list[float] | None
     if not isinstance(parsed, list):
         return None
     try:
-        return _validate_vector(parsed, embedding_dim)
+        vector = _validate_vector(parsed, embedding_dim)
     except ValueError:
         return None
+    if all(value == 0.0 for value in vector):
+        return None
+    return vector
 
 
 def _validate_vector(vector: Sequence[object], embedding_dim: int) -> list[float]:

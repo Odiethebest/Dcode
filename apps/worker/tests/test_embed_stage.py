@@ -52,6 +52,34 @@ async def test_embed_stage_uses_cache_and_persists_chunks() -> None:
     assert session_factory.session.rows[1].embedding == [3.0, 4.0]
 
 
+async def test_embed_stage_treats_cached_zero_vector_as_missing() -> None:
+    repo_id = uuid4()
+    chunk = _chunk("one", "def one():\n    return 1\n")
+    cached_key = embedding_cache_key("jina-test", chunk.content)
+    redis = FakeRedis({cached_key: json.dumps([0.0, 0.0])})
+    session_factory = FakeSessionFactory()
+    client = RecordingEmbeddingClient([[0.25, -0.75]])
+    ctx = PipelineContext(
+        repo_id=str(repo_id),
+        repo_url="file:///unused",
+        chunks=[chunk],
+    )
+
+    result = await embed.run(
+        ctx,
+        session_factory=session_factory,
+        redis_client=redis,
+        embedding_client=client,
+        model_id="jina-test",
+        embedding_dim=2,
+    )
+
+    assert client.calls == [[chunk.content]]
+    assert result.embeddings == [[0.25, -0.75]]
+    assert redis.mset_calls == [{cached_key: json.dumps([0.25, -0.75])}]
+    assert session_factory.session.rows[0].embedding == [0.25, -0.75]
+
+
 async def test_embed_stage_rejects_wrong_vector_dimension() -> None:
     ctx = PipelineContext(
         repo_id=str(uuid4()),

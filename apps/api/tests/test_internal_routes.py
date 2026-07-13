@@ -58,11 +58,12 @@ def test_internal_search_route_returns_chunk_schema(monkeypatch: pytest.MonkeyPa
     override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
 
     async def fake_search(
-        _: FakeSession, passed_repo_id: uuid.UUID, query: str, k: int
+        _: FakeSession, passed_repo_id: uuid.UUID, query: str, k: int, *, mode: str
     ) -> list[Chunk]:
         assert passed_repo_id == repo_id
         assert query == "auth"
         assert k == 3
+        assert mode == "hybrid"
         return [
             Chunk(
                 chunk_id=uuid.uuid4(),
