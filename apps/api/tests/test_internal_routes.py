@@ -207,6 +207,47 @@ def test_hybrid_search_fuses_sparse_and_dense_scores() -> None:
     assert fused[1].dense_score == 0.91
 
 
+def test_hybrid_fusion_prefers_dense_under_weighted_rrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dense-only top hit should outrank sparse-only noise when dense_weight=2."""
+    monkeypatch.setattr(internal.api_settings, "rrf_dense_weight", 2.0)
+    monkeypatch.setattr(internal.api_settings, "rrf_sparse_weight", 1.0)
+
+    sparse_noise = _chunk_row("cookies.py", "extract_cookies_to_jar", 10)
+    dense_hit = _chunk_row("sessions.py", "SessionRedirectMixin", 109)
+
+    sparse = [internal.SearchCandidate(row=sparse_noise, sparse_score=99.0)]
+    dense = [internal.SearchCandidate(row=dense_hit, dense_score=0.95)]
+
+    fused = internal._fuse_search_candidates(sparse, dense)
+
+    assert [candidate.row.id for candidate in fused] == [dense_hit.id, sparse_noise.id]
+    # dense_weight * 1/(60+1) > sparse_weight * 1/(60+1) when dense_weight > sparse_weight
+    assert fused[0].fused_score > fused[1].fused_score
+    assert fused[0].dense_score == 0.95
+
+
+def test_hybrid_fusion_equal_weights_keep_sparse_noise_competitive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal 1:1 RRF keeps sparse-only and dense-only tied on rank-1 RRF score."""
+    monkeypatch.setattr(internal.api_settings, "rrf_dense_weight", 1.0)
+    monkeypatch.setattr(internal.api_settings, "rrf_sparse_weight", 1.0)
+
+    sparse_noise = _chunk_row("cookies.py", "extract_cookies_to_jar", 10)
+    dense_hit = _chunk_row("sessions.py", "SessionRedirectMixin", 109)
+
+    sparse = [internal.SearchCandidate(row=sparse_noise, sparse_score=99.0)]
+    dense = [internal.SearchCandidate(row=dense_hit, dense_score=0.95)]
+
+    fused = internal._fuse_search_candidates(sparse, dense)
+
+    assert fused[0].fused_score == fused[1].fused_score
+    # Tie-break prefers denser semantic score.
+    assert fused[0].row.id == dense_hit.id
+
+
 async def test_rerank_candidates_uses_identity_rerank_when_stub(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
