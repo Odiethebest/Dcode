@@ -8,7 +8,10 @@ export PATH="${HOME}/.local/bin:${PATH}"
 
 docker compose stop reranker 2>/dev/null || true
 
-export RERANKER_MODEL_NAME="${RERANKER_MODEL_NAME:-BAAI/bge-reranker-v2-m3}"
+export RERANKER_MODEL_NAME="${RERANKER_MODEL_NAME:-${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}}"
+if [[ "${RERANKER_MODEL_NAME}" == "stub" ]]; then
+  RERANKER_MODEL_NAME="BAAI/bge-reranker-v2-m3"
+fi
 export RERANKER_MAX_SEQ_LENGTH="${RERANKER_MAX_SEQ_LENGTH:-512}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"

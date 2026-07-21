@@ -41,6 +41,11 @@ class SharedSettings(BaseSettings):
     embedding_endpoint: str = ""
     embedding_batch_size: int = 4
     embedding_max_retries: int = 12
+    # Weighted RRF for hybrid fusion. Dense gets higher weight because
+    # equal 1:1 RRF lets sparse keyword noise dilute semantic ranking
+    # (observed: B2 dense nDCG > B3 hybrid under equal weights).
+    rrf_dense_weight: float = 2.0
+    rrf_sparse_weight: float = 1.0
     reranker_model: str = "stub"
     reranker_endpoint: str = ""
     reranker_candidate_limit: int = 50

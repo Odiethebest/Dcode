@@ -298,7 +298,13 @@ async def _rerank_candidates(
 def _fuse_search_candidates(
     sparse: list[SearchCandidate],
     dense: list[SearchCandidate],
+    *,
+    dense_weight: float | None = None,
+    sparse_weight: float | None = None,
 ) -> list[SearchCandidate]:
+    dense_w = api_settings.rrf_dense_weight if dense_weight is None else dense_weight
+    sparse_w = api_settings.rrf_sparse_weight if sparse_weight is None else sparse_weight
+
     by_chunk_id: dict[UUID, SearchCandidate] = {}
     sparse_ranks = {candidate.row.id: index + 1 for index, candidate in enumerate(sparse)}
     dense_ranks = {candidate.row.id: index + 1 for index, candidate in enumerate(dense)}
@@ -323,9 +329,9 @@ def _fuse_search_candidates(
         sparse_rank = sparse_ranks.get(chunk_id)
         dense_rank = dense_ranks.get(chunk_id)
         if sparse_rank is not None:
-            fused_score += _rrf_score(sparse_rank)
+            fused_score += sparse_w * _rrf_score(sparse_rank)
         if dense_rank is not None:
-            fused_score += _rrf_score(dense_rank)
+            fused_score += dense_w * _rrf_score(dense_rank)
         fused.append(
             SearchCandidate(
                 row=candidate.row,
@@ -335,12 +341,14 @@ def _fuse_search_candidates(
             )
         )
 
+    # Prefer dense_score as tie-breaker so hybrid does not demote strong
+    # semantic hits when fused scores are close.
     return sorted(
         fused,
         key=lambda candidate: (
             candidate.fused_score,
-            candidate.sparse_score,
             candidate.dense_score,
+            candidate.sparse_score,
             candidate.row.file_path,
             candidate.row.start_line,
         ),
