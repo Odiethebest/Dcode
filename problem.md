@@ -27,7 +27,7 @@
 | P1-4 | P1 | 缺口 | Agent | 规划与合成为规则驱动/模板拼接，非 LLM → H1 的"agent"臂偏弱 | L |
 | P2-1 | P2 | 缺口 | Worker/Graph | 图谱只产 imports+calls；schema 定义的 inherits/references 从未生成 | M |
 | P2-2 | P2 | 缺口 | Worker | 仅索引 Python | L |
-| P2-3 | P2 | 缺陷 | Worker/Chunk | `_signature` 只取首行 → 多行函数签名被截断 | S |
+| ~~P2-3~~ | P2 | 缺陷 | Worker/Chunk | ✅**已修复**（`a2318bf`）：改用 `ast.unparse` 重建完整签名 | S |
 | P2-4 | P2 | 缺陷 | Worker | parse/chunk 无大文件上限 → 内存/token 爆炸风险 | S |
 | P2-5 | P2 | 缺口 | Agent/SSE | `partial_answer` 整段一次性发出，非逐 token 流式 | M |
 | ~~P3-1~~ | P3 | 债务 | Worker/依赖 | ✅**已修复**（`2a45c4a`）：删除死依赖 + 重新锁定 | S |
@@ -126,6 +126,7 @@
 - **问题**：跨多行的 `def foo(\n  a,\n  b,\n):` 只截到第一行，`signature` 字段不完整。
 - **建议修复**：用 `node.lineno..node.body[0].lineno-1`（或 `ast.get_source_segment` 到冒号）拼完整签名。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`a2318bf`）**：`_signature` 改用 `ast.unparse`（不再依赖 `source_lines`）——多行 def/class、注解、默认值、`*args/**kwargs`、返回类型、类基与关键字均完整重建为单行，且与源码换行格式无关。新增多行签名测试；worker 测试/ruff/mypy 全绿。
 
 ### P2-4 parse/chunk 无大文件/大类上限
 - **位置**：`stages/parse.py`（整文件读入）、`stages/chunk.py`（class chunk = 整个类体）。
