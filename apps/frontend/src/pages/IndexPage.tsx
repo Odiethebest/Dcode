@@ -54,6 +54,7 @@ export default function IndexPage() {
   });
 
   const activeStatus = statusQuery.data;
+  const warnings = activeStatus?.warnings ?? [];
 
   useEffect(() => {
     if (!activeStatus) {
@@ -189,6 +190,18 @@ export default function IndexPage() {
               <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 {activeStatus.error}
               </p>
+            ) : null}
+            {warnings.length > 0 ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <p className="font-medium">
+                  {warnings.length} file{warnings.length === 1 ? '' : 's'} skipped during parsing
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 font-mono text-xs">
+                  {warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
         </section>
