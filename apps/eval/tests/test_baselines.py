@@ -1,10 +1,13 @@
 """Baseline implementation tests."""
 
+from dcode_eval.baselines import common
 from dcode_eval.baselines.base import AnswerResult
 from dcode_eval.baselines.bm25 import BM25Baseline
 from dcode_eval.baselines.full_system import FullSystemBaseline
 from dcode_eval.baselines.hybrid_rag import HybridRAGBaseline
 from dcode_eval.baselines.vanilla_rag import VanillaRAGBaseline
+from dcode_eval.settings import eval_settings
+from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.schemas import Chunk, ScoreComponents
 
 
@@ -59,4 +62,57 @@ async def test_b4_full_system_uses_sse_answer(monkeypatch) -> None:
     result = await FullSystemBaseline().answer("repo-1", "auth")
 
     assert result.answer == "Definition matches"
+    assert result.groundedness == 1.0
+
+
+async def test_stream_full_system_answer_targets_agent_and_bypasses_cache(monkeypatch) -> None:
+    """B4 must call the agent's /internal/query (uncached), not the gateway /api/v1/query."""
+    captured: dict[str, object] = {}
+
+    class FakeStream:
+        async def __aenter__(self) -> "FakeStream":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def aiter_lines(self):
+            for line in (
+                "event: citation",
+                'data: {"file_path": "src/requests/auth.py", "line": 85}',
+                "",
+                "event: final_answer",
+                'data: {"answer": "Auth flow", "citations": [], "groundedness": 1.0}',
+                "",
+            ):
+                yield line
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def stream(self, method: str, url: str, *, json: object, headers: object) -> FakeStream:
+            captured.update(method=method, url=url, json=json, headers=headers)
+            return FakeStream()
+
+    monkeypatch.setattr(common.httpx, "AsyncClient", FakeClient)
+
+    result = await common.stream_full_system_answer("repo-1", "auth")
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == f"{eval_settings.agent_base_url.rstrip('/')}/internal/query"
+    assert "/api/v1/query" not in str(captured["url"])  # not the caching gateway path
+    assert captured["headers"][INTERNAL_API_KEY_HEADER] == eval_settings.internal_api_key  # type: ignore[index]
+    assert captured["json"] == {"repo_id": "repo-1", "query": "auth"}
+    assert result.answer == "Auth flow"
+    assert result.citations == ["`src/requests/auth.py:85`"]
     assert result.groundedness == 1.0
