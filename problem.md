@@ -33,7 +33,7 @@
 | ~~P3-1~~ | P3 | 债务 | Worker/依赖 | ✅**已修复**（`2a45c4a`）：删除死依赖 + 重新锁定 | S |
 | ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
 | ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
-| P3-4 | P3 | 缺陷 | Worker | `ctx.warnings`（跳过的文件）收集后从不持久化 → 用户看不到 | S |
+| ~~P3-4~~ | P3 | 缺陷 | Worker | ✅**已修复**（`267fa74`/`bb7d8bf`）：warnings 写入 job 快照 + status 透出 + 前端展示 | S |
 | P3-5 | P3 | 缺口 | Eval/可复现性 | `agent_base_url` 未接线，但对应"绕网关查询缓存、直连 agent"的 B4 路径（勿轻删） | S |
 | ~~P3-6~~ | P3 | 债务/缺口 | 文档漂移 | ✅**已修复**（`cb204d0`/`7a92493`）：实现 `dependents` 全链路 + 文档对齐 | M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
@@ -168,6 +168,7 @@
 - **问题**：因编码/语法错误被跳过的文件对用户完全不可见。
 - **建议修复**：把 warnings 写入 `repos` 新列或 Redis `job:{id}` 快照，并在 `GET status` 返回，前端 Index 页展示"N 个文件被跳过"。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`267fa74` + `bb7d8bf`）**：选 Redis `job:{id}` 快照（与 stages 同款 live overlay，无需迁移）——`_job_state_payload` 增加 `warnings`，`handle_job`/`_record_failure` 传入 `ctx.warnings`；`RepoStatusResponse` 新增 `warnings` 字段，`GET status` 经防御式 `_warnings_from` 透出；前端 Index 页渲染琥珀色"N files skipped during parsing"面板。后端 pytest/ruff/mypy 全绿，前端 tsc/eslint 通过。
 
 ### P3-5 eval agent_base_url 未接线（对应绕缓存的直连-agent B4 路径）
 - **位置**：`apps/eval/src/dcode_eval/settings.py:8`（`agent_base_url`，仅定义、全仓零读取；**不在** `SharedSettings` base，而在 `EvalSettings` 子类）；B4 的 `baselines/common.py:49` 实际 POST 到 `api_base_url` `/api/v1/query`（网关）。
