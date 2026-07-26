@@ -38,7 +38,7 @@
 | P3-6 | P3 | 债务/缺口 | 文档漂移 | 命名/schema 漂移 + `dependents`（入向依赖）是设计了未实现（反向索引已建） | S/M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
-| P3-9 | P3 | 缺陷 | Worker | 失败路径：repo 行缺失时在 except 内抛错，可逃逸"总是 ack" → 消息重投循环 | S |
+| ~~P3-9~~ | P3 | 缺陷 | Worker | ✅**已修复**（`c672f5d`）：`RepoRowMissingError` 良性丢弃 + 失败持久化兜底，`handle_job` 恒不抛 | S |
 | P3-10 | P3 | 缺陷 | Frontend/无障碍 | 流式区无 `aria-live`；过期 TODO；`toKnownRepoStatus` 重复；派生态未 memo | S |
 | ~~P3-11~~ | P3 | 债务 | Agent | ✅**已修复**（`c404b90`）：工具失败写 `state.error`，图内优雅降级 | S |
 | P3-12 | P3 | 债务 | Frontend | 类型手动镜像后端 schema → 应改 OpenAPI 代码生成（M2） | M |
@@ -198,6 +198,7 @@
 - **问题**：正常路径靠吞异常 + `message.process()` 实现"总是 ack、失败不重投"。但若 repo 行不存在（例如被删），失败处理里的持久化会再抛错并逃出 `handle_job` → 消息被 nack/重投 → 可能无限重投同一坏消息。
 - **建议修复**：失败持久化也用 try/except 包裹；repo 行缺失时直接 ack 丢弃并记日志。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`c672f5d`）**：新增 `RepoRowMissingError`——成功路径遇它良性丢弃（repo 已删 → ack + warn）；失败持久化抽成 `_record_failure` 并用 try/except 兜底（repo 缺失或 PG 挂都只记日志不抛）。`handle_job` 对可解析消息恒不抛异常，"总是 ack / 不重投"不变量成立。新增两条逃逸路径测试。
 
 ### P3-10 前端无障碍与小瑕疵
 - **位置**：`apps/frontend/src/pages/QueryPage.tsx`（流式事件区无 `aria-live`）、`src/api/client.ts:49`（过期 TODO：所述 SSE 解析其实下方已实现）、`toKnownRepoStatus` 在 IndexPage/QueryPage 重复、`finalAnswer/partialAnswer` 每次 render 反转数组未 memo。
