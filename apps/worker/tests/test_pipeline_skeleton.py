@@ -139,6 +139,48 @@ async def test_handle_job_marks_current_stage_failed() -> None:
     assert redis.expirations[str(repo.id)] == pipeline.JOB_STATE_TTL_SECONDS
 
 
+async def test_handle_job_discards_when_repo_row_missing(caplog) -> None:
+    """A job whose repo row is gone must not raise (else RabbitMQ requeues forever)."""
+    caplog.set_level(logging.WARNING, logger="dcode.worker.pipeline")
+    repo_id = uuid4()
+    session_factory = FakeSessionFactory(None)  # repo row does not exist
+    redis = FakeRedis()
+
+    # Must complete without raising — a raise would nack the message (P3-9).
+    await pipeline.handle_job(
+        json.dumps({"repo_id": str(repo_id), "url": "https://x.git"}).encode(),
+        session_factory=session_factory,
+        redis_client=redis,
+        stages=(
+            pipeline.PipelineStage(RepoStatus.cloning, "cloning", (_runner("clone", []),), 5, 20),
+        ),
+    )
+
+    assert session_factory.commits == 0  # nothing persisted
+    assert any('"event": "index_job_repo_deleted"' in r.message for r in caplog.records)
+
+
+async def test_handle_job_does_not_raise_when_failure_persist_fails(caplog) -> None:
+    """If persisting the failed state also fails (repo deleted mid-run), swallow it (P3-9)."""
+    caplog.set_level(logging.ERROR, logger="dcode.worker.pipeline")
+    repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
+    session_factory = _DisappearingSessionFactory(repo)  # present for run, gone for failure-persist
+    redis = FakeRedis()
+
+    await pipeline.handle_job(
+        json.dumps({"repo_id": str(repo.id), "url": repo.url}).encode(),
+        session_factory=session_factory,
+        redis_client=redis,
+        stages=(
+            pipeline.PipelineStage(
+                RepoStatus.cloning, "cloning", (_failing_runner("clone", []),), 5, 20
+            ),
+        ),
+    )
+
+    assert any('"event": "index_job_failure_unpersisted"' in r.message for r in caplog.records)
+
+
 async def test_handle_job_emits_structured_stage_logs(caplog) -> None:
     caplog.set_level(logging.INFO, logger="dcode.worker.pipeline")
     repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
@@ -204,6 +246,20 @@ class FakeSessionFactory:
 
     def __call__(self) -> AbstractAsyncContextManager[AsyncSession]:
         return FakeSession(self.repo, self)
+
+
+class _DisappearingSessionFactory:
+    """Repo present on the first session, gone on later ones (simulates deletion)."""
+
+    def __init__(self, repo: Repo) -> None:
+        self._repo = repo
+        self.commits = 0
+        self.calls = 0
+
+    def __call__(self) -> AbstractAsyncContextManager[AsyncSession]:
+        self.calls += 1
+        repo = self._repo if self.calls == 1 else None
+        return FakeSession(repo, self)
 
 
 class FakeRedis:

@@ -33,6 +33,10 @@ SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 JOB_STATE_TTL_SECONDS = shared_settings.job_state_ttl_seconds
 
 
+class RepoRowMissingError(RuntimeError):
+    """The Repo row is gone (e.g. deleted) while its indexing job is in flight."""
+
+
 @dataclass(frozen=True)
 class PipelineStage:
     """One externally visible pipeline state and its internal stage runners."""
@@ -138,10 +142,46 @@ async def handle_job(
                 commit_sha=ctx.commit_sha,
             )
             log_event(logger, "index_job_completed", repo_id=repo_id, progress=100)
+    except RepoRowMissingError:
+        # The repo row was deleted while indexing — nothing to persist. Ack and
+        # discard instead of raising, so RabbitMQ does not redeliver forever (P3-9).
+        logger.warning(structured_event("index_job_repo_deleted", repo_id=repo_id))
     except Exception as exc:  # noqa: BLE001 — stage failures are represented in job state
         error = str(exc) or exc.__class__.__name__
         if current_stage is not None:
             stage_states[current_stage.name] = StageState.failed
+        await _record_failure(
+            session_factory,
+            redis,
+            repo_id,
+            stage_states,
+            error=error,
+            current_stage=current_stage,
+            commit_sha=ctx.commit_sha,
+        )
+    finally:
+        if owns_redis:
+            await redis.aclose()
+
+
+async def _record_failure(
+    session_factory: SessionFactory,
+    redis: Redis,
+    repo_id: UUID,
+    stage_states: Mapping[str, StageState],
+    *,
+    error: str,
+    current_stage: PipelineStage | None,
+    commit_sha: str | None,
+) -> None:
+    """Persist the failed job state, guaranteeing handle_job never raises.
+
+    Persisting the failure can itself fail — the repo row may have been deleted
+    (RepoRowMissingError) or Postgres may be unreachable. Letting that escape would
+    nack the RabbitMQ message and cause an infinite redelivery loop (P3-9), so
+    any error here is logged and swallowed; the message is still acked.
+    """
+    try:
         async with session_factory() as db:
             await _persist_state(
                 db,
@@ -152,12 +192,14 @@ async def handle_job(
                 stage_states,
                 error=error,
                 complete=True,
-                commit_sha=ctx.commit_sha,
+                commit_sha=commit_sha,
             )
-        logger.exception(structured_event("index_job_failed", repo_id=repo_id, error=error))
-    finally:
-        if owns_redis:
-            await redis.aclose()
+    except Exception:  # noqa: BLE001 — failure persistence must never escape (P3-9)
+        logger.exception(
+            structured_event("index_job_failure_unpersisted", repo_id=repo_id, error=error)
+        )
+        return
+    logger.exception(structured_event("index_job_failed", repo_id=repo_id, error=error))
 
 
 def _parse_job(message_body: bytes) -> tuple[UUID, str] | None:
@@ -214,7 +256,7 @@ async def _update_repo(
 ) -> None:
     repo = await db.get(Repo, repo_id)
     if repo is None:
-        raise RuntimeError(f"repo row not found: {repo_id}")
+        raise RepoRowMissingError(f"repo row not found: {repo_id}")
 
     repo.status = status.value
     repo.progress = progress
