@@ -64,9 +64,6 @@ namespace_packages = true
 
 [[tool.mypy.overrides]]
 module = [
-    "jedi.*",
-    "tree_sitter.*",
-    "tree_sitter_python.*",
     "aio_pika.*",
     "langgraph.*",
     "alembic.*",
