@@ -34,7 +34,7 @@
 | ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
 | ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
 | ~~P3-4~~ | P3 | 缺陷 | Worker | ✅**已修复**（`267fa74`/`bb7d8bf`）：warnings 写入 job 快照 + status 透出 + 前端展示 | S |
-| P3-5 | P3 | 缺口 | Eval/可复现性 | `agent_base_url` 未接线，但对应"绕网关查询缓存、直连 agent"的 B4 路径（勿轻删） | S |
+| ~~P3-5~~ | P3 | 缺口 | Eval/可复现性 | ✅**已修复**（`63c32e5`）：B4 直连 agent `/internal/query`，绕过查询缓存 | S |
 | ~~P3-6~~ | P3 | 债务/缺口 | 文档漂移 | ✅**已修复**（`cb204d0`/`7a92493`）：实现 `dependents` 全链路 + 文档对齐 | M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
@@ -176,6 +176,7 @@
 - **重查结论（勿轻删）**：网关 `/api/v1/query` 会把成功结果按 `query:{repo_id}:{hash}` 缓存 1h（`routes/query.py`），命中即回放、不调用 agent。因此当前 B4 走网关**会命中查询缓存**——重跑同一套题时拿到的是缓存旧答案而非 agent 全新运行，污染可复现性（NFR）。`agent_base_url` + agent 的 `/internal/query`（eval 已有 `internal_api_key`/`internal_auth_headers`）恰好能**绕过缓存**做干净测量。git 溯源：与 `api_base_url` 同在初始提交 `37cabb5` 一次性预留，从未接线（"定义 ≠ 有用"，与已修的 P3-3 同类）。
 - **建议修复**：**(A, 推荐)** 给 B4 增加"直连 agent、绕缓存"的路径（`agent_base_url` + `/internal/query` + 内部鉴权），把死开关变成服务可复现性的真功能；或 **(B)** 若接受网关缓存路径，则删除该字段并在文档写明缓存对重跑的影响。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`63c32e5`）**：采纳方案 A——`stream_full_system_answer` 改打 `agent_base_url` `/internal/query`（带内部鉴权），绕过网关 1h 查询缓存，使每轮 B4 都是 agent 全新运行。`agent_base_url`（默认 `http://localhost:8001`）从死配置变为真功能（运行 eval 需 agent 可达该地址）。新增测试断言走 agent 路径而非网关。eval 测试/ruff/mypy/smoke 全绿。
 
 ### P3-6 文档 ↔ 代码漂移（含一个设计了未实现的路由）
 - **位置**：`docs/en/Technical_Design.md:126-131`（内部 API 列 6 条：`search/find_definition/find_references/dependencies/dependents/file_context`）vs `apps/api/.../routes/internal.py`（实际 5 条：`search/find_definition/find_references/get_dependencies/get_file_outline`）；README 的 `chunks` 建表 SQL 缺少实际存在的 `parent_symbol/signature` 等列。
