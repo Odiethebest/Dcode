@@ -45,6 +45,7 @@
 | P3-13 | P3 | 缺口 | 可观测性 | 无 tracing/metrics；LangGraph 无 checkpointer（graph.py:160 TODO） | M |
 | P3-14 | P3 | 缺口 | 运维/部署 | `dcode.odieyang.com` 未解析；生产 compose 仅本地验证 | M |
 | P3-15 | P3 | 缺口 | 测试 | 全部靠注入 fake，无真实 PG/Redis/RabbitMQ 的集成/端到端测试 | M |
+| ~~P3-16~~ | P3 | 缺陷 | 前端/测试 | ✅**已修复**（`a311e16`）：Node 26 原生 localStorage 破坏 jsdom → vitest 全挂 | S |
 
 ---
 
@@ -233,6 +234,12 @@
 - **位置**：各 `tests/` 均用注入 fake（单元覆盖良好），但无对真实 PG/pgvector/Redis/RabbitMQ 的集成测试，`test_internal_validation.py` 的 live 路径被 `DCODE_LIVE_REPO_ID` 门控默认跳过。
 - **建议修复**：加一条 docker-compose 起真实依赖的集成测试流水线（可用 GitHub Actions services），至少覆盖"索引一个小仓库 → 查询 → SSE 事件齐全 → groundedness 生效"的端到端路径。
 - **工作量**：M。
+
+### P3-16 ✅ 前端 vitest 在 Node 26 下整体失败（localStorage）
+- **位置**：`apps/frontend/tests/setup.ts`；症状为 `QueryPage.test.tsx` / `IndexPage.test.tsx` 的 `beforeEach` 里 `window.localStorage.clear()` 抛 `Cannot read properties of undefined`。
+- **问题**：Node 26 引入实验性原生 `localStorage`（需 `--localstorage-file` 才启用），在 jsdom 环境下遮蔽了 DOM Storage，使 `window.localStorage` 变为 `undefined`。CI 用 Node 20 不受影响，故只在较新本机复现（本轮做 P3-4 前端时发现，已用 stash 证明与业务改动无关）。
+- **✅ 状态（2026-07-26，`a311e16`）**：在 `tests/setup.ts` 安装确定性的内存版 `Storage`（`defineProperty` 到 `window` + `globalThis`），版本无关且改善测试隔离。前端 vitest 现 8/8 通过，tsc/eslint/build 全绿。
+- **工作量**：S。
 
 ---
 
