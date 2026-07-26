@@ -207,6 +207,31 @@ def test_repo_status_returns_correct_shape() -> None:
     assert body["stages"]["embedding"] == "in_progress"
 
 
+def test_repo_status_surfaces_indexing_warnings() -> None:
+    """Skipped files (bad encoding / syntax) recorded during parsing are visible."""
+    rid = uuid.uuid4()
+    repo = Repo(id=rid, url="https://github.com/psf/requests.git", status="ready", progress=100)
+    live_state = {
+        "status": "ready",
+        "progress": 100,
+        "stages": {
+            "cloning": "done",
+            "parsing": "done",
+            "embedding": "done",
+            "graphing": "done",
+        },
+        "warnings": ["skipped src/bad.py: SyntaxError at line 3"],
+    }
+    session = FakeSession(repo)
+    redis = FakeRedis({job_state_key(str(rid)): json.dumps(live_state)})
+    override_dependencies(session, redis=redis)
+
+    response = TestClient(app).get(f"/api/v1/repos/{rid}/status")
+
+    assert response.status_code == 200
+    assert response.json()["warnings"] == ["skipped src/bad.py: SyntaxError at line 3"]
+
+
 def test_repo_status_404_for_unknown_repo() -> None:
     override_dependencies(FakeSession())
 

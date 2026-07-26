@@ -107,6 +107,7 @@ async def repo_status(
         progress=_progress_from(repo.progress, live_state),
         stages=_stages_from(live_state),
         error=_error_from(repo.error, live_state),
+        warnings=_warnings_from(live_state),
     )
 
 
@@ -203,3 +204,10 @@ def _stages_from(live_state: dict[str, object]) -> StagesStatus:
 def _error_from(db_error: str | None, live_state: dict[str, object]) -> str | None:
     raw = live_state.get("error")
     return raw if isinstance(raw, str) else db_error
+
+
+def _warnings_from(live_state: dict[str, object]) -> list[str]:
+    raw = live_state.get("warnings")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, str)]

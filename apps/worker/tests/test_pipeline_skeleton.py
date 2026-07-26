@@ -98,6 +98,28 @@ async def test_handle_job_advances_all_pipeline_states() -> None:
     assert redis.expirations[str(repo.id)] == pipeline.JOB_STATE_TTL_SECONDS
 
 
+async def test_handle_job_persists_warnings_to_job_state() -> None:
+    repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
+    redis = FakeRedis()
+
+    async def warning_runner(ctx: PipelineContext) -> PipelineContext:
+        ctx.warnings.append("skipped bad.py: SyntaxError")
+        return ctx
+
+    await pipeline.handle_job(
+        json.dumps({"repo_id": str(repo.id), "url": repo.url}).encode(),
+        session_factory=FakeSessionFactory(repo),
+        redis_client=redis,
+        stages=(
+            pipeline.PipelineStage(RepoStatus.parsing, "parsing", (warning_runner,), 25, 55),
+        ),
+    )
+
+    assert repo.status == RepoStatus.ready.value
+    state = redis.json_state(str(repo.id))
+    assert state["warnings"] == ["skipped bad.py: SyntaxError"]
+
+
 async def test_handle_job_marks_current_stage_failed() -> None:
     repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
     session_factory = FakeSessionFactory(repo)

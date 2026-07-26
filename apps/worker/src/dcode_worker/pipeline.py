@@ -96,6 +96,7 @@ async def handle_job(
                     stage_states,
                     error=None,
                     complete=False,
+                    warnings=ctx.warnings,
                 )
                 log_event(
                     logger,
@@ -120,6 +121,7 @@ async def handle_job(
                     error=None,
                     complete=False,
                     commit_sha=ctx.commit_sha,
+                    warnings=ctx.warnings,
                 )
                 log_event(
                     logger,
@@ -140,6 +142,7 @@ async def handle_job(
                 error=None,
                 complete=True,
                 commit_sha=ctx.commit_sha,
+                warnings=ctx.warnings,
             )
             log_event(logger, "index_job_completed", repo_id=repo_id, progress=100)
     except RepoRowMissingError:
@@ -158,6 +161,7 @@ async def handle_job(
             error=error,
             current_stage=current_stage,
             commit_sha=ctx.commit_sha,
+            warnings=ctx.warnings,
         )
     finally:
         if owns_redis:
@@ -173,6 +177,7 @@ async def _record_failure(
     error: str,
     current_stage: PipelineStage | None,
     commit_sha: str | None,
+    warnings: Sequence[str] = (),
 ) -> None:
     """Persist the failed job state, guaranteeing handle_job never raises.
 
@@ -193,6 +198,7 @@ async def _record_failure(
                 error=error,
                 complete=True,
                 commit_sha=commit_sha,
+                warnings=warnings,
             )
     except Exception:  # noqa: BLE001 — failure persistence must never escape (P3-9)
         logger.exception(
@@ -241,9 +247,19 @@ async def _persist_state(
     error: str | None,
     complete: bool,
     commit_sha: str | None = None,
+    warnings: Sequence[str] = (),
 ) -> None:
     await _update_repo(db, repo_id, status, progress, error, commit_sha)
-    await _write_job_state(redis, repo_id, status, progress, stages, error=error, complete=complete)
+    await _write_job_state(
+        redis,
+        repo_id,
+        status,
+        progress,
+        stages,
+        error=error,
+        complete=complete,
+        warnings=warnings,
+    )
 
 
 async def _update_repo(
@@ -275,8 +291,9 @@ async def _write_job_state(
     *,
     error: str | None,
     complete: bool,
+    warnings: Sequence[str] = (),
 ) -> None:
-    payload = _job_state_payload(status, progress, stages, error)
+    payload = _job_state_payload(status, progress, stages, error, warnings)
     key = job_state_key(str(repo_id))
     try:
         if complete:
@@ -292,6 +309,7 @@ def _job_state_payload(
     progress: int,
     stages: Mapping[str, StageState],
     error: str | None,
+    warnings: Sequence[str],
 ) -> str:
     return json.dumps(
         {
@@ -299,6 +317,7 @@ def _job_state_payload(
             "progress": progress,
             "stages": {name: state.value for name, state in stages.items()},
             "error": error,
+            "warnings": list(warnings),
         },
         sort_keys=True,
     )

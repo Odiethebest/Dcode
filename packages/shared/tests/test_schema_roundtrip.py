@@ -55,6 +55,7 @@ def test_repo_status_shape_matches_tdd_5_1() -> None:
     payload = status.model_dump()
     assert set(payload["stages"]) == {"cloning", "parsing", "embedding", "graphing"}
     assert 0 <= payload["progress"] <= 100
+    assert payload["warnings"] == []
 
 
 def test_query_request_rejects_blank_query() -> None:
