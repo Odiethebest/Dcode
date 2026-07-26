@@ -430,3 +430,37 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
     assert len(emitter.thoughts) == 4
     assert len(emitter.tool_calls) == 4
     assert len(emitter.tool_results) == 4
+
+
+class DummyFailingSearchTool(Tool[DummySearchArgs, DummySearchResult]):
+    name: ClassVar[str] = "search_code"
+    description: ClassVar[str] = "Dummy search tool that always fails."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummySearchArgs
+
+    async def execute(self, repo_id: str, args: DummySearchArgs) -> DummySearchResult:
+        raise RuntimeError("retrieval API unavailable")
+
+
+async def test_tool_failure_degrades_to_synthesis_without_raising() -> None:
+    repo_id = str(uuid4())
+    emitter = FakeEmitter()
+    registry = _registry(DummyFailingSearchTool())
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=repo_id,
+            query="auth related code",
+            runtime={"tool_registry": registry, "tool_cache": {}, "emitter": emitter},
+        )
+    )
+
+    # A tool failure is recorded and degrades to a synthesized answer, not an abort.
+    assert result["error"] is not None
+    assert "retrieval API unavailable" in result["error"]
+    assert result["final_answer"] is not None
+    assert "⚠️" in result["final_answer"]
+    assert len(result["tool_calls"]) == 1
+    assert result["tool_calls"][0].get("error")  # failure recorded on the tool call
+    assert emitter.tool_calls  # tool_call emitted before execution
+    assert "error:" in emitter.tool_results[-1][2]  # failure surfaced as a tool_result

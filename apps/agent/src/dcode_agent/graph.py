@@ -43,7 +43,12 @@ async def plan_node(state: AgentState) -> AgentState:
 
 
 async def tool_call_node(state: AgentState) -> AgentState:
-    """Execute the chosen tool via the registry with a cache lookup."""
+    """Execute the chosen tool via the registry with a cache lookup.
+
+    A tool failure (invalid planner args, retrieval/graph API error, filesystem
+    error) is recorded on ``state.error`` and degrades to synthesis of the
+    evidence gathered so far, rather than aborting the whole query.
+    """
     if state.pending_tool_name is None:
         return state
 
@@ -51,56 +56,106 @@ async def tool_call_node(state: AgentState) -> AgentState:
     if registry is None:
         raise RuntimeError("tool registry is missing from state.runtime")
 
-    tool = registry.get(state.pending_tool_name)
+    tool_name = state.pending_tool_name
+    tool = registry.get(tool_name)
     if tool is None:
-        raise RuntimeError(f"unknown tool: {state.pending_tool_name}")
+        raise RuntimeError(f"unknown tool: {tool_name}")
 
-    args_model = tool.ArgsSchema(**state.pending_tool_args)
+    try:
+        args_model = tool.ArgsSchema(**state.pending_tool_args)
+    except Exception as exc:  # noqa: BLE001 — invalid planner args degrade, not abort
+        return await _record_tool_failure(
+            state, tool_name, _jsonable_args(state.pending_tool_args), exc
+        )
+
     cache_key = tool.cache_key(state.repo_id, args_model)
+    args_payload = args_model.model_dump(mode="json")
 
-    await _emit_tool_call(state, state.pending_tool_name, args_model.model_dump(mode="json"))
+    await _emit_tool_call(state, tool_name, args_payload)
     log_event(
         logger,
         "tool_call",
         repo_id=state.repo_id,
         step=state.step_count + 1,
-        tool=state.pending_tool_name,
+        tool=tool_name,
     )
     cached_payload = await _cache_get(state.runtime.get("tool_cache"), cache_key)
     cached = cached_payload is not None
-    if cached:
-        result_payload = json.loads(cast(str, cached_payload))
-    else:
-        result = await tool.execute(state.repo_id, args_model)
-        result_payload = result.model_dump(mode="json")
+    try:
+        if cached:
+            result_payload = json.loads(cast(str, cached_payload))
+        else:
+            result = await tool.execute(state.repo_id, args_model)
+            result_payload = result.model_dump(mode="json")
+    except Exception as exc:  # noqa: BLE001 — tool execution failed; degrade, not abort
+        return await _record_tool_failure(state, tool_name, args_payload, exc)
+
+    if not cached:
         await _cache_set(state.runtime.get("tool_cache"), cache_key, json.dumps(result_payload))
     log_event(
         logger,
         "tool_result",
         repo_id=state.repo_id,
         step=state.step_count + 1,
-        tool=state.pending_tool_name,
+        tool=tool_name,
         cached=cached,
     )
 
     observation = {
-        "tool": state.pending_tool_name,
-        "args": args_model.model_dump(mode="json"),
+        "tool": tool_name,
+        "args": args_payload,
         "result": result_payload,
         "cached": cached,
     }
     state.tool_calls.append(
         {
             "step": state.step_count + 1,
-            "tool": state.pending_tool_name,
-            "args": args_model.model_dump(mode="json"),
+            "tool": tool_name,
+            "args": args_payload,
             "cache_key": cache_key,
             "cached": cached,
         }
     )
     state.observations.append(observation)
     state.step_count += 1
-    await _emit_tool_result(state, state.pending_tool_name, _summarize_observation(observation))
+    await _emit_tool_result(state, tool_name, _summarize_observation(observation))
+    state.pending_tool_name = None
+    state.pending_tool_args = {}
+    return state
+
+
+async def _record_tool_failure(
+    state: AgentState,
+    tool_name: str,
+    args: dict[str, Any],
+    exc: Exception,
+) -> AgentState:
+    """Record a tool failure on the state and degrade to synthesis.
+
+    Instead of raising (which aborts the whole query in the API layer), store
+    the error so the edges route to synthesis and the user still gets an answer
+    built from whatever evidence was gathered before the failure.
+    """
+    message = f"{type(exc).__name__}: {exc}".strip()
+    state.error = f"tool '{tool_name}' failed: {message}"
+    state.step_count += 1
+    state.tool_calls.append(
+        {
+            "step": state.step_count,
+            "tool": tool_name,
+            "args": args,
+            "error": message,
+        }
+    )
+    log_event(
+        logger,
+        "tool_error",
+        repo_id=state.repo_id,
+        step=state.step_count,
+        tool=tool_name,
+        error=message,
+    )
+    await _emit_tool_result(state, tool_name, f"error: {message}")
     state.pending_tool_name = None
     state.pending_tool_args = {}
     return state
@@ -109,9 +164,16 @@ async def tool_call_node(state: AgentState) -> AgentState:
 async def synthesize_node(state: AgentState) -> AgentState:
     """Compose a first-pass answer from the accumulated observations."""
     answer, citations = _synthesize_from_observations(state)
+    if state.error is not None:
+        answer = _prepend_tool_failure_notice(answer, state.error)
     state.draft_answer = answer
     state.citations = citations
     return state
+
+
+def _prepend_tool_failure_notice(answer: str, error: str) -> str:
+    notice = f"⚠️ {error}. The answer below is based on the evidence gathered before the failure."
+    return f"{notice}\n\n{answer}" if answer else notice
 
 
 async def groundedness_node(state: AgentState) -> AgentState:
