@@ -72,7 +72,7 @@ def _class_chunk(
         chunk_type=ChunkType.class_,
         parent_symbol=None,
         symbol_name=node.name,
-        signature=_signature(source_lines, node),
+        signature=_signature(node),
         start_line=node.lineno,
         end_line=_end_line(node),
         imports=_imports_for_node(parsed_file.imports, node),
@@ -106,7 +106,7 @@ def _function_chunk(
         chunk_type=ChunkType.method if parent_symbol is not None else ChunkType.function,
         parent_symbol=parent_symbol,
         symbol_name=node.name,
-        signature=_signature(source_lines, node),
+        signature=_signature(node),
         start_line=node.lineno,
         end_line=_end_line(node),
         imports=_imports_for_node(parsed_file.imports, node),
@@ -125,12 +125,25 @@ def _imports_for_node(module_imports: list[str], node: ast.AST) -> list[str]:
     return list(dict.fromkeys(imports))
 
 
-def _signature(
-    source_lines: list[str],
-    node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
-) -> str:
-    line = source_lines[node.lineno - 1].strip()
-    return line.removesuffix(":")
+def _signature(node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    """Reconstruct the full signature from the AST.
+
+    Uses ``ast.unparse`` so multi-line ``def`` / ``class`` headers, defaults,
+    annotations, ``*args`` / ``**kwargs`` and return types are captured in full
+    on one line (the previous first-physical-line slice truncated them).
+    """
+    if isinstance(node, ast.ClassDef):
+        parts = [ast.unparse(base) for base in node.bases]
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                parts.append(f"**{ast.unparse(keyword.value)}")
+            else:
+                parts.append(f"{keyword.arg}={ast.unparse(keyword.value)}")
+        return f"class {node.name}" + (f"({', '.join(parts)})" if parts else "")
+
+    prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+    returns = f" -> {ast.unparse(node.returns)}" if node.returns is not None else ""
+    return f"{prefix} {node.name}({ast.unparse(node.args)}){returns}"
 
 
 def _source_segment(source_lines: list[str], start_line: int, end_line: int) -> str:

@@ -103,6 +103,39 @@ class Greeter:
     assert hello.end_line == 15
 
 
+async def test_multiline_signature_is_captured_in_full(tmp_path: Path) -> None:
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    (workdir / "multi.py").write_text(
+        '''def spread(
+    first: int,
+    second: str = "x",
+    *rest: int,
+) -> dict[str, int]:
+    return {}
+
+
+class Wide(
+    Base,
+    metaclass=Meta,
+):
+    pass
+''',
+        encoding="utf-8",
+    )
+
+    ctx = PipelineContext(repo_id=str(uuid4()), repo_url="file:///unused", workdir=str(workdir))
+    chunked = await chunk.run(await parse.run(ctx))
+    chunks = {(item.chunk_type, item.symbol_name): item for item in chunked.chunks}
+
+    # Previously truncated to the first physical line ("def spread(").
+    spread = chunks[(ChunkType.function, "spread")]
+    assert spread.signature == "def spread(first: int, second: str='x', *rest: int) -> dict[str, int]"
+
+    wide = chunks[(ChunkType.class_, "Wide")]
+    assert wide.signature == "class Wide(Base, metaclass=Meta)"
+
+
 def _git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],
