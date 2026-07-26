@@ -11,7 +11,8 @@ from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
-from dcode_agent.state import MAX_STEPS, AgentState
+from dcode_agent.settings import agent_settings
+from dcode_agent.state import AgentState
 
 logger = logging.getLogger("dcode.agent.graph")
 
@@ -22,7 +23,7 @@ logger = logging.getLogger("dcode.agent.graph")
 
 async def plan_node(state: AgentState) -> AgentState:
     """Rule-based planner for the next ReAct tool step."""
-    if state.step_count >= MAX_STEPS:
+    if state.step_count >= agent_settings.max_steps:
         state.pending_tool_name = None
         state.pending_tool_args = {}
         return state
@@ -147,7 +148,7 @@ def decide_after_plan(state: AgentState) -> str:
     """Run the planned tool, or stop and synthesize."""
     if state.error is not None:
         return "synthesize"
-    if state.step_count >= MAX_STEPS:
+    if state.step_count >= agent_settings.max_steps:
         return "synthesize"  # forced synthesis at the §2.3.1 cap
     if state.draft_answer is not None:
         return "synthesize"
