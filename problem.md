@@ -34,13 +34,13 @@
 | ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
 | ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
 | P3-4 | P3 | 缺陷 | Worker | `ctx.warnings`（跳过的文件）收集后从不持久化 → 用户看不到 | S |
-| P3-5 | P3 | 债务 | Eval | `agent_base_url` 定义但未用；B4 实际打 `api_base_url` | S |
-| P3-6 | P3 | 债务 | 文档漂移 | 内部路由文档 6 条 vs 代码 5 条；`dependents` 路由不存在；chunks 表列不符 | S |
+| P3-5 | P3 | 缺口 | Eval/可复现性 | `agent_base_url` 未接线，但对应"绕网关查询缓存、直连 agent"的 B4 路径（勿轻删） | S |
+| P3-6 | P3 | 债务/缺口 | 文档漂移 | 命名/schema 漂移 + `dependents`（入向依赖）是设计了未实现（反向索引已建） | S/M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
 | P3-9 | P3 | 缺陷 | Worker | 失败路径：repo 行缺失时在 except 内抛错，可逃逸"总是 ack" → 消息重投循环 | S |
 | P3-10 | P3 | 缺陷 | Frontend/无障碍 | 流式区无 `aria-live`；过期 TODO；`toKnownRepoStatus` 重复；派生态未 memo | S |
-| P3-11 | P3 | 债务 | Agent | 图的 `error` 边实际是死路径（节点从不设置 `state.error`） | S |
+| P3-11 | P3 | 债务 | Agent | 图的 `error` 边不可达（`state.error` 只读不写）→ 建议接线而非删 | S |
 | P3-12 | P3 | 债务 | Frontend | 类型手动镜像后端 schema → 应改 OpenAPI 代码生成（M2） | M |
 | P3-13 | P3 | 缺口 | 可观测性 | 无 tracing/metrics；LangGraph 无 checkpointer（graph.py:160 TODO） | M |
 | P3-14 | P3 | 缺口 | 运维/部署 | `dcode.odieyang.com` 未解析；生产 compose 仅本地验证 | M |
@@ -168,15 +168,17 @@
 - **建议修复**：把 warnings 写入 `repos` 新列或 Redis `job:{id}` 快照，并在 `GET status` 返回，前端 Index 页展示"N 个文件被跳过"。
 - **工作量**：S。
 
-### P3-5 eval agent_base_url 未使用
-- **位置**：`apps/eval/src/dcode_eval/settings.py`（定义 `agent_base_url`）；`baselines/common.py`（B4 实际 POST 到 `api_base_url`/`/api/v1/query`）。
-- **建议修复**：删除未用配置，或让 B4 明确经由该配置，消除隐性不一致。
+### P3-5 eval agent_base_url 未接线（对应绕缓存的直连-agent B4 路径）
+- **位置**：`apps/eval/src/dcode_eval/settings.py:8`（`agent_base_url`，仅定义、全仓零读取；**不在** `SharedSettings` base，而在 `EvalSettings` 子类）；B4 的 `baselines/common.py:49` 实际 POST 到 `api_base_url` `/api/v1/query`（网关）。
+- **重查结论（勿轻删）**：网关 `/api/v1/query` 会把成功结果按 `query:{repo_id}:{hash}` 缓存 1h（`routes/query.py`），命中即回放、不调用 agent。因此当前 B4 走网关**会命中查询缓存**——重跑同一套题时拿到的是缓存旧答案而非 agent 全新运行，污染可复现性（NFR）。`agent_base_url` + agent 的 `/internal/query`（eval 已有 `internal_api_key`/`internal_auth_headers`）恰好能**绕过缓存**做干净测量。git 溯源：与 `api_base_url` 同在初始提交 `37cabb5` 一次性预留，从未接线（"定义 ≠ 有用"，与已修的 P3-3 同类）。
+- **建议修复**：**(A, 推荐)** 给 B4 增加"直连 agent、绕缓存"的路径（`agent_base_url` + `/internal/query` + 内部鉴权），把死开关变成服务可复现性的真功能；或 **(B)** 若接受网关缓存路径，则删除该字段并在文档写明缓存对重跑的影响。
 - **工作量**：S。
 
-### P3-6 文档 ↔ 代码漂移
-- **位置**：`docs/en/Technical_Design.md`（内部 API 列 6 条含 `dependents`、`file_context`）vs `apps/api/.../routes/internal.py`（实际 5 条：`search/find_definition/find_references/get_dependencies/get_file_outline`，无 `dependents`）；README 的 `chunks` 建表 SQL 缺少实际存在的 `parent_symbol/signature` 等列。
-- **建议修复**：以代码为准更新 Technical_Design 的路由表与 README 的 schema 摘要；长期用 OpenAPI 自动导出内部 API 契约。
-- **工作量**：S。
+### P3-6 文档 ↔ 代码漂移（含一个设计了未实现的路由）
+- **位置**：`docs/en/Technical_Design.md:126-131`（内部 API 列 6 条：`search/find_definition/find_references/dependencies/dependents/file_context`）vs `apps/api/.../routes/internal.py`（实际 5 条：`search/find_definition/find_references/get_dependencies/get_file_outline`）；README 的 `chunks` 建表 SQL 缺少实际存在的 `parent_symbol/signature` 等列。
+- **重查结论（不只是文档 typo）**：doc 里的 `/internal/dependents`（入向/反向依赖查询）**并非笔误**——迁移 `001` 专门建了反向边索引 `ix_edges_target (repo_id, target_id, edge_type)` 来支撑它，即它是**设计过但未实现**的功能（当前只有出向 `get_dependencies`）。
+- **建议修复**：拆成两件事——(1) 命名/schema 漂移（`dependencies`↔`get_dependencies`、`file_context`↔`get_file_outline`、chunks 列）以代码为准更新文档；(2) `dependents` 作为**决策**：要么实现该反向依赖路由（索引已就绪），要么在文档中删除并注明由 `find_references` 覆盖。长期用 OpenAPI 自动导出契约。
+- **工作量**：S（对齐文档）/ M（若实现 `dependents`）。
 
 ### P3-7 公开 /api/v1/* 无客户端鉴权
 - **位置**：`routes/repos.py` / `routes/query.py`（无 auth 依赖）。
@@ -201,9 +203,9 @@
 - **建议修复**：给流式区加 `aria-live="polite"`；删除过期 TODO；抽公共 `toKnownRepoStatus`；用 `useMemo` 缓存派生态。
 - **工作量**：S。
 
-### P3-11 agent 图的 error 边是死路径
-- **位置**：`graph.py:139-149`（`decide_after_plan` 里 `state.error is not None` 分支）；但没有任何节点会设置 `state.error`（工具异常直接 bubble 到 `main.py` 转成 SSE error）。
-- **建议修复**：要么让 `tool_call_node` 捕获工具异常并写 `state.error`（图内优雅收尾），要么删除死分支，二选一保持一致。
+### P3-11 agent 图的 error 边不可达
+- **位置**：`graph.py:149`（`decide_after_plan`）与 `graph.py:184`（`tool_call` 条件边）读 `state.error`；但**任何节点都不写** `state.error`（重查确认：全 agent 源码只有这 2 处读、0 处写），工具异常直接 bubble 到 `main.py` 转成 SSE error。
+- **建议修复（推荐接线，而非删）**：让 `tool_call_node` 捕获工具异常并写入 `state.error`，使图能**在内部优雅收尾**（走到 synthesize，产出带错误说明 + 已得部分证据的答案），而不是工具一失败就把整条查询丢给 `main` 的兜底 error。删除死边是次选。
 - **工作量**：S。
 
 ### P3-12 前端类型手动镜像后端
