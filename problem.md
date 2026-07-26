@@ -35,7 +35,7 @@
 | ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
 | P3-4 | P3 | 缺陷 | Worker | `ctx.warnings`（跳过的文件）收集后从不持久化 → 用户看不到 | S |
 | P3-5 | P3 | 缺口 | Eval/可复现性 | `agent_base_url` 未接线，但对应"绕网关查询缓存、直连 agent"的 B4 路径（勿轻删） | S |
-| P3-6 | P3 | 债务/缺口 | 文档漂移 | 命名/schema 漂移 + `dependents`（入向依赖）是设计了未实现（反向索引已建） | S/M |
+| ~~P3-6~~ | P3 | 债务/缺口 | 文档漂移 | ✅**已修复**（`cb204d0`/`7a92493`）：实现 `dependents` 全链路 + 文档对齐 | M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
 | ~~P3-9~~ | P3 | 缺陷 | Worker | ✅**已修复**（`c672f5d`）：`RepoRowMissingError` 良性丢弃 + 失败持久化兜底，`handle_job` 恒不抛 | S |
@@ -180,6 +180,7 @@
 - **重查结论（不只是文档 typo）**：doc 里的 `/internal/dependents`（入向/反向依赖查询）**并非笔误**——迁移 `001` 专门建了反向边索引 `ix_edges_target (repo_id, target_id, edge_type)` 来支撑它，即它是**设计过但未实现**的功能（当前只有出向 `get_dependencies`）。
 - **建议修复**：拆成两件事——(1) 命名/schema 漂移（`dependencies`↔`get_dependencies`、`file_context`↔`get_file_outline`、chunks 列）以代码为准更新文档；(2) `dependents` 作为**决策**：要么实现该反向依赖路由（索引已就绪），要么在文档中删除并注明由 `find_references` 覆盖。长期用 OpenAPI 自动导出契约。
 - **工作量**：S（对齐文档）/ M（若实现 `dependents`）。
+- **✅ 状态（2026-07-26，`cb204d0` + `7a92493`）**：选择**实现 dependents 全链路**——新增 `/internal/get_dependents` API 路由（`cb204d0`，复用反向索引 `ix_edges_target`）+ agent `get_dependents` 工具与 planner 路由（`7a92493`，注册表 8→9）。同步对齐 `Technical_Design.md` 路由表（6 条，正确名称）与 README chunks 建表（补 `parent_symbol`/`signature`）。api+agent 测试/ruff/mypy 全绿。
 
 ### P3-7 公开 /api/v1/* 无客户端鉴权
 - **位置**：`routes/repos.py` / `routes/query.py`（无 auth 依赖）。

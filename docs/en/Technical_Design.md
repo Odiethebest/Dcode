@@ -126,9 +126,9 @@ The internal API includes:
 | `/internal/search` | Hybrid retrieval over indexed chunks |
 | `/internal/find_definition` | Locate symbol definitions |
 | `/internal/find_references` | Locate callers or references |
-| `/internal/dependencies` | Find outgoing graph dependencies |
-| `/internal/dependents` | Find incoming graph dependents |
-| `/internal/file_context` | Fetch file-level context |
+| `/internal/get_dependencies` | Outgoing graph dependencies (what a module imports) |
+| `/internal/get_dependents` | Incoming graph dependents (what imports a module) |
+| `/internal/get_file_outline` | File-level symbol outline |
 
 Internal routes are shared by agent tools and evaluation baselines. Route names, schemas, and error semantics should not be changed without updating all consumers.
 

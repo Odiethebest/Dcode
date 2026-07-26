@@ -135,16 +135,18 @@ repos (1) ──── (N) chunks
 ```sql
 -- Chunks: AST boundary slices, vector and tsvector colocated for hybrid retrieval
 CREATE TABLE chunks (
-    id          UUID PRIMARY KEY,
-    repo_id     UUID REFERENCES repos(id),
-    file_path   TEXT NOT NULL,
-    chunk_type  chunk_type,        -- function / method / class / module_doc
-    symbol_name TEXT,
-    start_line  INT, end_line INT,
-    imports     JSONB,
-    content     TEXT,
-    embedding   VECTOR(N),         -- N from EMBEDDING_DIM env var
-    tsv         TSVECTOR           -- BM25 / full-text
+    id            UUID PRIMARY KEY,
+    repo_id       UUID REFERENCES repos(id),
+    file_path     TEXT NOT NULL,
+    chunk_type    chunk_type,        -- function / method / class / module_doc
+    parent_symbol TEXT,              -- enclosing class for methods (NULL otherwise)
+    symbol_name   TEXT NOT NULL,
+    signature     TEXT,              -- full def/class header (ast.unparse)
+    start_line    INT, end_line INT,
+    imports       JSONB,
+    content       TEXT,
+    embedding     VECTOR(N),         -- N from EMBEDDING_DIM env var
+    tsv           TSVECTOR           -- BM25 / full-text
 );
 CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX ON chunks USING gin (tsv);
