@@ -40,7 +40,7 @@
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
 | P3-9 | P3 | 缺陷 | Worker | 失败路径：repo 行缺失时在 except 内抛错，可逃逸"总是 ack" → 消息重投循环 | S |
 | P3-10 | P3 | 缺陷 | Frontend/无障碍 | 流式区无 `aria-live`；过期 TODO；`toKnownRepoStatus` 重复；派生态未 memo | S |
-| P3-11 | P3 | 债务 | Agent | 图的 `error` 边不可达（`state.error` 只读不写）→ 建议接线而非删 | S |
+| ~~P3-11~~ | P3 | 债务 | Agent | ✅**已修复**（`c404b90`）：工具失败写 `state.error`，图内优雅降级 | S |
 | P3-12 | P3 | 债务 | Frontend | 类型手动镜像后端 schema → 应改 OpenAPI 代码生成（M2） | M |
 | P3-13 | P3 | 缺口 | 可观测性 | 无 tracing/metrics；LangGraph 无 checkpointer（graph.py:160 TODO） | M |
 | P3-14 | P3 | 缺口 | 运维/部署 | `dcode.odieyang.com` 未解析；生产 compose 仅本地验证 | M |
@@ -207,6 +207,7 @@
 - **位置**：`graph.py:149`（`decide_after_plan`）与 `graph.py:184`（`tool_call` 条件边）读 `state.error`；但**任何节点都不写** `state.error`（重查确认：全 agent 源码只有这 2 处读、0 处写），工具异常直接 bubble 到 `main.py` 转成 SSE error。
 - **建议修复（推荐接线，而非删）**：让 `tool_call_node` 捕获工具异常并写入 `state.error`，使图能**在内部优雅收尾**（走到 synthesize，产出带错误说明 + 已得部分证据的答案），而不是工具一失败就把整条查询丢给 `main` 的兜底 error。删除死边是次选。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`c404b90`）**：`tool_call_node` 经新增的 `_record_tool_failure` 捕获工具异常（无效 args / 检索·图 API / 文件系统），写 `state.error` 并发 `error:` 的 tool_result；已有条件边据此路由到 synthesize，`synthesize_node` 前置 `⚠️` 失败提示。原先不可达的 error 边现已激活。新增降级测试；agent 测试/ruff/mypy 全绿。
 
 ### P3-12 前端类型手动镜像后端
 - **位置**：`apps/frontend/src/api/types.ts:1-6`（注释：手动同步，M2 计划 OpenAPI 生成）。
