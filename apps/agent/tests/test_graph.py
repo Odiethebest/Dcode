@@ -201,6 +201,19 @@ async def test_plan_node_defaults_to_search_code() -> None:
     assert updated.pending_tool_args == {"query": "auth related code", "k": 5}
 
 
+async def test_plan_node_routes_dependents_queries() -> None:
+    queries = [
+        "Who imports `requests.sessions`?",
+        "importers of requests.auth",
+        "reverse dependencies of requests.models",
+        "What are the dependents of requests.api?",
+    ]
+    for query in queries:
+        state = AgentState(repo_id=str(uuid4()), query=query)
+        updated = await plan_node(state)
+        assert updated.pending_tool_name == "get_dependents", query
+
+
 async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
     caplog.set_level(logging.INFO, logger="dcode.agent.graph")
     tool = DummyTool()

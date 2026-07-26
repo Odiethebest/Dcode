@@ -1,6 +1,6 @@
 """Agent tools — implements DESIGN.md §2.3.2 tool clinic.
 
-`default_registry()` returns a ToolRegistry containing all 8 tools.
+`default_registry()` returns a ToolRegistry containing all 9 tools.
 Used by the agent's plan / tool_call nodes and exposed for debugging
 via the agent service's `/internal/tools` endpoint.
 """
@@ -9,6 +9,7 @@ from dcode_agent.tools.base import Tool, ToolRegistry
 from dcode_agent.tools.find_definition import FindDefinitionTool
 from dcode_agent.tools.find_references import FindReferencesTool
 from dcode_agent.tools.get_dependencies import GetDependenciesTool
+from dcode_agent.tools.get_dependents import GetDependentsTool
 from dcode_agent.tools.get_file_outline import GetFileOutlineTool
 from dcode_agent.tools.grep import GrepTool
 from dcode_agent.tools.list_directory import ListDirectoryTool
@@ -17,7 +18,7 @@ from dcode_agent.tools.search_code import SearchCodeTool
 
 
 def default_registry() -> ToolRegistry:
-    """Construct the canonical 8-tool registry."""
+    """Construct the canonical 9-tool registry."""
     registry = ToolRegistry()
     for tool_cls in (
         SearchCodeTool,
@@ -25,6 +26,7 @@ def default_registry() -> ToolRegistry:
         FindDefinitionTool,
         FindReferencesTool,
         GetDependenciesTool,
+        GetDependentsTool,
         GetFileOutlineTool,
         GrepTool,
         ListDirectoryTool,

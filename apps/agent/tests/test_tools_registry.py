@@ -12,14 +12,15 @@ EXPECTED_TOOLS = {
     "find_definition",
     "find_references",
     "get_dependencies",
+    "get_dependents",
     "get_file_outline",
     "grep",
     "list_directory",
 }
 
 
-def test_registry_has_eight_canonical_tools() -> None:
-    """DESIGN.md §2.3.2 enumerates exactly these eight tools."""
+def test_registry_has_nine_canonical_tools() -> None:
+    """DESIGN.md §2.3.2 tools plus the reverse-dependency get_dependents route."""
     registry = default_registry()
     assert set(registry.names()) == EXPECTED_TOOLS
 
@@ -51,7 +52,7 @@ def test_healthz_returns_ok() -> None:
     assert response.status_code == 200
 
 
-def test_tools_manifest_endpoint_lists_eight_tools() -> None:
+def test_tools_manifest_endpoint_lists_all_tools() -> None:
     # The manifest endpoint reads app.state.tool_registry which is set in
     # the lifespan handler — TestClient's context manager triggers it.
     with TestClient(app) as client:

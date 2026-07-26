@@ -273,6 +273,13 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
             {"path": path},
             f"Route query to get_file_outline for `{path}`.",
         )
+    if _is_dependents_query(normalized):
+        module = subject or query.strip()
+        return (
+            "get_dependents",
+            {"module": module},
+            f"Route query to get_dependents for `{module}`.",
+        )
     if "dependency" in normalized or "dependencies" in normalized or "imports" in normalized:
         module = subject or query.strip()
         return (
@@ -423,6 +430,25 @@ def _is_reference_query(normalized_query: str) -> bool:
     )
 
 
+def _is_dependents_query(normalized_query: str) -> bool:
+    """Incoming-dependency phrasings ("what imports X" / reverse dependencies).
+
+    Checked before the outgoing-`get_dependencies` route so incoming phrasing
+    wins. Deliberately avoids the ambiguous bare "imports" / "depends on".
+    """
+    return any(
+        marker in normalized_query
+        for marker in (
+            "dependent",
+            "imported by",
+            "importers",
+            "who imports",
+            "used by",
+            "reverse dependenc",
+        )
+    )
+
+
 def _extract_reference_subject(query: str) -> str | None:
     patterns = (
         r"\bwho\s+(?:calls|references)\s+([A-Za-z_][\w.]*)\b",
@@ -537,7 +563,14 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
             )
         return ("\n".join(lines), citations)
 
-    if tool_name in {"find_definition", "find_references", "get_dependencies", "get_file_outline", "grep"}:
+    if tool_name in {
+        "find_definition",
+        "find_references",
+        "get_dependencies",
+        "get_dependents",
+        "get_file_outline",
+        "grep",
+    }:
         locations = result["locations"]
         if not locations:
             return (f"No results found for `{state.query}`.", [])
@@ -545,6 +578,7 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
             "find_definition": "Definition matches:",
             "find_references": "Reference matches:",
             "get_dependencies": "Dependency matches:",
+            "get_dependents": "Dependent matches:",
             "get_file_outline": "File outline:",
             "grep": "Exact matches:",
         }[tool_name]
@@ -619,7 +653,14 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
             )
             continue
 
-        if tool_name in {"find_definition", "find_references", "get_dependencies", "get_file_outline", "grep"}:
+        if tool_name in {
+            "find_definition",
+            "find_references",
+            "get_dependencies",
+            "get_dependents",
+            "get_file_outline",
+            "grep",
+        }:
             locations = result["locations"]
             if not locations:
                 lines.append(f"- `{tool_name}` found no locations.")
@@ -628,6 +669,7 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
                 "find_definition": "definition locations",
                 "find_references": "cross-file references",
                 "get_dependencies": "module dependencies",
+                "get_dependents": "reverse dependencies",
                 "get_file_outline": "nearby file symbols",
                 "grep": "exact matches",
             }[tool_name]
