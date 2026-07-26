@@ -30,9 +30,9 @@
 | P2-3 | P2 | 缺陷 | Worker/Chunk | `_signature` 只取首行 → 多行函数签名被截断 | S |
 | P2-4 | P2 | 缺陷 | Worker | parse/chunk 无大文件上限 → 内存/token 爆炸风险 | S |
 | P2-5 | P2 | 缺口 | Agent/SSE | `partial_answer` 整段一次性发出，非逐 token 流式 | M |
-| P3-1 | P3 | 债务 | Worker/依赖 | `tree-sitter`/`tree-sitter-python`/`jedi` 是死依赖 ✅ | S |
-| P3-2 | P3 | 债务 | API | `errors.not_implemented` 死代码 ✅ | S |
-| P3-3 | P3 | 债务 | Agent/配置 | `MAX_STEPS` 在 state.py 与 settings.max_steps 重复且后者未读 ✅ | S |
+| ~~P3-1~~ | P3 | 债务 | Worker/依赖 | ✅**已修复**（`2a45c4a`）：删除死依赖 + 重新锁定 | S |
+| ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
+| ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
 | P3-4 | P3 | 缺陷 | Worker | `ctx.warnings`（跳过的文件）收集后从不持久化 → 用户看不到 | S |
 | P3-5 | P3 | 债务 | Eval | `agent_base_url` 定义但未用；B4 实际打 `api_base_url` | S |
 | P3-6 | P3 | 债务 | 文档漂移 | 内部路由文档 6 条 vs 代码 5 条；`dependents` 路由不存在；chunks 表列不符 | S |
@@ -147,17 +147,20 @@
 - **位置**：`apps/worker/pyproject.toml:8-10`（声明）；`apps/worker/src` grep 零 import；`pyproject.toml` 的 `mypy overrides` 也列了它们。
 - **建议修复**：要么删除（当前解析 100% 用 stdlib `ast`），要么在实现 P2-2 多语言时真正启用。先删，需要时再加，避免误导依赖体积。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`2a45c4a`）**：已从 `apps/worker/pyproject.toml` 和根 `pyproject.toml` 的 mypy overrides 删除；`uv lock` + `make requirements` 已同步移除 `jedi`/`parso`/`tree-sitter(-python)`。worker 测试/ruff/mypy 全绿。
 
 ### P3-2 ✅ API 死代码 errors.not_implemented
 - **位置**：`apps/api/src/dcode_api/errors.py:6`（仅定义，全仓库无调用）。
 - **建议修复**：删除；或若要保留统一错误层，就把各路由内联的 `HTTPException{code,message}` 收敛到一个错误工厂。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`7ee4ac7`）**：已删除整个 `apps/api/src/dcode_api/errors.py`（全仓无引用）。api 测试/ruff/mypy 全绿。
 
 ### P3-3 ✅ MAX_STEPS 重复且 settings 版本未被读取
 - **位置**：`apps/agent/src/dcode_agent/state.py:11`（`MAX_STEPS=8`，被 graph.py:25,143 使用）vs `apps/agent/src/dcode_agent/settings.py:9`（`max_steps=8`，无人读）。
 - **风险**：两处默认都是 8，一旦有人改 settings 期望生效，实际不会——静默漂移。
 - **建议修复**：删掉其一。推荐让 graph 读 `agent_settings.max_steps`，删除 `state.MAX_STEPS`，使其可配置。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`ff02fab`）**：`graph.py` 改读 `agent_settings.max_steps`，删除 `state.MAX_STEPS` 常量——单一来源、可通过环境变量 `MAX_STEPS` 配置。agent 测试/ruff/mypy 全绿。
 
 ### P3-4 worker warnings 收集后从不持久化
 - **位置**：`stages/parse.py`（填充 `ctx.warnings`）；`pipeline.py`（从不写出）。
