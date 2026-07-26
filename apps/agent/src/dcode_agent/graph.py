@@ -114,9 +114,16 @@ async def synthesize_node(state: AgentState) -> AgentState:
 
 
 async def groundedness_node(state: AgentState) -> AgentState:
-    """Verify extracted citations and finalize the answer."""
+    """Verify citations and enforce the D-2.3.1 groundedness guardrail.
+
+    Unverified references are redacted from the answer and only verified
+    citations are surfaced; the recorded score reflects the pre-redaction draft.
+    """
     answer = state.draft_answer or ""
     result = await groundedness.verify(answer, state.repo_id, state.runtime.get("db"))
+    enforced = groundedness.enforce_groundedness(
+        answer, result, threshold=shared_settings.groundedness_threshold
+    )
     state.citations = [
         {
             "symbol": item.symbol,
@@ -124,10 +131,10 @@ async def groundedness_node(state: AgentState) -> AgentState:
             "line": item.line,
             "verified": item.verified,
         }
-        for item in result.citations
+        for item in enforced.citations
     ]
-    state.groundedness_score = result.score
-    state.final_answer = answer
+    state.groundedness_score = enforced.score
+    state.final_answer = enforced.answer
     return state
 
 

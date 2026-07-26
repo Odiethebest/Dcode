@@ -2,7 +2,13 @@
 
 from uuid import uuid4
 
-from dcode_agent.groundedness import extract_citations, verify
+from dcode_agent.groundedness import (
+    CitationCheck,
+    GroundednessResult,
+    enforce_groundedness,
+    extract_citations,
+    verify,
+)
 from dcode_shared.db.models import Chunk, Symbol
 
 
@@ -109,3 +115,84 @@ async def test_verify_marks_citations_unverified_without_db() -> None:
 
     assert [citation.verified for citation in result.citations] == [False, False]
     assert result.score == 0.0
+
+
+def test_enforce_redacts_unverified_file_reference_and_keeps_verified() -> None:
+    answer = (
+        "Definition matches:\n"
+        "- `Flask` in `src/flask/app.py:42`\n"
+        "- `ghost` in `src/flask/ghost.py:999`"
+    )
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(
+                symbol="src/flask/app.py", file_path="src/flask/app.py", line=42, verified=True
+            ),
+            CitationCheck(
+                symbol="src/flask/ghost.py", file_path="src/flask/ghost.py", line=999, verified=False
+            ),
+        ],
+        score=0.5,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+
+    assert "`src/flask/app.py:42`" in enforced.answer  # verified reference kept
+    assert "src/flask/ghost.py:999" not in enforced.answer  # unverified reference redacted
+    assert "[unverified reference removed]" in enforced.answer
+    assert [check.file_path for check in enforced.citations] == ["src/flask/app.py"]
+    assert enforced.redacted_count == 1
+    assert enforced.score == 0.5
+    assert "below the 0.95 guardrail" in enforced.answer  # score < threshold → warning footer
+
+
+def test_enforce_redacts_unverified_symbol_reference() -> None:
+    answer = "The `flask.app.Flask.ghost` helper handles it."
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(symbol="flask.app.Flask.ghost", file_path="", line=0, verified=False)
+        ],
+        score=0.0,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+
+    assert "flask.app.Flask.ghost" not in enforced.answer
+    assert "[unverified reference removed]" in enforced.answer
+    assert enforced.citations == []
+
+
+def test_enforce_leaves_fully_grounded_answer_untouched() -> None:
+    answer = "See `src/flask/app.py:42`."
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(
+                symbol="src/flask/app.py", file_path="src/flask/app.py", line=42, verified=True
+            )
+        ],
+        score=1.0,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+
+    assert enforced.answer == answer  # nothing redacted, no footer
+    assert enforced.redacted_count == 0
+    assert [check.verified for check in enforced.citations] == [True]
+
+
+def test_enforce_redacts_inline_without_footer_when_score_meets_threshold() -> None:
+    answer = "- `a.py:1` and `b.py:2`"
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(symbol="a.py", file_path="a.py", line=1, verified=True),
+            CitationCheck(symbol="b.py", file_path="b.py", line=2, verified=False),
+        ],
+        score=0.5,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.5)
+
+    assert "`a.py:1`" in enforced.answer
+    assert "b.py:2" not in enforced.answer  # still redacted (hard guardrail)
+    assert "guardrail" not in enforced.answer  # score == threshold → no warning footer
+    assert enforced.redacted_count == 1

@@ -103,6 +103,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env.production}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env.production}
       REDIS_URL: redis://redis:6379/0
       JUDGE_MODEL: ${JUDGE_MODEL:-stub}
+      GROUNDEDNESS_THRESHOLD: ${GROUNDEDNESS_THRESHOLD:-0.95}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
