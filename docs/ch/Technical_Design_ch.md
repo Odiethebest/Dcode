@@ -1,5 +1,7 @@
 # Dcode — 技术设计 (Technical Design)
 
+> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+
 | | |
 |---|---|
 | **文档类型** | Technical Design Document |

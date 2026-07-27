@@ -1,6 +1,8 @@
 # Dcode Documentation Map
 
-This folder is the documentation entry point for Dcode. New maintainers should start here, then read the English documents in `docs/en/` as the primary project references. Chinese copies live in `docs/ch/` for team handoff and local review.
+This folder is the documentation entry point for Dcode. New maintainers should start here, then read the English documents in `docs/en/` as the primary project references. Chinese copies live in `docs/ch/` for team handoff — treat them as **possibly-stale snapshots**: `docs/en/` is the single source of truth, so update English first.
+
+> **Engineering backlog** (repo root, not this folder): the active improvement register and its changelog live at the top level — [`problem.md`](../problem.md) (open issues + phased improvement roadmap) and [`Improvement_Log.md`](../Improvement_Log.md) (completed items with commit refs).
 
 ## Folder Skeleton
 
@@ -14,8 +16,7 @@ docs/
 │   ├── Outstanding_Work.md           remaining work and known limits
 │   ├── Sidecar_Smoke.md              real embedding/reranker smoke guide
 │   ├── Agentic_Workflow.md           Claude Code, Codex, and Cursor workflow
-│   ├── Final_Report.md               implemented system and evaluation snapshot
-│   └── H1_Decision.md                current H1 decision and evidence
+│   └── Final_Report.md               implemented system, evaluation snapshot, and H1 decision
 ├── ch/                               Chinese counterparts for team handoff
 │   ├── Technical_Design_ch.md
 │   ├── Project_Plan_ch.md
@@ -23,8 +24,7 @@ docs/
 │   ├── Outstanding_Work_ch.md
 │   ├── Sidecar_Smoke_ch.md
 │   ├── Agentic_Workflow_ch.md
-│   ├── Final_Report_ch.md
-│   └── H1_Decision_ch.md
+│   └── Final_Report_ch.md
 └── archive/                          historical notes, not active guidance
     ├── 项目启动.md
     └── 执行路线.md
@@ -37,7 +37,7 @@ docs/
 3. [Project_Plan.md](en/Project_Plan.md): understand goals, scope, ownership, priorities, and risks.
 4. [Outstanding_Work.md](en/Outstanding_Work.md): see what still needs work before further evaluation or deployment.
 5. [Sidecar_Smoke.md](en/Sidecar_Smoke.md): reproduce the real sidecar integration path before refreshing eval results.
-6. [Final_Report.md](en/Final_Report.md) and [H1_Decision.md](en/H1_Decision.md): understand the recorded result snapshot and current hypothesis decision.
+6. [Final_Report.md](en/Final_Report.md): understand the recorded result snapshot and the H1 decision (with re-open criteria).
 7. [Agentic_Workflow.md](en/Agentic_Workflow.md): understand how Claude Code, Codex, and Cursor were cross checked during development.
 
 ## Document Index
@@ -50,8 +50,7 @@ docs/
 | [Outstanding_Work.md](en/Outstanding_Work.md) | [Outstanding_Work_ch.md](ch/Outstanding_Work_ch.md) | Remaining work, known limits, deployment follow-ups |
 | [Sidecar_Smoke.md](en/Sidecar_Smoke.md) | [Sidecar_Smoke_ch.md](ch/Sidecar_Smoke_ch.md) | Reproducible real embedding and reranker integration smoke |
 | [Agentic_Workflow.md](en/Agentic_Workflow.md) | [Agentic_Workflow_ch.md](ch/Agentic_Workflow_ch.md) | How the team cross checked Claude Code, Codex, and Cursor |
-| [Final_Report.md](en/Final_Report.md) | [Final_Report_ch.md](ch/Final_Report_ch.md) | Implemented system summary and evaluation snapshot |
-| [H1_Decision.md](en/H1_Decision.md) | [H1_Decision_ch.md](ch/H1_Decision_ch.md) | Current H1 judgment and supporting evidence |
+| [Final_Report.md](en/Final_Report.md) | [Final_Report_ch.md](ch/Final_Report_ch.md) | Implemented system summary, evaluation snapshot, and the H1 decision |
 
 ## Archive
 

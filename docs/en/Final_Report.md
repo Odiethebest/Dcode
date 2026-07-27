@@ -98,3 +98,13 @@ Those missing pieces explain why the current evaluation result should remain H1 
 3. Separate dense-only, sparse-only, hybrid, and full-system retrieval paths in the eval harness.
 4. Expand graph coverage for richer references and inheritance.
 5. After retrieval quality is remeasured, finish Judge / pairwise scoring and public deployment.
+
+## H1 Decision
+
+**H1 remains unsupported** on the checked-in `results/eval-suite/` snapshot.
+
+Acceptance rule: B4 must beat both B2 and B3 by at least `0.05` composite points on both L2 and L3. Observed margins (`results/eval-suite/h1_report.json`) are all negative — L2 `-0.0125` vs B2/B3, L3 `-0.0333` vs B2/B3 — so B4 fails on both target taxonomies.
+
+This decision is scoped to a snapshot produced **before** a real embedding/reranker evaluation: the local default is stub embedding + identity rerank (so B2/B3/B4 retrieval is identical) and the planner/synthesis are rule-based — i.e. the arms H1 tests are structurally muted. It is a valid engineering baseline, not yet evidence for the hypothesis.
+
+**To re-open H1:** re-index with real code embeddings + a matching `EMBEDDING_DIM`, enable and record the reranker, isolate the baseline retrieval paths, deepen graph edges where they help L2/L3, and rerun the same suite (or a stronger versioned successor). Until then the honest conclusion stays **unsupported**. See [Sidecar_Smoke.md](Sidecar_Smoke.md) for the real-model path.

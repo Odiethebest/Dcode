@@ -9,7 +9,7 @@ Related documents:
 - [Technical_Design.md](Technical_Design.md) for architecture and contracts;
 - [Project_Plan.md](Project_Plan.md) for milestones and ownership;
 - [Outstanding_Work.md](Outstanding_Work.md) for remaining work;
-- [Final_Report.md](Final_Report.md) and [H1_Decision.md](H1_Decision.md) for the current evaluation snapshot.
+- [Final_Report.md](Final_Report.md) for the current evaluation snapshot and H1 decision.
 
 ## Root Layout
 

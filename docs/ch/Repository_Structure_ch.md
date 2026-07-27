@@ -1,12 +1,14 @@
 # Dcode Current Repository Structure
 
+> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+
 > 当前仓库结构说明。本文面向接手开发的组员，描述 **2026-07-11** 的实际代码状态，不再保留 M0 skeleton 标注。
 >
 > 权威关系：
 > - [Technical_Design_ch.md](Technical_Design_ch.md)：目标架构、接口契约、数据模型
 > - [Project_Plan_ch.md](Project_Plan_ch.md)：里程碑、团队分工、当前 demo 边界
 > - [Outstanding_Work_ch.md](Outstanding_Work_ch.md)：剩余高优先级工作
-> - [Final_Report_ch.md](Final_Report_ch.md) / [H1_Decision_ch.md](H1_Decision_ch.md)：当前评测快照与 H1 结论
+> - [Final_Report_ch.md](Final_Report_ch.md)：当前评测快照与 H1 结论
 
 ---
 
