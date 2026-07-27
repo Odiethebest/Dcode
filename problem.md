@@ -25,7 +25,7 @@
 | P1-2 | P1 | 缺口 | Eval/Judge | LLM-as-Judge 是 stub → pairwise win-rate 恒为 None | M |
 | P1-3 | P1 | 缺口 | Eval/数据集 | 仅 16 题、单一仓库、无统计显著性（固定 0.05 阈值启发式） | L |
 | P1-4 | P1 | 缺口 | Agent | 规划与合成为规则驱动/模板拼接，非 LLM → H1 的"agent"臂偏弱 | L |
-| P2-1 | P2 | 缺口 | Worker/Graph | 图谱只产 imports+calls；schema 定义的 inherits/references 从未生成 | M |
+| ~~P2-1~~ | P2 | 缺口 | Worker/Graph | ✅**已修复**（`67fb694`）：产出 inherits + references 边（references 经 find_references 透出） | M |
 | P2-2 | P2 | 缺口 | Worker | 仅索引 Python | L |
 | ~~P2-3~~ | P2 | 缺陷 | Worker/Chunk | ✅**已修复**（`a2318bf`）：改用 `ast.unparse` 重建完整签名 | S |
 | P2-4 | P2 | 缺陷 | Worker | parse/chunk 无大文件上限 → 内存/token 爆炸风险 | S |
@@ -115,6 +115,7 @@
 - **影响**："谁继承了 X""X 在哪被引用"这类结构问题无法回答，削弱结构感知卖点。
 - **建议修复**：新增 pass 读取 `ClassDef.bases` 生成 `inherits` 边；对符号名做引用扫描生成 `references` 边。补图谱阶段单测。
 - **工作量**：M。
+- **✅ 状态（2026-07-26，`67fb694`）**：新增 `RelationshipRecord` + `_inherits_for_file`/`_resolve_base`（读 `ClassDef.bases`，解析本地/导入基类）+ `_references_for_file`/`_references_in_body`（函数/方法体内 Load 上下文、排除调用目标与模块引用、按 source→target 去重）+ 通用 `_build_relationship_edges`。**references 立即被 `/internal/find_references` 消费**（其查询本就含 `references`）；**inherits 完成图谱、可直接查库**，专门的子类/父类查询工具留作后续（同 P3-6 dependents 模式）。新增集成 + 单元测试；worker 测试/ruff/mypy 全绿。
 
 ### P2-2 仅索引 Python
 - **位置**：`stages/parse.py`（只 `rglob *.py` + stdlib `ast`）。
