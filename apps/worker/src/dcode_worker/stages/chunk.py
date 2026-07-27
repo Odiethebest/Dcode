@@ -6,6 +6,7 @@ from dcode_shared.schemas import ChunkType
 
 from dcode_worker.context import PipelineContext
 from dcode_worker.models import CodeChunk, ParsedPythonFile
+from dcode_worker.settings import worker_settings
 
 
 async def run(ctx: PipelineContext) -> PipelineContext:
@@ -147,7 +148,17 @@ def _signature(node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> s
 
 
 def _source_segment(source_lines: list[str], start_line: int, end_line: int) -> str:
-    return "\n".join(source_lines[start_line - 1 : end_line])
+    return _cap_content("\n".join(source_lines[start_line - 1 : end_line]))
+
+
+def _cap_content(content: str) -> str:
+    """Bound stored chunk content so a pathological huge class/function does not
+    blow up the DB row, tsvector, or embedding input."""
+    limit = worker_settings.max_chunk_chars
+    if limit <= 0 or len(content) <= limit:
+        return content
+    marker = "\n... [truncated]"
+    return content[: max(0, limit - len(marker))] + marker
 
 
 def _end_line(node: ast.AST) -> int:

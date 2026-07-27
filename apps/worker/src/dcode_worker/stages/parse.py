@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dcode_worker.context import PipelineContext
 from dcode_worker.models import ParsedPythonFile
+from dcode_worker.settings import worker_settings
 
 logger = logging.getLogger("dcode.worker.stages.parse")
 
@@ -36,8 +37,14 @@ async def run(ctx: PipelineContext) -> PipelineContext:
     parsed_files: list[ParsedPythonFile] = []
     warnings: list[str] = []
 
+    max_bytes = worker_settings.max_file_bytes
     for path in _iter_python_files(root):
         relative_path = path.relative_to(root).as_posix()
+        if max_bytes > 0 and path.stat().st_size > max_bytes:
+            warning = f"skipped oversized Python file {relative_path}: exceeds {max_bytes} bytes"
+            warnings.append(warning)
+            logger.warning(warning)
+            continue
         try:
             source = path.read_text(encoding="utf-8")
         except UnicodeDecodeError as exc:
