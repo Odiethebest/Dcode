@@ -39,7 +39,7 @@
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
 | P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
 | ~~P3-9~~ | P3 | 缺陷 | Worker | ✅**已修复**（`c672f5d`）：`RepoRowMissingError` 良性丢弃 + 失败持久化兜底，`handle_job` 恒不抛 | S |
-| P3-10 | P3 | 缺陷 | Frontend/无障碍 | 流式区无 `aria-live`；过期 TODO；`toKnownRepoStatus` 重复；派生态未 memo | S |
+| ~~P3-10~~ | P3 | 缺陷 | Frontend/无障碍 | ✅**已修复**（`09e2446`）：aria-live + 抽共享 util + useMemo + 清 TODO | S |
 | ~~P3-11~~ | P3 | 债务 | Agent | ✅**已修复**（`c404b90`）：工具失败写 `state.error`，图内优雅降级 | S |
 | P3-12 | P3 | 债务 | Frontend | 类型手动镜像后端 schema → 应改 OpenAPI 代码生成（M2） | M |
 | P3-13 | P3 | 缺口 | 可观测性 | 无 tracing/metrics；LangGraph 无 checkpointer（graph.py:160 TODO） | M |
@@ -210,6 +210,7 @@
 - **位置**：`apps/frontend/src/pages/QueryPage.tsx`（流式事件区无 `aria-live`）、`src/api/client.ts:49`（过期 TODO：所述 SSE 解析其实下方已实现）、`toKnownRepoStatus` 在 IndexPage/QueryPage 重复、`finalAnswer/partialAnswer` 每次 render 反转数组未 memo。
 - **建议修复**：给流式区加 `aria-live="polite"`；删除过期 TODO；抽公共 `toKnownRepoStatus`；用 `useMemo` 缓存派生态。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`09e2446`）**：final-answer 区加 `aria-live="polite"`、event-stream 加 `role="log"`+`aria-live`；`toKnownRepoStatus` 抽到 `@/lib/repoStatus`（Index/Query 共用）；`finalAnswer/partialAnswer/citations` 改 `useMemo`；`client.ts` 过期 TODO 改写为准确文档。tsc/eslint/vitest/build 全绿。
 
 ### P3-11 agent 图的 error 边不可达
 - **位置**：`graph.py:149`（`decide_after_plan`）与 `graph.py:184`（`tool_call` 条件边）读 `state.error`；但**任何节点都不写** `state.error`（重查确认：全 agent 源码只有这 2 处读、0 处写），工具异常直接 bubble 到 `main.py` 转成 SSE error。
