@@ -2,6 +2,8 @@
 
 This folder is the documentation entry point for Dcode. New maintainers should start here, then read the English documents in `docs/en/` as the primary project references. Chinese copies live in `docs/ch/` for team handoff and local review.
 
+> **Engineering backlog** (repo root, not this folder): the active improvement register and its changelog live at the top level — [`problem.md`](../problem.md) (open issues + phased improvement roadmap) and [`Improvement_Log.md`](../Improvement_Log.md) (completed items with commit refs).
+
 ## Folder Skeleton
 
 ```text
