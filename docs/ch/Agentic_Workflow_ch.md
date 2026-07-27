@@ -1,5 +1,7 @@
 # Agentic AI 开发工作流
 
+> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+
 ## 目的
 
 本项目在 agent 辅助开发环境中完成。团队把 Claude Code、Codex 和 Cursor 作为工程工具使用，并把它们纳入正常的审查、验证和提交流程。

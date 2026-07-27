@@ -233,7 +233,7 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 > real embedding and reranking require explicit sidecar configuration and re-indexing.
 > The current recorded H1 decision remains **unsupported** on the checked-in
 > 16-question suite, which predates a fresh evaluation of the real model path.
-> See [`docs/en/Final_Report.md`](docs/en/Final_Report.md), [`docs/en/H1_Decision.md`](docs/en/H1_Decision.md),
+> See [`docs/en/Final_Report.md`](docs/en/Final_Report.md)
 > and [`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md) for the current implementation status.
 
 ### Prerequisites
@@ -361,7 +361,7 @@ The recorded suite under `results/eval-suite/` currently yields:
 - `B4`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `0.95`
 
 The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
-either L2 or L3. Details: [`docs/en/H1_Decision.md`](docs/en/H1_Decision.md).
+either L2 or L3. Details: [`docs/en/Final_Report.md`](docs/en/Final_Report.md) §H1 Decision.
 
 This result is the current committed evaluation snapshot. A fresh measurement
 of the real embedding/reranker sidecar path requires re-indexing the target
@@ -397,8 +397,7 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 | **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
 | **[`docs/en/Project_Plan.md`](docs/en/Project_Plan.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
 | **[`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
-| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report | Implemented system summary, evaluation snapshot, next steps |
-| **[`docs/en/H1_Decision.md`](docs/en/H1_Decision.md)**   | Hypothesis decision | Final H1 judgment and supporting metrics |
+| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report + H1 decision | Implemented system summary, evaluation snapshot, next steps, and the H1 judgment + re-open criteria |
 | **[`docs/en/Repository_Structure.md`](docs/en/Repository_Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
 | **[`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)** | Integration smoke | Reproducible Jina v2, BGE reranker, 768-dim re-index, and agent smoke guide |
 | **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |

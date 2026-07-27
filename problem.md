@@ -60,8 +60,8 @@
 ### P0-2 ✅ 已提交的评测快照早于当前代码，具误导性
 - **位置**：`results/eval-suite/{B2,B3,B4}/`、`results/eval-suite/{suite_summary,h1_report}.json`。
 - **问题**：各 baseline 子目录**只有** `metrics.json / per_question.jsonl / taxonomy_breakdown.json`，**缺 `run_config.json`**——而当前 `run.py:44` 每次运行都会写 `run_config.json`（`test_run.py` 也断言了）。快照日期为 6 月 16 日，B4 答案文本（"Top code hits for…"、引用测试文件）既不符合当前 `template_answer` 也不符合 SSE 路径。README 直接引用了这些数字作为"当前 H1 结论"。
-- **影响**：README/`H1_Decision.md`/前端 Compare 页展示的都是过期结果；任何人据此判断 H1 都是基于失效数据。
-- **建议修复**：在真实 sidecar（Jina 768 + BGE reranker）下重新索引目标仓库并重跑 `run_suite`，覆盖 `results/eval-suite/`，同步更新 README §Current Result、`H1_Decision.md`、`Final_Report.md` 和前端 `evalSnapshot.ts`。在结果目录补 `run_config.json`（记录模型配置 + commit + 问题集）。
+- **影响**：README/`Final_Report.md`/前端 Compare 页展示的都是过期结果；任何人据此判断 H1 都是基于失效数据。
+- **建议修复**：在真实 sidecar（Jina 768 + BGE reranker）下重新索引目标仓库并重跑 `run_suite`，覆盖 `results/eval-suite/`，同步更新 README §Current Result、`Final_Report.md`（含 H1 结论）和前端 `evalSnapshot.ts`。在结果目录补 `run_config.json`（记录模型配置 + commit + 问题集）。
 - **在途**：未合并分支 `feat/b0-github-search`（`fb86626`）已在真实 Jina embedding 下刷新过 eval-suite，可作覆盖来源；但需先并入加权 RRF（PR #10，已在 main）后重跑，并补齐 `run_config.json`。
 - **工作量**：S（重跑）；依赖 P1-1（真实模型可用）。
 
@@ -176,6 +176,6 @@
 
 - 已完成项记录：[`Improvement_Log.md`](Improvement_Log.md)
 - 设计权威：`docs/en/Technical_Design.md`
-- 现状/遗留：`docs/en/Outstanding_Work.md`、`docs/en/Final_Report.md`、`docs/en/H1_Decision.md`
+- 现状/遗留：`docs/en/Outstanding_Work.md`、`docs/en/Final_Report.md`（含 H1 结论）
 - 真实模型复现：`docs/en/Sidecar_Smoke.md`
 - 仓库结构：`docs/en/Repository_Structure.md`

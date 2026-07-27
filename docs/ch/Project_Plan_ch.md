@@ -1,5 +1,7 @@
 # Dcode — 项目计划 (Project Plan)
 
+> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+
 | | |
 |---|---|
 | **文档类型** | Project Plan |

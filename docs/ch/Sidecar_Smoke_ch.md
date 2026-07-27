@@ -1,5 +1,7 @@
 # 真实模型 Sidecar 集成 Smoke 复现指南
 
+> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+
 ## 目的
 
 本文档记录真实 embedding 与 reranker 模式下的本地集成 smoke 流程，供后续检索评测、H1 复测和 Compare 页刷新前复用。

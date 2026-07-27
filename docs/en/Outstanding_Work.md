@@ -2,7 +2,9 @@
 
 ## Current Status
 
-This document tracks remaining work after the implemented local vertical slice. It replaces the early skeleton task list and should be read with [Final_Report.md](Final_Report.md), [H1_Decision.md](H1_Decision.md), and [Sidecar_Smoke.md](Sidecar_Smoke.md).
+This document tracks remaining work after the implemented local vertical slice. It replaces the early skeleton task list and should be read with [Final_Report.md](Final_Report.md) and [Sidecar_Smoke.md](Sidecar_Smoke.md).
+
+> The granular, code-level backlog now lives in [`problem.md`](../../problem.md) (open issues; completed items in [`Improvement_Log.md`](../../Improvement_Log.md)). This document keeps the milestone-level view of remaining work.
 
 Completed:
 
