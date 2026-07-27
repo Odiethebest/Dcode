@@ -232,6 +232,21 @@ def test_repo_status_surfaces_indexing_warnings() -> None:
     assert response.json()["warnings"] == ["skipped src/bad.py: SyntaxError at line 3"]
 
 
+def test_lifespan_owns_and_closes_shared_pools() -> None:
+    """The app lifespan warms the shared Redis + agent clients and releases them."""
+    from dcode_api import deps
+
+    deps._redis = None
+    deps._agent_client = None
+
+    with TestClient(app):
+        assert deps._redis is not None  # warmed by lifespan startup
+        assert deps._agent_client is not None
+
+    assert deps._redis is None  # released by lifespan shutdown
+    assert deps._agent_client is None
+
+
 def test_repo_status_404_for_unknown_repo() -> None:
     override_dependencies(FakeSession())
 
