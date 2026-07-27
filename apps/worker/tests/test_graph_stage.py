@@ -129,6 +129,79 @@ def test_resolve_call_target_handles_self_method_call() -> None:
     assert target == "pkg.alpha.Alpha.other"
 
 
+async def test_graph_stage_builds_inherits_and_references_edges(tmp_path: Path) -> None:
+    workdir = tmp_path / "repo"
+    package = workdir / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "base.py").write_text("class Base:\n    pass\n", encoding="utf-8")
+    (package / "impl.py").write_text(
+        """from .base import Base
+
+
+class Impl(Base):
+    pass
+
+
+def make() -> type[Base]:
+    return Impl
+""",
+        encoding="utf-8",
+    )
+    repo_id = uuid4()
+    ctx = PipelineContext(repo_id=str(repo_id), repo_url="file:///unused", workdir=str(workdir))
+    ctx = await parse.run(ctx)
+    ctx = await chunk.run(ctx)
+    session_factory = FakeSessionFactory([_db_chunk(repo_id, item) for item in ctx.chunks])
+
+    await graph.run(ctx, session_factory=session_factory)
+
+    symbols = {symbol.qualified_name: symbol for symbol in session_factory.session.symbols}
+    edges = session_factory.session.edges
+    inherits = [edge for edge in edges if edge.edge_type == EdgeType.inherits.value]
+    references = [edge for edge in edges if edge.edge_type == EdgeType.references.value]
+
+    # `class Impl(Base)` → one inherits edge Impl → Base.
+    assert len(inherits) == 1
+    assert inherits[0].source_id == symbols["pkg.impl.Impl"].id
+    assert inherits[0].target_id == symbols["pkg.base.Base"].id
+
+    # `make` uses `Impl` as a return value and `Base` in its annotation → references
+    # (not calls); the module reference to `pkg.base` stays an import edge only.
+    ref_pairs = {(edge.source_id, edge.target_id) for edge in references}
+    assert (symbols["pkg.impl.make"].id, symbols["pkg.impl.Impl"].id) in ref_pairs
+    assert (symbols["pkg.impl.make"].id, symbols["pkg.base.Base"].id) in ref_pairs
+    assert all(edge.source_id != edge.target_id for edge in references)
+
+
+def test_resolve_base_handles_local_and_imported_bases() -> None:
+    internal = {"pkg.m.Base", "pkg.m.Child", "pkg.other.Mixin"}
+    local = graph._resolve_base(
+        ast.Name(id="Base", ctx=ast.Load()),
+        module_name="pkg.m",
+        local_classes={"Base", "Child"},
+        import_aliases={},
+        internal_symbols=internal,
+    )
+    imported = graph._resolve_base(
+        ast.Attribute(value=ast.Name(id="other", ctx=ast.Load()), attr="Mixin", ctx=ast.Load()),
+        module_name="pkg.m",
+        local_classes=set(),
+        import_aliases={"other": "pkg.other"},
+        internal_symbols=internal,
+    )
+    external = graph._resolve_base(
+        ast.Name(id="External", ctx=ast.Load()),
+        module_name="pkg.m",
+        local_classes=set(),
+        import_aliases={},
+        internal_symbols=internal,
+    )
+    assert local == "pkg.m.Base"
+    assert imported == "pkg.other.Mixin"
+    assert external is None
+
+
 def _db_chunk(repo_id: UUID, item: CodeChunk) -> DBChunk:
     return DBChunk(
         id=uuid4(),
