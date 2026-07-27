@@ -7,6 +7,7 @@ from uuid import uuid4
 from dcode_agent.graph import build_graph, plan_node, synthesize_node, tool_call_node
 from dcode_agent.state import AgentState
 from dcode_agent.tools.base import Tool, ToolRegistry
+from dcode_shared.db.models import Chunk, Symbol
 from pydantic import BaseModel
 
 
@@ -200,6 +201,19 @@ async def test_plan_node_defaults_to_search_code() -> None:
     assert updated.pending_tool_args == {"query": "auth related code", "k": 5}
 
 
+async def test_plan_node_routes_dependents_queries() -> None:
+    queries = [
+        "Who imports `requests.sessions`?",
+        "importers of requests.auth",
+        "reverse dependencies of requests.models",
+        "What are the dependents of requests.api?",
+    ]
+    for query in queries:
+        state = AgentState(repo_id=str(uuid4()), query=query)
+        updated = await plan_node(state)
+        assert updated.pending_tool_name == "get_dependents", query
+
+
 async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
     caplog.set_level(logging.INFO, logger="dcode.agent.graph")
     tool = DummyTool()
@@ -287,14 +301,108 @@ async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
     assert result["final_answer"] is not None
     assert "Definition matches" in result["final_answer"]
     assert result["groundedness_score"] == 0.0
+    # Guardrail: with no db the single citation is unverified, so the file:line
+    # reference is redacted from the answer and a warning footer is appended.
+    assert "src/requests/auth.py:85" not in result["final_answer"]
+    assert "[unverified reference removed]" in result["final_answer"]
     assert len(result["tool_calls"]) == 1
     assert emitter.thoughts
     assert emitter.tool_calls
     assert emitter.tool_results
 
 
+class FakeGroundednessSession:
+    """Minimal async session that answers groundedness verification queries."""
+
+    def __init__(self, *, chunks: list[Chunk], symbols: list[Symbol]) -> None:
+        self.chunks = chunks
+        self.symbols = symbols
+
+    async def scalar(self, stmt: object) -> Chunk | Symbol | None:
+        compiled = stmt.compile()
+        sql = str(stmt)
+        params = compiled.params
+        if "FROM chunks" in sql:
+            repo_id = params["repo_id_1"]
+            file_path = params["file_path_1"]
+            line = params["start_line_1"]
+            for chunk in self.chunks:
+                if (
+                    chunk.repo_id == repo_id
+                    and chunk.file_path == file_path
+                    and chunk.start_line <= line <= chunk.end_line
+                ):
+                    return chunk
+            return None
+        if "FROM symbols" in sql:
+            repo_id = params["repo_id_1"]
+            qualified_name = params["qualified_name_1"]
+            for symbol in self.symbols:
+                if symbol.repo_id == repo_id and symbol.qualified_name == qualified_name:
+                    return symbol
+            return None
+        raise AssertionError(f"unexpected statement: {sql}")
+
+
+def _grounded_session(repo_id: Any) -> FakeGroundednessSession:
+    """A session that verifies every reference the multi-hop trace cites."""
+    return FakeGroundednessSession(
+        chunks=[
+            Chunk(
+                id=uuid4(),
+                repo_id=repo_id,
+                file_path="src/requests/auth.py",
+                chunk_type="class",
+                parent_symbol=None,
+                symbol_name="HTTPBasicAuth",
+                signature=None,
+                start_line=85,
+                end_line=113,
+                imports=[],
+                content="class HTTPBasicAuth(AuthBase): ...",
+                embedding=[0.0],
+            ),
+            Chunk(
+                id=uuid4(),
+                repo_id=repo_id,
+                file_path="src/requests/models.py",
+                chunk_type="method",
+                parent_symbol="PreparedRequest",
+                symbol_name="prepare_auth",
+                signature=None,
+                start_line=580,
+                end_line=600,
+                imports=[],
+                content="def prepare_auth(self, auth, url): ...",
+                embedding=[0.0],
+            ),
+        ],
+        symbols=[
+            Symbol(
+                id=uuid4(),
+                repo_id=repo_id,
+                qualified_name="requests.auth.HTTPBasicAuth",
+                kind="class",
+                file_path="src/requests/auth.py",
+                line=85,
+                chunk_id=None,
+            ),
+            Symbol(
+                id=uuid4(),
+                repo_id=repo_id,
+                qualified_name="requests.models.PreparedRequest.prepare_auth",
+                kind="method",
+                file_path="src/requests/models.py",
+                line=589,
+                chunk_id=None,
+            ),
+        ],
+    )
+
+
 async def test_build_graph_runs_multihop_for_architecture_query() -> None:
-    repo_id = str(uuid4())
+    repo_uuid = uuid4()
+    repo_id = str(repo_uuid)
     emitter = FakeEmitter()
     registry = _registry(
         DummySearchTool(),
@@ -302,13 +410,21 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
         DummyReferencesTool(),
         DummyOutlineTool(),
     )
+    # A db that verifies every reference the trace cites, so the groundedness
+    # guardrail keeps them all (the fully-grounded end-to-end path).
+    db = _grounded_session(repo_uuid)
     compiled = build_graph()
 
     result = await compiled.ainvoke(
         AgentState(
             repo_id=repo_id,
             query="How is authentication wired end-to-end?",
-            runtime={"tool_registry": registry, "tool_cache": {}, "emitter": emitter},
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": {},
+                "emitter": emitter,
+                "db": db,
+            },
         )
     )
 
@@ -321,6 +437,43 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
     assert "Agent trace" in result["final_answer"]
     assert "src/requests/auth.py:85" in result["final_answer"]
     assert "src/requests/models.py:589" in result["final_answer"]
+    # Every cited reference verified → nothing redacted, groundedness 1.0.
+    assert result["groundedness_score"] == 1.0
+    assert "[unverified reference removed]" not in result["final_answer"]
     assert len(emitter.thoughts) == 4
     assert len(emitter.tool_calls) == 4
     assert len(emitter.tool_results) == 4
+
+
+class DummyFailingSearchTool(Tool[DummySearchArgs, DummySearchResult]):
+    name: ClassVar[str] = "search_code"
+    description: ClassVar[str] = "Dummy search tool that always fails."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummySearchArgs
+
+    async def execute(self, repo_id: str, args: DummySearchArgs) -> DummySearchResult:
+        raise RuntimeError("retrieval API unavailable")
+
+
+async def test_tool_failure_degrades_to_synthesis_without_raising() -> None:
+    repo_id = str(uuid4())
+    emitter = FakeEmitter()
+    registry = _registry(DummyFailingSearchTool())
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=repo_id,
+            query="auth related code",
+            runtime={"tool_registry": registry, "tool_cache": {}, "emitter": emitter},
+        )
+    )
+
+    # A tool failure is recorded and degrades to a synthesized answer, not an abort.
+    assert result["error"] is not None
+    assert "retrieval API unavailable" in result["error"]
+    assert result["final_answer"] is not None
+    assert "⚠️" in result["final_answer"]
+    assert len(result["tool_calls"]) == 1
+    assert result["tool_calls"][0].get("error")  # failure recorded on the tool call
+    assert emitter.tool_calls  # tool_call emitted before execution
+    assert "error:" in emitter.tool_results[-1][2]  # failure surfaced as a tool_result

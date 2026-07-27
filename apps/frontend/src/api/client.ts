@@ -44,11 +44,9 @@ export async function getRepoStatus(repoId: UUID): Promise<RepoStatusResponse> {
 }
 
 /**
- * Streaming query — consumes the agent's SSE response.
- *
- * TODO(M2): implement an SSE parser over fetch + ReadableStream that
- *   emits typed events (one of SSEEventName) per DESIGN.md §4.3.
- *   Hand each event to a caller-supplied handler.
+ * Streaming query — consumes the agent's SSE response via fetch +
+ * ReadableStream, emitting one typed event (SSEEventName) per DESIGN.md §4.3
+ * to the caller-supplied handler.
  */
 export async function streamQuery(
   body: QueryRequest,

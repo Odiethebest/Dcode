@@ -159,6 +159,34 @@ def test_internal_graph_routes_return_location_schema(monkeypatch: pytest.Monkey
     assert outline.json()[0]["file_path"] == "src/requests/auth.py"
 
 
+def test_internal_get_dependents_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_id = uuid.uuid4()
+    override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
+    location = Location(
+        symbol="src.requests.sessions",
+        file_path="src/requests/sessions.py",
+        line=1,
+        chunk_id=None,
+    )
+
+    async def fake_get_dependents(
+        _: FakeSession, passed_repo_id: uuid.UUID, module: str
+    ) -> list[Location]:
+        assert passed_repo_id == repo_id
+        assert module == "src.requests.auth"
+        return [location]
+
+    monkeypatch.setattr(internal, "_get_dependents", fake_get_dependents)
+
+    response = TestClient(app).get(
+        f"/internal/get_dependents?repo_id={repo_id}&module=src.requests.auth",
+        headers=_internal_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["symbol"] == "src.requests.sessions"
+
+
 def test_internal_routes_404_for_unknown_repo() -> None:
     override_db(FakeSession())
     repo_id = uuid.uuid4()

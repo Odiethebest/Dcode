@@ -35,6 +35,12 @@ class SharedSettings(BaseSettings):
     tool_cache_ttl_seconds: int = 24 * 60 * 60
     job_state_ttl_seconds: int = 7 * 24 * 60 * 60
 
+    # --- Groundedness guardrail (D-2.3.1 / NFR-4) ---
+    # The agent redacts any final-answer citation that is not found in the
+    # index. Answers scoring below this fraction carry an explicit warning.
+    # Must stay > 0 in production so the guardrail cannot be silently disabled.
+    groundedness_threshold: float = 0.95
+
     # --- Open Decisions (OD-2..OD-4) ---
     embedding_model: str = "stub"
     embedding_dim: int = 1024

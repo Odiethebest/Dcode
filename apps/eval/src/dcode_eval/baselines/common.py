@@ -39,6 +39,10 @@ def template_answer(label: str, chunks: list[Chunk], *, max_chunks: int = 3) -> 
 
 
 async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:
+    """B4 answer via the agent's ``/internal/query``, bypassing the gateway's
+    1h query cache so each eval run measures a fresh agent execution rather than
+    a replayed cached answer (reproducibility).
+    """
     answer = ""
     citations: list[str] = []
     groundedness = 0.0
@@ -46,8 +50,9 @@ async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:
         httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client,
         client.stream(
             "POST",
-            f"{eval_settings.api_base_url.rstrip('/')}/api/v1/query",
+            f"{eval_settings.agent_base_url.rstrip('/')}/internal/query",
             json={"repo_id": repo_id, "query": query},
+            headers=internal_auth_headers(eval_settings.internal_api_key),
         ) as response,
     ):
         response.raise_for_status()

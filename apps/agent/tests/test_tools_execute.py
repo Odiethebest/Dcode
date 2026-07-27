@@ -10,6 +10,7 @@ from dcode_agent.tools import common
 from dcode_agent.tools.find_definition import FindDefinitionArgs, FindDefinitionTool
 from dcode_agent.tools.find_references import FindReferencesArgs, FindReferencesTool
 from dcode_agent.tools.get_dependencies import GetDependenciesArgs, GetDependenciesTool
+from dcode_agent.tools.get_dependents import GetDependentsArgs, GetDependentsTool
 from dcode_agent.tools.get_file_outline import GetFileOutlineArgs, GetFileOutlineTool
 from dcode_agent.tools.grep import GrepArgs, GrepTool
 from dcode_agent.tools.list_directory import ListDirectoryArgs, ListDirectoryTool
@@ -63,6 +64,12 @@ async def test_search_code_calls_internal_search(monkeypatch: pytest.MonkeyPatch
             GetDependenciesTool(),
             GetDependenciesArgs(module="src.requests.api"),
             "get_dependencies",
+            "locations",
+        ),
+        (
+            GetDependentsTool(),
+            GetDependentsArgs(module="src.requests.auth"),
+            "get_dependents",
             "locations",
         ),
         (

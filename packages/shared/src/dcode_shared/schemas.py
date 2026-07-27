@@ -98,6 +98,7 @@ class RepoStatusResponse(BaseModel):
     progress: int = Field(0, ge=0, le=100)
     stages: StagesStatus = Field(default_factory=StagesStatus)
     error: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ===========================================================================

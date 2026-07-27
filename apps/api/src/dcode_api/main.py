@@ -11,14 +11,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from dcode_api import deps
 from dcode_api.routes import internal, query, repos
 from dcode_api.settings import api_settings
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    # TODO(M2): warm DB / Redis / RabbitMQ / agent-client pools per DESIGN.md §2.6.
-    yield
+    # Own the shared Redis + agent-client lifecycle: warm at startup, release on
+    # shutdown. (DB uses the shared SQLAlchemy engine pool; RabbitMQ connects per
+    # publish on the submit path.)
+    deps.warm_pools()
+    try:
+        yield
+    finally:
+        await deps.close_pools()
 
 
 app = FastAPI(

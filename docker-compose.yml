@@ -169,6 +169,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
       REDIS_URL: redis://redis:6379/0
       JUDGE_MODEL: ${JUDGE_MODEL:-stub}
+      GROUNDEDNESS_THRESHOLD: ${GROUNDEDNESS_THRESHOLD:-0.95}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
       RERANKER_MODEL: ${RERANKER_MODEL:-stub}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://host.docker.internal:8003}

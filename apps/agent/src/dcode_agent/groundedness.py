@@ -1,8 +1,9 @@
 """Citation verification — implements DESIGN.md §2.3.4 and D-2.3.1.
 
-For every code reference in a draft answer, this module queries the live
-index to confirm existence. Unverified references are flagged or stripped
-before the answer is returned.
+For every code reference in a draft answer, :func:`verify` queries the live
+index to confirm existence; :func:`enforce_groundedness` then redacts every
+unverified reference from the answer text before it is returned, so an
+unverified code location is never presented to the user as evidence.
 
 **D-2.3.1 — Groundedness is a HARD GUARDRAIL.** It must not be disable-able
 in production: the same routine produces the ≥95% groundedness number that
@@ -121,3 +122,88 @@ async def _verify_symbol(
         line=row.line,
         verified=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Enforcement — the D-2.3.1 hard guardrail
+# ---------------------------------------------------------------------------
+
+_REDACTION_MARKER = "[unverified reference removed]"
+
+
+@dataclass
+class EnforcedGroundedness:
+    """Outcome of applying the D-2.3.1 guardrail to a draft answer."""
+
+    answer: str  # draft with unverified references redacted (+ warning when low)
+    citations: list[CitationCheck]  # verified citations only
+    score: float  # fraction verified in the ORIGINAL draft (pre-redaction)
+    redacted_count: int  # number of unverified references removed
+
+
+def enforce_groundedness(
+    answer: str,
+    result: GroundednessResult,
+    *,
+    threshold: float,
+) -> EnforcedGroundedness:
+    """Apply the groundedness hard guardrail (D-2.3.1).
+
+    Every unverified reference is redacted from the answer text so an
+    unverified code location is never presented as evidence, and only verified
+    citations are surfaced. ``score`` stays the pre-redaction fraction (an
+    honest measure of the draft), so a heavily redacted answer still scores
+    low. A warning footer is appended when ``score`` is below ``threshold``.
+    """
+    unverified = [check for check in result.citations if not check.verified]
+    verified = [check for check in result.citations if check.verified]
+
+    redacted = _redact_unverified(answer, unverified)
+    if result.score < threshold:
+        redacted = _append_guardrail_note(
+            redacted,
+            score=result.score,
+            threshold=threshold,
+            removed=len(unverified),
+        )
+
+    return EnforcedGroundedness(
+        answer=redacted,
+        citations=verified,
+        score=result.score,
+        redacted_count=len(unverified),
+    )
+
+
+def _redact_unverified(answer: str, unverified: list[CitationCheck]) -> str:
+    redacted = answer
+    for check in unverified:
+        if check.line > 0 and check.file_path:
+            redacted = _replace_reference(redacted, f"{check.file_path}:{check.line}")
+        elif check.symbol:
+            redacted = _replace_reference(redacted, check.symbol)
+    return redacted
+
+
+def _replace_reference(text: str, token: str) -> str:
+    """Replace a backticked or bare reference token with the redaction marker."""
+    escaped = re.escape(token)
+    text = re.sub(rf"`{escaped}`", _REDACTION_MARKER, text)
+    # Bare form: guard against matching inside a longer path / number / symbol.
+    return re.sub(rf"(?<![\w.]){escaped}(?![\w.])", _REDACTION_MARKER, text)
+
+
+def _append_guardrail_note(
+    answer: str,
+    *,
+    score: float,
+    threshold: float,
+    removed: int,
+) -> str:
+    plural = "s" if removed != 1 else ""
+    note = (
+        f"> ⚠️ Groundedness {score:.2f} is below the {threshold:.2f} guardrail: "
+        f"{removed} unverified reference{plural} removed (not found in the index)."
+    )
+    body = answer.rstrip()
+    return f"{body}\n\n{note}" if body else note

@@ -103,6 +103,68 @@ class Greeter:
     assert hello.end_line == 15
 
 
+async def test_multiline_signature_is_captured_in_full(tmp_path: Path) -> None:
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    (workdir / "multi.py").write_text(
+        '''def spread(
+    first: int,
+    second: str = "x",
+    *rest: int,
+) -> dict[str, int]:
+    return {}
+
+
+class Wide(
+    Base,
+    metaclass=Meta,
+):
+    pass
+''',
+        encoding="utf-8",
+    )
+
+    ctx = PipelineContext(repo_id=str(uuid4()), repo_url="file:///unused", workdir=str(workdir))
+    chunked = await chunk.run(await parse.run(ctx))
+    chunks = {(item.chunk_type, item.symbol_name): item for item in chunked.chunks}
+
+    # Previously truncated to the first physical line ("def spread(").
+    spread = chunks[(ChunkType.function, "spread")]
+    assert spread.signature == "def spread(first: int, second: str='x', *rest: int) -> dict[str, int]"
+
+    wide = chunks[(ChunkType.class_, "Wide")]
+    assert wide.signature == "class Wide(Base, metaclass=Meta)"
+
+
+async def test_parse_stage_skips_oversized_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(parse.worker_settings, "max_file_bytes", 50)
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    (workdir / "big.py").write_text("x = 1  # " + "a" * 200 + "\n", encoding="utf-8")
+    (workdir / "small.py").write_text("y = 2\n", encoding="utf-8")
+
+    ctx = PipelineContext(repo_id=str(uuid4()), repo_url="file:///unused", workdir=str(workdir))
+    result = await parse.run(ctx)
+
+    assert result.files == ["small.py"]  # oversized file dropped before reading
+    assert any("big.py" in warning and "exceeds" in warning for warning in result.warnings)
+
+
+async def test_chunk_content_is_capped_at_max_chars(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(chunk.worker_settings, "max_chunk_chars", 60)
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    body = "\n".join(f"    v{i} = {i}" for i in range(40))
+    (workdir / "wide.py").write_text(f"def wide():\n{body}\n", encoding="utf-8")
+
+    ctx = PipelineContext(repo_id=str(uuid4()), repo_url="file:///unused", workdir=str(workdir))
+    chunked = await chunk.run(await parse.run(ctx))
+    wide = next(item for item in chunked.chunks if item.symbol_name == "wide")
+
+    assert len(wide.content) <= 60
+    assert wide.content.endswith("[truncated]")
+
+
 def _git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],

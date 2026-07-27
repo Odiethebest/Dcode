@@ -1,7 +1,9 @@
 """FastAPI dependency providers — DB, Redis, RabbitMQ, agent client.
 
-Skeleton uses simple module-level singletons. M2 will move pool lifecycle
-into the lifespan handler in main.py for graceful startup / shutdown.
+Redis and the agent httpx client are process-wide singletons whose lifecycle is
+owned by the app lifespan (`warm_pools` / `close_pools`, wired in main.py);
+`get_db` draws from the shared SQLAlchemy async engine pool. RabbitMQ still
+connects per publish (infrequent submit path).
 """
 
 import json
@@ -27,14 +29,15 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-async def get_redis() -> Redis:
-    """Return a process-wide Redis client (lazy init).
+def _create_redis() -> Redis:
+    return Redis.from_url(api_settings.redis_url, decode_responses=True)
 
-    TODO(M2): replace module singleton with lifespan-managed connection pool.
-    """
+
+async def get_redis() -> Redis:
+    """Return the process-wide Redis client (warmed in lifespan; lazy fallback)."""
     global _redis
     if _redis is None:
-        _redis = Redis.from_url(api_settings.redis_url, decode_responses=True)
+        _redis = _create_redis()
     return _redis
 
 
@@ -60,16 +63,41 @@ async def get_index_job_publisher() -> Callable[[UUID, str], Awaitable[None]]:
     return publish_index_job
 
 
+def _create_agent_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=api_settings.agent_url,
+        timeout=httpx.Timeout(60.0, connect=5.0),
+        headers=internal_auth_headers(api_settings.internal_api_key),
+    )
+
+
 async def get_agent_client() -> httpx.AsyncClient:
-    """Return a process-wide httpx client targeting the agent service.
+    """Return the process-wide httpx client targeting the agent service.
 
     TODO(M2): tune timeouts/retries per NFR-2 (TTFB ≤ 3s).
     """
     global _agent_client
     if _agent_client is None:
-        _agent_client = httpx.AsyncClient(
-            base_url=api_settings.agent_url,
-            timeout=httpx.Timeout(60.0, connect=5.0),
-            headers=internal_auth_headers(api_settings.internal_api_key),
-        )
+        _agent_client = _create_agent_client()
     return _agent_client
+
+
+def warm_pools() -> None:
+    """Instantiate the shared Redis + agent clients at startup so they are owned
+    by the app lifespan rather than created lazily on the first request."""
+    global _redis, _agent_client
+    if _redis is None:
+        _redis = _create_redis()
+    if _agent_client is None:
+        _agent_client = _create_agent_client()
+
+
+async def close_pools() -> None:
+    """Release the shared Redis + agent clients on shutdown."""
+    global _redis, _agent_client
+    if _redis is not None:
+        await _redis.aclose()
+        _redis = None
+    if _agent_client is not None:
+        await _agent_client.aclose()
+        _agent_client = None

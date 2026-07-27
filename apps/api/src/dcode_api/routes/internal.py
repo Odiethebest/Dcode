@@ -90,6 +90,16 @@ async def get_dependencies(
     return await _get_dependencies(db, repo_id, module)
 
 
+@router.get("/get_dependents", response_model=list[Location])
+async def get_dependents(
+    repo_id: UUID,
+    module: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+) -> list[Location]:
+    await _require_repo(db, repo_id)
+    return await _get_dependents(db, repo_id, module)
+
+
 @router.get("/get_file_outline", response_model=list[Location])
 async def get_file_outline(
     repo_id: UUID,
@@ -427,6 +437,28 @@ async def _get_dependencies(db: AsyncSession, repo_id: UUID, module: str) -> lis
         .where(Edge.edge_type == "imports")
         .where(Edge.source_id.in_([row.id for row in sources]))
         .order_by(target_symbol.file_path, target_symbol.line, target_symbol.qualified_name)
+    )
+    result = await db.execute(stmt)
+    return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())
+
+
+async def _get_dependents(db: AsyncSession, repo_id: UUID, module: str) -> list[Location]:
+    """Reverse of _get_dependencies: the modules that import the given module.
+
+    Backed by the reverse edge index ix_edges_target (repo_id, target_id, edge_type).
+    """
+    targets = await _resolve_symbols(db, repo_id, module, module_only=True)
+    if not targets:
+        return []
+
+    source_symbol = aliased(Symbol)
+    stmt = (
+        select(source_symbol)
+        .join(Edge, Edge.source_id == source_symbol.id)
+        .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "imports")
+        .where(Edge.target_id.in_([row.id for row in targets]))
+        .order_by(source_symbol.file_path, source_symbol.line, source_symbol.qualified_name)
     )
     result = await db.execute(stmt)
     return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())

@@ -1,14 +1,13 @@
 """LangGraph state for the Dcode agent — implements DESIGN.md §2.3.3.
 
 A single AgentState dataclass flows through every node. Each tool_call
-appends a step; the ReAct loop terminates when step_count >= MAX_STEPS
-(hard cap per §2.3.1) or when the planner emits a synthesize decision.
+appends a step; the ReAct loop terminates when step_count reaches the
+configured cap (AgentSettings.max_steps, §2.3.1) or when the planner emits
+a synthesize decision.
 """
 
 from dataclasses import dataclass, field
 from typing import Any
-
-MAX_STEPS = 8  # DESIGN.md §2.3.1 — single-query upper bound (forces synthesize)
 
 
 @dataclass

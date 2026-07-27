@@ -42,6 +42,7 @@ export interface RepoStatusResponse {
   progress: number;
   stages: StagesStatus;
   error: string | null;
+  warnings: string[];
 }
 
 // --- Query API (DESIGN.md §4.3) ---

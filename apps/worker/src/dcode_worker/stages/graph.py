@@ -43,6 +43,15 @@ class CallRecord:
     line: int
 
 
+@dataclass(frozen=True)
+class RelationshipRecord:
+    """A generic source→target graph relationship (inherits / references)."""
+
+    source_symbol: str
+    target_symbol: str
+    line: int
+
+
 async def run(
     ctx: PipelineContext,
     *,
@@ -64,10 +73,28 @@ async def run(
 
     internal_symbols = {record.qualified_name for record in symbol_records}
     call_records: list[CallRecord] = []
+    inherit_records: list[RelationshipRecord] = []
+    reference_records: list[RelationshipRecord] = []
     for parsed_file in ctx.parsed_files:
         module_name = module_by_file[parsed_file.file_path]
         call_records.extend(
             _calls_for_file(
+                parsed_file,
+                module_name,
+                internal_symbols=internal_symbols,
+                internal_modules=internal_modules,
+            )
+        )
+        inherit_records.extend(
+            _inherits_for_file(
+                parsed_file,
+                module_name,
+                internal_symbols=internal_symbols,
+                internal_modules=internal_modules,
+            )
+        )
+        reference_records.extend(
+            _references_for_file(
                 parsed_file,
                 module_name,
                 internal_symbols=internal_symbols,
@@ -81,6 +108,14 @@ async def run(
         symbol_by_qname = {symbol.qualified_name: symbol for symbol in symbols}
         edges = _build_import_edges(repo_id, import_records, symbol_by_qname)
         edges.extend(_build_call_edges(repo_id, call_records, symbol_by_qname))
+        edges.extend(
+            _build_relationship_edges(repo_id, inherit_records, symbol_by_qname, EdgeType.inherits)
+        )
+        edges.extend(
+            _build_relationship_edges(
+                repo_id, reference_records, symbol_by_qname, EdgeType.references
+            )
+        )
 
         await db.execute(delete(Edge).where(Edge.repo_id == repo_id))
         await db.execute(delete(Symbol).where(Symbol.repo_id == repo_id))
@@ -303,6 +338,146 @@ def _module_local_function_names(parsed_file: ParsedPythonFile) -> set[str]:
     return names
 
 
+def _module_local_class_names(parsed_file: ParsedPythonFile) -> set[str]:
+    return {node.name for node in parsed_file.tree.body if isinstance(node, ast.ClassDef)}
+
+
+def _inherits_for_file(
+    parsed_file: ParsedPythonFile,
+    module_name: str,
+    *,
+    internal_symbols: set[str],
+    internal_modules: set[str],
+) -> list[RelationshipRecord]:
+    """`inherits` edges from each top-level class to its internal base classes."""
+    aliases = _import_aliases_for_file(parsed_file, module_name, internal_modules)
+    local_classes = _module_local_class_names(parsed_file)
+    records: list[RelationshipRecord] = []
+    for node in parsed_file.tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        source = f"{module_name}.{node.name}"
+        for base in node.bases:
+            target = _resolve_base(
+                base,
+                module_name=module_name,
+                local_classes=local_classes,
+                import_aliases=aliases,
+                internal_symbols=internal_symbols,
+            )
+            if target is None or target == source:
+                continue
+            records.append(
+                RelationshipRecord(source_symbol=source, target_symbol=target, line=node.lineno)
+            )
+    return records
+
+
+def _resolve_base(
+    base: ast.expr,
+    *,
+    module_name: str,
+    local_classes: set[str],
+    import_aliases: dict[str, str],
+    internal_symbols: set[str],
+) -> str | None:
+    if isinstance(base, ast.Name):
+        if base.id in import_aliases:
+            candidate = import_aliases[base.id]
+        elif base.id in local_classes:
+            candidate = f"{module_name}.{base.id}"
+        else:
+            return None
+        return candidate if candidate in internal_symbols else None
+
+    if isinstance(base, ast.Attribute) and isinstance(base.value, ast.Name):
+        alias = import_aliases.get(base.value.id)
+        if alias is not None:
+            candidate = f"{alias}.{base.attr}"
+            return candidate if candidate in internal_symbols else None
+    return None
+
+
+def _references_for_file(
+    parsed_file: ParsedPythonFile,
+    module_name: str,
+    *,
+    internal_symbols: set[str],
+    internal_modules: set[str],
+) -> list[RelationshipRecord]:
+    """`references` edges: internal symbols used as a value (not called) inside a
+    function/method body — e.g. `x = SomeClass`, `isinstance(o, Cls)`, annotations.
+
+    Module references are skipped (already covered by import edges), as are bare
+    call targets (covered by call edges).
+    """
+    aliases = _import_aliases_for_file(parsed_file, module_name, internal_modules)
+    local_symbols = _module_local_function_names(parsed_file) | _module_local_class_names(
+        parsed_file
+    )
+    records: list[RelationshipRecord] = []
+
+    for node in parsed_file.tree.body:
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                    records.extend(
+                        _references_in_body(
+                            child,
+                            caller=f"{module_name}.{node.name}.{child.name}",
+                            module_name=module_name,
+                            local_symbols=local_symbols,
+                            import_aliases=aliases,
+                            internal_symbols=internal_symbols,
+                            internal_modules=internal_modules,
+                        )
+                    )
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            records.extend(
+                _references_in_body(
+                    node,
+                    caller=f"{module_name}.{node.name}",
+                    module_name=module_name,
+                    local_symbols=local_symbols,
+                    import_aliases=aliases,
+                    internal_symbols=internal_symbols,
+                    internal_modules=internal_modules,
+                )
+            )
+    return _unique_relationships(records)
+
+
+def _references_in_body(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    caller: str,
+    module_name: str,
+    local_symbols: set[str],
+    import_aliases: dict[str, str],
+    internal_symbols: set[str],
+    internal_modules: set[str],
+) -> list[RelationshipRecord]:
+    call_func_ids = {id(child.func) for child in ast.walk(node) if isinstance(child, ast.Call)}
+    references: list[RelationshipRecord] = []
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Name) or not isinstance(child.ctx, ast.Load):
+            continue
+        if id(child) in call_func_ids:
+            continue  # bare-name call target — already covered by call edges
+        if child.id in import_aliases:
+            candidate = import_aliases[child.id]
+        elif child.id in local_symbols:
+            candidate = f"{module_name}.{child.id}"
+        else:
+            continue
+        if candidate in internal_modules or candidate not in internal_symbols or candidate == caller:
+            continue
+        references.append(
+            RelationshipRecord(source_symbol=caller, target_symbol=candidate, line=child.lineno)
+        )
+    return references
+
+
 def _imports_for_file(
     parsed_file: ParsedPythonFile,
     module_name: str,
@@ -501,6 +676,48 @@ def _unique_calls(calls: list[CallRecord]) -> list[CallRecord]:
     unique: list[CallRecord] = []
     for record in calls:
         key = (record.source_symbol, record.target_symbol, record.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(record)
+    return unique
+
+
+def _build_relationship_edges(
+    repo_id: UUID,
+    records: list[RelationshipRecord],
+    symbol_by_qname: dict[str, Symbol],
+    edge_type: EdgeType,
+) -> list[Edge]:
+    edges: list[Edge] = []
+    seen: set[tuple[UUID, UUID, int]] = set()
+    for record in records:
+        source = symbol_by_qname.get(record.source_symbol)
+        target = symbol_by_qname.get(record.target_symbol)
+        if source is None or target is None or source.id == target.id:
+            continue
+        key = (source.id, target.id, record.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append(
+            Edge(
+                id=uuid4(),
+                repo_id=repo_id,
+                source_id=source.id,
+                target_id=target.id,
+                edge_type=edge_type.value,
+                source_line=record.line,
+            )
+        )
+    return edges
+
+
+def _unique_relationships(records: list[RelationshipRecord]) -> list[RelationshipRecord]:
+    seen: set[tuple[str, str]] = set()
+    unique: list[RelationshipRecord] = []
+    for record in records:
+        key = (record.source_symbol, record.target_symbol)
         if key in seen:
             continue
         seen.add(key)
