@@ -37,7 +37,7 @@
 | ~~P3-5~~ | P3 | 缺口 | Eval/可复现性 | ✅**已修复**（`63c32e5`）：B4 直连 agent `/internal/query`，绕过查询缓存 | S |
 | ~~P3-6~~ | P3 | 债务/缺口 | 文档漂移 | ✅**已修复**（`cb204d0`/`7a92493`）：实现 `dependents` 全链路 + 文档对齐 | M |
 | P3-7 | P3 | 缺口 | API/安全 | 公开 `/api/v1/*` 无客户端鉴权（M2） | M |
-| P3-8 | P3 | 债务 | API/Agent | no-op lifespan + 惰性模块单例（DB/Redis/httpx 未连接池预热，M2） | M |
+| ~~P3-8~~ | P3 | 债务 | API | ✅**已修复**（`3427f16`）：lifespan 拥有 Redis + agent 客户端生命周期（启动 warm / 关闭 close） | M |
 | ~~P3-9~~ | P3 | 缺陷 | Worker | ✅**已修复**（`c672f5d`）：`RepoRowMissingError` 良性丢弃 + 失败持久化兜底，`handle_job` 恒不抛 | S |
 | ~~P3-10~~ | P3 | 缺陷 | Frontend/无障碍 | ✅**已修复**（`09e2446`）：aria-live + 抽共享 util + useMemo + 清 TODO | S |
 | ~~P3-11~~ | P3 | 债务 | Agent | ✅**已修复**（`c404b90`）：工具失败写 `state.error`，图内优雅降级 | S |
@@ -198,6 +198,7 @@
 - **问题**：首个请求承担连接建立开销，与 NFR TTFB≤3s 相悖；连接生命周期未随 app 管理。
 - **建议修复**：在 lifespan 里初始化并复用连接池（DB/Redis/httpx/RabbitMQ），关闭时清理。
 - **工作量**：M。
+- **✅ 状态（2026-07-26，`3427f16`）**：API lifespan 新增 `warm_pools`/`close_pools`——启动时实例化并拥有 Redis + agent httpx 客户端、关闭时释放；`get_*` 保留惰性兜底（测试不受影响）。`get_db` 本就用共享 SQLAlchemy 引擎池；agent 服务已在其 lifespan 管理 Redis。**未纳入（有意）**：RabbitMQ 仍按发布连接（提交路径；`connect_robust` 启动预连接会使 boot 变脆）、`routes/internal.py` 的 query embedding/reranker 惰性客户端（仅真实模型模式命中）。新增 lifespan 生命周期测试。
 
 ### P3-9 worker 失败路径可逃逸"总是 ack"
 - **位置**：`apps/worker/src/dcode_worker/pipeline.py`（except 分支内 `_update_repo` 若 repo 行缺失会 `RuntimeError`，`pipeline.py:217`）。
