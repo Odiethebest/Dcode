@@ -9,6 +9,7 @@ import type {
 } from '@/api/types';
 import { RepoStatusBadge } from '@/components/RepoStatusBadge';
 import { loadRecentRepos } from '@/lib/recentRepos';
+import { toKnownRepoStatus } from '@/lib/repoStatus';
 
 const DEFAULT_QUERY = 'Where is `HTTPBasicAuth` defined?';
 
@@ -33,15 +34,27 @@ export default function QueryPage() {
     return abortActiveRequest;
   }, [abortActiveRequest]);
 
-  const finalAnswer = [...events]
-    .reverse()
-    .find((event): event is Extract<QueryStreamEvent, { event: 'final_answer' }> => event.event === 'final_answer')
-    ?.data;
-  const partialAnswer = [...events]
-    .reverse()
-    .find((event): event is Extract<QueryStreamEvent, { event: 'partial_answer' }> => event.event === 'partial_answer')
-    ?.data.delta;
-  const citations = mergeCitations(events, finalAnswer);
+  const finalAnswer = useMemo(
+    () =>
+      [...events]
+        .reverse()
+        .find(
+          (event): event is Extract<QueryStreamEvent, { event: 'final_answer' }> =>
+            event.event === 'final_answer'
+        )?.data,
+    [events]
+  );
+  const partialAnswer = useMemo(
+    () =>
+      [...events]
+        .reverse()
+        .find(
+          (event): event is Extract<QueryStreamEvent, { event: 'partial_answer' }> =>
+            event.event === 'partial_answer'
+        )?.data.delta,
+    [events]
+  );
+  const citations = useMemo(() => mergeCitations(events, finalAnswer), [events, finalAnswer]);
 
   return (
     <section className="mx-auto grid max-w-6xl gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
@@ -160,7 +173,11 @@ export default function QueryPage() {
             ) : null}
           </div>
 
-          <div className="mt-4 whitespace-pre-wrap rounded-md border border-stone-200 bg-stone-50 px-4 py-4 text-sm leading-6 text-stone-800">
+          <div
+            aria-live="polite"
+            aria-atomic="true"
+            className="mt-4 whitespace-pre-wrap rounded-md border border-stone-200 bg-stone-50 px-4 py-4 text-sm leading-6 text-stone-800"
+          >
             {finalAnswer?.answer ?? partialAnswer ?? 'No answer yet.'}
           </div>
 
@@ -207,7 +224,7 @@ export default function QueryPage() {
             <h2 className="text-lg font-semibold text-stone-900">Event stream</h2>
             <span className="text-xs text-stone-500">{events.length} events</span>
           </div>
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3" role="log" aria-live="polite">
             {events.length === 0 ? (
               <p className="text-sm text-stone-600">No stream activity yet.</p>
             ) : (
@@ -359,19 +376,4 @@ function mergeCitations(
 
 function citationKey(citation: CitationPayload): string {
   return `${citation.symbol}|${citation.file_path}|${citation.line}`;
-}
-
-function toKnownRepoStatus(status: string): 'queued' | 'cloning' | 'parsing' | 'embedding' | 'graphing' | 'ready' | 'failed' {
-  switch (status) {
-    case 'queued':
-    case 'cloning':
-    case 'parsing':
-    case 'embedding':
-    case 'graphing':
-    case 'ready':
-    case 'failed':
-      return status;
-    default:
-      return 'queued';
-  }
 }

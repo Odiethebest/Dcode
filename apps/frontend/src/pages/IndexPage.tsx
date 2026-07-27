@@ -10,6 +10,7 @@ import {
   saveRecentRepo,
   type RecentRepoRecord,
 } from '@/lib/recentRepos';
+import { toKnownRepoStatus } from '@/lib/repoStatus';
 
 const DEFAULT_REPO_URL = 'https://github.com/psf/requests.git';
 const TERMINAL_STATUSES = new Set(['ready', 'failed']);
@@ -258,17 +259,3 @@ function upsertRecentRepo(
   return current;
 }
 
-function toKnownRepoStatus(status: string): 'queued' | 'cloning' | 'parsing' | 'embedding' | 'graphing' | 'ready' | 'failed' {
-  switch (status) {
-    case 'queued':
-    case 'cloning':
-    case 'parsing':
-    case 'embedding':
-    case 'graphing':
-    case 'ready':
-    case 'failed':
-      return status;
-    default:
-      return 'queued';
-  }
-}
