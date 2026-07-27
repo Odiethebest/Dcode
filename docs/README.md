@@ -11,6 +11,7 @@ docs/
 ├── README.md                         documentation map and reading order
 ├── en/                               primary English documentation
 │   ├── Technical_Design.md           architecture, service boundaries, data model, APIs
+│   ├── Database.md                    database schema, Redis keys, SQL cookbook
 │   ├── Project_Plan.md               goals, milestones, ownership, risks
 │   ├── Repository_Structure.md       repository layout and module responsibilities
 │   ├── Outstanding_Work.md           remaining work and known limits
@@ -19,6 +20,7 @@ docs/
 │   └── Final_Report.md               implemented system, evaluation snapshot, and H1 decision
 ├── ch/                               Chinese counterparts for team handoff
 │   ├── Technical_Design_ch.md
+│   ├── Database_ch.md
 │   ├── Project_Plan_ch.md
 │   ├── Repository_Structure_ch.md
 │   ├── Outstanding_Work_ch.md
@@ -34,17 +36,19 @@ docs/
 
 1. [Repository_Structure.md](en/Repository_Structure.md): understand where each service and package lives.
 2. [Technical_Design.md](en/Technical_Design.md): understand the architecture, API contracts, data model, retrieval path, graph path, and agent boundary.
-3. [Project_Plan.md](en/Project_Plan.md): understand goals, scope, ownership, priorities, and risks.
-4. [Outstanding_Work.md](en/Outstanding_Work.md): see what still needs work before further evaluation or deployment.
-5. [Sidecar_Smoke.md](en/Sidecar_Smoke.md): reproduce the real sidecar integration path before refreshing eval results.
-6. [Final_Report.md](en/Final_Report.md): understand the recorded result snapshot and the H1 decision (with re-open criteria).
-7. [Agentic_Workflow.md](en/Agentic_Workflow.md): understand how Claude Code, Codex, and Cursor were cross checked during development.
+3. [Database.md](en/Database.md): understand the persistence layer — schema, enums, indexes, Redis keyspace, write/read paths, and an SQL cookbook.
+4. [Project_Plan.md](en/Project_Plan.md): understand goals, scope, ownership, priorities, and risks.
+5. [Outstanding_Work.md](en/Outstanding_Work.md): see what still needs work before further evaluation or deployment.
+6. [Sidecar_Smoke.md](en/Sidecar_Smoke.md): reproduce the real sidecar integration path before refreshing eval results.
+7. [Final_Report.md](en/Final_Report.md): understand the recorded result snapshot and the H1 decision (with re-open criteria).
+8. [Agentic_Workflow.md](en/Agentic_Workflow.md): understand how Claude Code, Codex, and Cursor were cross checked during development.
 
 ## Document Index
 
 | English document | Chinese counterpart | Purpose |
 |---|---|---|
 | [Technical_Design.md](en/Technical_Design.md) | [Technical_Design_ch.md](ch/Technical_Design_ch.md) | Technical authority for architecture, components, data model, APIs, and NFRs |
+| [Database.md](en/Database.md) | [Database_ch.md](ch/Database_ch.md) | Persistence reference: schema, enums, indexes, Redis keyspace, write/read paths, SQL cookbook |
 | [Project_Plan.md](en/Project_Plan.md) | [Project_Plan_ch.md](ch/Project_Plan_ch.md) | Execution plan, ownership, milestones, priorities, risks, and decisions |
 | [Repository_Structure.md](en/Repository_Structure.md) | [Repository_Structure_ch.md](ch/Repository_Structure_ch.md) | Current repository layout and service responsibilities |
 | [Outstanding_Work.md](en/Outstanding_Work.md) | [Outstanding_Work_ch.md](ch/Outstanding_Work_ch.md) | Remaining work, known limits, deployment follow-ups |
