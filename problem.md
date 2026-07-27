@@ -28,7 +28,7 @@
 | ~~P2-1~~ | P2 | 缺口 | Worker/Graph | ✅**已修复**（`67fb694`）：产出 inherits + references 边（references 经 find_references 透出） | M |
 | P2-2 | P2 | 缺口 | Worker | 仅索引 Python | L |
 | ~~P2-3~~ | P2 | 缺陷 | Worker/Chunk | ✅**已修复**（`a2318bf`）：改用 `ast.unparse` 重建完整签名 | S |
-| P2-4 | P2 | 缺陷 | Worker | parse/chunk 无大文件上限 → 内存/token 爆炸风险 | S |
+| ~~P2-4~~ | P2 | 缺陷 | Worker | ✅**已修复**（`565233d`）：max_file_bytes(1MB) 跳过 + max_chunk_chars(20k) 截断 | S |
 | P2-5 | P2 | 缺口 | Agent/SSE | `partial_answer` 整段一次性发出，非逐 token 流式 | M |
 | ~~P3-1~~ | P3 | 债务 | Worker/依赖 | ✅**已修复**（`2a45c4a`）：删除死依赖 + 重新锁定 | S |
 | ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
@@ -135,6 +135,7 @@
 - **问题**：超大文件/超大类会被完整读入并作为单个 chunk，随后进 embedding。sidecar 侧虽有 `max_seq_length` 截断，但内存与"一个 chunk 装下整类"的检索粒度问题仍在。
 - **建议修复**：加文件字节上限（跳过并记 warning）与超长 chunk 的二次切分；把跳过项通过 P3-4 暴露给用户。
 - **工作量**：S。
+- **✅ 状态（2026-07-26，`565233d`）**：`WorkerSettings.max_file_bytes`（默认 1MB）——parse 用 `stat().st_size` 在**读取前**跳过超大文件并记 warning（经 P3-4 在 GET status 可见）；`max_chunk_chars`（默认 20k）——在唯一出口 `_source_segment` 截断超长 chunk 内容（带 `[truncated]` 标记）。均可用环境变量配置（0 禁用）。新增跳过 + 截断测试；worker 测试/ruff/mypy 全绿。
 
 ### P2-5 partial_answer 整段一次性发出，非流式
 - **位置**：`apps/agent/src/dcode_agent/main.py:122-123`。
