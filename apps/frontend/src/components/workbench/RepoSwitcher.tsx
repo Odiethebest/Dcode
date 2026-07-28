@@ -18,6 +18,21 @@ function bucketOf(status: string): PillStatus {
   return 'indexing';
 }
 
+/**
+ * Human label for a repo's live status. The active repo is polled, so we show
+ * the moving stage (cloning → parsing → embedding → graphing) rather than a
+ * frozen coarse percentage — progress is set per-stage, so the bar sits still
+ * for the whole (slow, real-model) embedding stage and reads as "stuck". The
+ * stage name changing is the reassurance that it's working.
+ */
+export function repoStatusLabel(status: string): string {
+  const s = toKnownRepoStatus(status);
+  if (s === 'ready') return 'ready';
+  if (s === 'failed') return 'failed';
+  if (s === 'queued') return 'queued';
+  return `indexing · ${s}`;
+}
+
 /** owner/repo from a git URL, for a compact switcher label. */
 function repoSlug(url: string): string {
   const cleaned = url.replace(/\.git$/, '').replace(/\/+$/, '');
@@ -124,6 +139,9 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
         <span className="max-w-[180px] truncate font-mono text-[13px] font-medium text-ink">
           {activeRepo ? repoSlug(activeRepo.url) : 'select a repo'}
         </span>
+        {activeBucket === 'indexing' && liveStatus && (
+          <span className="flex-none font-mono text-[11px] text-warn">· {liveStatus.status}</span>
+        )}
         <svg
           width="13"
           height="13"
@@ -150,6 +168,9 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
               const bucket = bucketOf(isActive && liveStatus ? liveStatus.status : repo.status);
               const progress =
                 isActive && liveStatus && bucket === 'indexing' ? liveStatus.progress : null;
+              // The live (active) repo shows its moving stage; others show the
+              // coarse bucket from their last-known stored status.
+              const meta = isActive && liveStatus ? repoStatusLabel(liveStatus.status) : bucket;
               return (
                 <button
                   key={repo.repoId}
@@ -166,9 +187,7 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
                   <span className={cx('h-[7px] w-[7px] flex-none rounded-full', dotColor[bucket])} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-mono text-[13px] text-ink">{repoSlug(repo.url)}</span>
-                    <span className="mt-0.5 block text-[11px] text-ink-3">
-                      {progress != null ? `indexing · ${progress}%` : bucket}
-                    </span>
+                    <span className="mt-0.5 block text-[11px] text-ink-3">{meta}</span>
                   </span>
                   {progress != null && (
                     <span className="h-1 w-11 flex-none overflow-hidden rounded-full bg-sunk" aria-hidden="true">
