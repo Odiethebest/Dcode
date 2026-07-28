@@ -5,6 +5,7 @@ import { InspectorPane } from '@/components/workbench/InspectorPane';
 import { ThreadPane } from '@/components/workbench/ThreadPane';
 import { Topbar } from '@/components/workbench/Topbar';
 import { cx } from '@/lib/cx';
+import { loadRecentRepos } from '@/lib/recentRepos';
 
 /**
  * The single continuous exploration workbench (replaces the Index/Query/Compare
@@ -15,6 +16,11 @@ import { cx } from '@/lib/cx';
 export default function WorkbenchPage() {
   const [showRail, setShowRail] = useState(false);
   const [showCode, setShowCode] = useState(false);
+  // Active repo scopes the whole workbench (thread + inspector). Default to the
+  // most recent so the workbench opens on something rather than empty.
+  const [activeRepoId, setActiveRepoId] = useState<string | null>(
+    () => loadRecentRepos()[0]?.repoId ?? null
+  );
   const closeDrawers = () => {
     setShowRail(false);
     setShowCode(false);
@@ -22,7 +28,12 @@ export default function WorkbenchPage() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-paper text-ink">
-      <Topbar onToggleRail={() => setShowRail(true)} onToggleCode={() => setShowCode(true)} />
+      <Topbar
+        activeRepoId={activeRepoId}
+        onSelectRepo={setActiveRepoId}
+        onToggleRail={() => setShowRail(true)}
+        onToggleCode={() => setShowCode(true)}
+      />
 
       <div className="grid min-h-0 flex-1 grid-cols-[262px_1fr_384px] max-[1180px]:grid-cols-[240px_1fr] max-[760px]:grid-cols-[1fr]">
         <HistoryRail open={showRail} />

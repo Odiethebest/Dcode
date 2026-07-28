@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { RepoSwitcher } from '@/components/workbench/RepoSwitcher';
 import { cx } from '@/lib/cx';
 
 function IconButton({
@@ -29,15 +30,13 @@ function IconButton({
 }
 
 export interface TopbarProps {
+  activeRepoId: string | null;
+  onSelectRepo: (repoId: string) => void;
   onToggleRail: () => void;
   onToggleCode: () => void;
 }
 
-/**
- * Workbench topbar. The repo switcher is a visual placeholder here — it's wired
- * to the real repo list + status in slice 2.
- */
-export function Topbar({ onToggleRail, onToggleCode }: TopbarProps) {
+export function Topbar({ activeRepoId, onSelectRepo, onToggleRail, onToggleCode }: TopbarProps) {
   return (
     <header className="z-30 flex h-[58px] flex-none items-center gap-4 border-b border-line bg-[color-mix(in_srgb,var(--paper)_88%,transparent)] px-5 backdrop-blur-[8px]">
       <IconButton label="History" onClick={onToggleRail} className="hidden max-[760px]:flex">
@@ -53,17 +52,7 @@ export function Topbar({ onToggleRail, onToggleCode }: TopbarProps) {
 
       <span className="h-[22px] w-px bg-line-2" aria-hidden="true" />
 
-      {/* Repo switcher (placeholder — slice 2 wires the real list + status). */}
-      <button
-        type="button"
-        className="flex items-center gap-2.5 rounded-[10px] border border-line-2 bg-surface px-3 py-[7px] transition hover:border-brand hover:bg-brand-wash"
-      >
-        <span className="h-[7px] w-[7px] rounded-full bg-ink-3" aria-hidden="true" />
-        <span className="font-mono text-[13px] font-medium text-ink">select a repo</span>
-        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" className="text-ink-3" aria-hidden="true">
-          <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      <RepoSwitcher activeRepoId={activeRepoId} onSelect={onSelectRepo} />
 
       <div className="flex-1" />
 
