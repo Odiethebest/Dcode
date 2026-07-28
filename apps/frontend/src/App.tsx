@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router-dom';
 
 import ComparePage from '@/pages/ComparePage';
 import IndexPage from '@/pages/IndexPage';
+import PrimitivesGallery from '@/pages/PrimitivesGallery';
 import QueryPage from '@/pages/QueryPage';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/" element={<IndexPage />} />
           <Route path="/query" element={<QueryPage />} />
           <Route path="/compare" element={<ComparePage />} />
+          <Route path="/preview" element={<PrimitivesGallery />} />
         </Routes>
       </main>
     </div>
