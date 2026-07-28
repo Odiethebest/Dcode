@@ -88,7 +88,7 @@ def test_query_route_proxies_and_caches_successful_sse_stream() -> None:
 
     assert response.status_code == 200
     assert response.content == payload
-    assert agent.calls == [("POST", "/internal/query", body)]
+    assert agent.calls == [("POST", "/internal/query", {**body, "history": []})]
     key = query_cache_key(repo_id, body["query"])
     assert redis.setex_calls
     assert redis.setex_calls[0][0] == key
@@ -132,6 +132,38 @@ def test_query_route_does_not_cache_error_streams() -> None:
     assert response.status_code == 200
     assert response.content == payload
     assert redis.setex_calls == []
+
+
+def test_query_route_history_scopes_cache_key() -> None:
+    """A follow-up carrying history must not replay a single-turn cache entry."""
+    repo_id = str(uuid4())
+    query = "who calls it?"
+    single_turn_key = query_cache_key(repo_id, query)
+    stale = (
+        "event: final_answer\n"
+        'data: {"answer":"single-turn","citations":[],"groundedness":1.0}\n\n'
+    )
+    fresh = (
+        b"event: final_answer\n"
+        b'data: {"answer":"context-aware","citations":[],"groundedness":1.0}\n\n'
+    )
+    agent = FakeAgentClient(FakeStreamResponse(200, [fresh]))
+    redis = FakeRedis({single_turn_key: stale})
+    override_dependencies(agent, redis)
+
+    history = [{"role": "user", "content": "explain HTTPBasicAuth"}]
+    response = TestClient(app).post(
+        "/api/v1/query", json={"repo_id": repo_id, "query": query, "history": history}
+    )
+
+    assert response.status_code == 200
+    # The follow-up did NOT get the stale single-turn answer…
+    assert response.content == fresh
+    assert agent.calls  # …it consulted the agent…
+    # …and cached under a history-scoped key, distinct from the single-turn one.
+    ctx_key = query_cache_key(repo_id, query, history=history)
+    assert ctx_key != single_turn_key
+    assert redis.values[ctx_key] == fresh.decode("utf-8")
 
 
 def test_query_route_emits_stub_when_agent_is_unreachable() -> None:
