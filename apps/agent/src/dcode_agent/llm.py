@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -43,8 +44,8 @@ class LLMClient(ABC):
     """Abstract answer-synthesis LLM used by the agent's synthesize node."""
 
     @abstractmethod
-    async def synthesize(self, *, question: str, context: str) -> str:
-        """Return a grounded natural-language answer for the question."""
+    def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
+        """Yield answer-text deltas as the model generates them."""
 
 
 class OpenAILLMClient(LLMClient):
@@ -74,7 +75,7 @@ class OpenAILLMClient(LLMClient):
             timeout=timeout_seconds,
         )
 
-    async def synthesize(self, *, question: str, context: str) -> str:
+    async def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
         messages: Any = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -82,16 +83,19 @@ class OpenAILLMClient(LLMClient):
                 "content": f"Question:\n{question}\n\nRetrieved evidence:\n{context}",
             },
         ]
-        response = await self._client.chat.completions.create(
+        completion = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
+            stream=True,
         )
-        content = response.choices[0].message.content
-        if content is None or not content.strip():
-            raise RuntimeError("LLM returned an empty completion")
-        return content.strip()
+        async for chunk in completion:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
 
 def create_llm_client(

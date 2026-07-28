@@ -129,10 +129,10 @@ async def _run_graph_pipeline(
                 verified=citation.verified,
             )
 
+        # partial_answer events are emitted during synthesis (streamed token
+        # deltas, or one whole-answer delta on the template path), so only the
+        # terminal citations + final answer are flushed here.
         answer = cast(str, state_dict.get("final_answer") or state_dict.get("draft_answer") or "")
-        if answer:
-            await emitter.emit_partial_answer(answer)
-
         await emitter.emit_final_answer(
             answer=answer,
             citations=citations,

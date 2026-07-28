@@ -166,36 +166,51 @@ async def synthesize_node(state: AgentState) -> AgentState:
     """Compose a first-pass answer from the accumulated observations.
 
     When an LLM synthesis client is configured (``state.runtime['llm']``), it
-    writes a grounded, citation-formatted answer from the retrieved evidence;
-    otherwise the rule-based template is used. Either way the groundedness node
-    then verifies and redacts citations, so the LLM cannot introduce unverified
-    references.
+    streams a grounded, citation-formatted answer from the retrieved evidence
+    (each token delta is emitted as a ``partial_answer`` event); otherwise the
+    rule-based template is used. Either way the groundedness node then verifies
+    and redacts citations, so the LLM cannot introduce unverified references.
     """
     answer, citations = _synthesize_from_observations(state)
 
+    streamed = False
     llm = state.runtime.get("llm")
     if llm is not None and state.observations:
-        llm_answer = await _llm_synthesize(state, llm)
+        llm_answer = await _llm_stream(state, llm)
         if llm_answer is not None:
             # The groundedness node re-extracts citations from the answer text,
             # so the template citations are dropped in favour of the LLM prose.
             answer, citations = llm_answer, []
+            streamed = True
 
     if state.error is not None:
         answer = _prepend_tool_failure_notice(answer, state.error)
     state.draft_answer = answer
     state.citations = citations
+    if not streamed:
+        # Non-streaming (template) path: emit the whole draft as one delta so the
+        # client sees a pre-final answer via the same partial_answer channel.
+        await _emit_partial_answer(state, answer)
     return state
 
 
-async def _llm_synthesize(state: AgentState, llm: LLMClient) -> str | None:
-    """Ask the LLM to synthesize a grounded answer; ``None`` on empty/failure."""
+async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
+    """Stream the LLM answer, emitting each delta live; return the full text.
+
+    Returns ``None`` on empty context or any failure so synthesis degrades to
+    the rule-based template.
+    """
     context = _build_llm_context(state)
     if not context.strip():
         return None
     await _emit_thought(state, "Synthesize a grounded answer from the retrieved evidence.")
+    parts: list[str] = []
     try:
-        answer = await llm.synthesize(question=state.query, context=context)
+        async for delta in llm.stream(question=state.query, context=context):
+            if not delta:
+                continue
+            parts.append(delta)
+            await _emit_partial_answer(state, delta)
     except Exception as exc:  # noqa: BLE001 — LLM failure degrades to template synthesis
         log_event(
             logger,
@@ -204,7 +219,8 @@ async def _llm_synthesize(state: AgentState, llm: LLMClient) -> str | None:
             error=f"{type(exc).__name__}: {exc}",
         )
         return None
-    return answer or None
+    text = "".join(parts).strip()
+    return text or None
 
 
 _LLM_CONTENT_CHARS = 1200  # cap per-chunk content included in the LLM context
@@ -563,6 +579,13 @@ async def _emit_tool_result(state: AgentState, tool_name: str, summary: str) -> 
     if emitter is None:
         return
     await emitter.emit_tool_result(step=state.step_count, tool=tool_name, result_summary=summary)
+
+
+async def _emit_partial_answer(state: AgentState, delta: str) -> None:
+    emitter = state.runtime.get("emitter")
+    if emitter is None:
+        return
+    await emitter.emit_partial_answer(delta)
 
 
 async def _cache_get(cache: Any, key: str) -> str | None:

@@ -46,15 +46,22 @@ export default function QueryPage() {
   );
   const partialAnswer = useMemo(
     () =>
-      [...events]
-        .reverse()
-        .find(
+      events
+        .filter(
           (event): event is Extract<QueryStreamEvent, { event: 'partial_answer' }> =>
             event.event === 'partial_answer'
-        )?.data.delta,
+        )
+        .map((event) => event.data.delta)
+        .join(''),
     [events]
   );
   const citations = useMemo(() => mergeCitations(events, finalAnswer), [events, finalAnswer]);
+  // The Final answer box already shows the accumulated stream, so keep the raw
+  // event log free of the per-token partial_answer flood.
+  const streamEvents = useMemo(
+    () => events.filter((event) => event.event !== 'partial_answer'),
+    [events]
+  );
 
   return (
     <section className="mx-auto grid max-w-6xl gap-6 xl:grid-cols-[22rem_minmax(0,1fr)]">
@@ -178,7 +185,7 @@ export default function QueryPage() {
             aria-atomic="true"
             className="mt-4 whitespace-pre-wrap rounded-md border border-stone-200 bg-stone-50 px-4 py-4 text-sm leading-6 text-stone-800"
           >
-            {finalAnswer?.answer ?? partialAnswer ?? 'No answer yet.'}
+            {finalAnswer?.answer ?? (partialAnswer || 'No answer yet.')}
           </div>
 
           {submitError ? (
@@ -222,13 +229,13 @@ export default function QueryPage() {
         <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-stone-900">Event stream</h2>
-            <span className="text-xs text-stone-500">{events.length} events</span>
+            <span className="text-xs text-stone-500">{streamEvents.length} events</span>
           </div>
           <div className="mt-4 space-y-3" role="log" aria-live="polite">
-            {events.length === 0 ? (
+            {streamEvents.length === 0 ? (
               <p className="text-sm text-stone-600">No stream activity yet.</p>
             ) : (
-              events.map((event, index) => (
+              streamEvents.map((event, index) => (
                 <div key={`${event.event}-${index}`} className="rounded-md border border-stone-200 px-4 py-3">
                   <EventRow event={event} />
                 </div>
