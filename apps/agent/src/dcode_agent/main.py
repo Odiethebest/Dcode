@@ -74,7 +74,11 @@ async def internal_query(
     """Run the agent for one query and stream SSE events back."""
     _require_internal_api_key(x_dcode_internal_key)
     emitter = SSEEmitter()
-    state = AgentState(repo_id=str(body.repo_id), query=body.query)
+    state = AgentState(
+        repo_id=str(body.repo_id),
+        query=body.query,
+        history=[turn.model_dump() for turn in body.history],
+    )
     asyncio.create_task(
         _run_graph_pipeline(
             emitter,
@@ -109,6 +113,7 @@ async def _run_graph_pipeline(
                 AgentState(
                     repo_id=state.repo_id,
                     query=state.query,
+                    history=state.history,
                     runtime={
                         "emitter": emitter,
                         "tool_registry": tool_registry,

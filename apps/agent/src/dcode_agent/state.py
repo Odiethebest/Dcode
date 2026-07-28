@@ -16,6 +16,10 @@ class AgentState:
 
     repo_id: str
     query: str
+    # Prior conversation turns (bounded by the gateway) + the original follow-up
+    # text preserved when the contextualize node rewrites `query` for retrieval.
+    history: list[dict[str, str]] = field(default_factory=list)
+    raw_query: str | None = None
     step_count: int = 0
     thoughts: list[str] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
