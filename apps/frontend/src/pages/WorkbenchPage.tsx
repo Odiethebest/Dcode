@@ -35,7 +35,11 @@ export default function WorkbenchPage() {
 
   const openCitation = (citation: CitationPayload) => {
     setActiveCitation(citation);
-    setShowCode(true); // reveal the inspector drawer on narrow viewports
+    // Only raise the inspector as a drawer on narrow viewports. On desktop it's
+    // in-grid, so opening a citation must NOT trigger the full-viewport scrim.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1180px)').matches) {
+      setShowCode(true);
+    }
   };
 
   return (
@@ -64,15 +68,18 @@ export default function WorkbenchPage() {
         />
       </div>
 
-      {/* Scrim for the mobile drawers. */}
+      {/* Scrim for the mobile drawers — a single element that exists only below
+          1180px (display:none on desktop, where the panes are in-grid). */}
       <button
         type="button"
         aria-label="Close menu"
+        data-testid="drawer-scrim"
+        data-open={showRail || showCode}
         tabIndex={showRail || showCode ? 0 : -1}
         onClick={closeDrawers}
         className={cx(
-          'fixed inset-0 z-[45] bg-[rgba(20,17,30,0.4)] transition-opacity duration-200',
-          showRail || showCode ? 'opacity-100' : 'pointer-events-none invisible opacity-0'
+          'fixed inset-0 z-[45] bg-[rgba(20,17,30,0.4)]',
+          showRail || showCode ? 'hidden max-[1180px]:block' : 'hidden'
         )}
       />
     </div>
