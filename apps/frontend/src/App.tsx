@@ -1,35 +1,22 @@
-import { Link, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import ComparePage from '@/pages/ComparePage';
 import IndexPage from '@/pages/IndexPage';
 import PrimitivesGallery from '@/pages/PrimitivesGallery';
 import QueryPage from '@/pages/QueryPage';
+import WorkbenchPage from '@/pages/WorkbenchPage';
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50 text-stone-800">
-      <header className="border-b border-stone-200 px-6 py-4 flex items-center gap-6">
-        <span className="font-semibold tracking-tight">Dcode</span>
-        <nav className="flex gap-4 text-sm">
-          <Link to="/" className="hover:underline">
-            Index
-          </Link>
-          <Link to="/query" className="hover:underline">
-            Query
-          </Link>
-          <Link to="/compare" className="hover:underline">
-            Compare
-          </Link>
-        </nav>
-      </header>
-      <main className="flex-1 px-6 py-8">
-        <Routes>
-          <Route path="/" element={<IndexPage />} />
-          <Route path="/query" element={<QueryPage />} />
-          <Route path="/compare" element={<ComparePage />} />
-          <Route path="/preview" element={<PrimitivesGallery />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      {/* The workbench is the product (Phase 2). It owns its own full-screen chrome. */}
+      <Route path="/" element={<WorkbenchPage />} />
+      {/* Design-system gallery (Phase 1). */}
+      <Route path="/preview" element={<PrimitivesGallery />} />
+      {/* Legacy tab IA — off-nav, kept reachable until Phase 4 retires it. */}
+      <Route path="/legacy/index" element={<IndexPage />} />
+      <Route path="/legacy/query" element={<QueryPage />} />
+      <Route path="/legacy/compare" element={<ComparePage />} />
+    </Routes>
   );
 }
