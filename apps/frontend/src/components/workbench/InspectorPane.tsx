@@ -1,17 +1,20 @@
+import type { CitationPayload } from '@/api/types';
+import { VerifiedMark } from '@/components/ui';
 import { cx } from '@/lib/cx';
 
 export interface InspectorPaneProps {
   /** Open state of the right drawer below 1180px (ignored at wider widths). */
   open: boolean;
   onClose: () => void;
+  citation: CitationPayload | null;
 }
 
 /**
- * Right code + call-graph inspector. Below 1180px it's a slide-in drawer; at
- * wider widths it's the third grid column. Empty state here — slice 5 fetches
- * real source (Shiki-highlighted) + graph neighbors on citation click.
+ * Right code + call-graph inspector. Slice 3 shows the selected citation's
+ * header (file:line + honest verified mark). Slice 5 fetches the real source
+ * (Shiki-highlighted) + graph neighbors and fills the body.
  */
-export function InspectorPane({ open, onClose }: InspectorPaneProps) {
+export function InspectorPane({ open, onClose, citation }: InspectorPaneProps) {
   return (
     <aside
       className={cx(
@@ -31,12 +34,32 @@ export function InspectorPane({ open, onClose }: InspectorPaneProps) {
             <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
           </svg>
         </button>
-        <div className="font-mono text-[12.5px] font-medium text-ink">Inspector</div>
-        <div className="mt-1.5 font-mono text-[11px] text-ink-3">click a citation to view source</div>
+
+        {citation ? (
+          <>
+            <div className="pr-8 font-mono text-[12.5px] font-medium text-ink">
+              {citation.file_path}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] text-ink-2">
+                {citation.symbol} · line {citation.line}
+              </span>
+              <VerifiedMark verified={citation.verified} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="font-mono text-[12.5px] font-medium text-ink">Inspector</div>
+            <div className="mt-1.5 font-mono text-[11px] text-ink-3">click a citation to view source</div>
+          </>
+        )}
       </div>
+
       <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-center">
         <p className="max-w-[16rem] text-sm leading-relaxed text-ink-3">
-          Real source and call-graph neighbors appear here when you open a citation.
+          {citation
+            ? 'Real source + call-graph neighbors load here next (slice 5).'
+            : 'Real source and call-graph neighbors appear here when you open a citation.'}
         </p>
       </div>
     </aside>

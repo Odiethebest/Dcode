@@ -20,7 +20,8 @@ describe('App IA', () => {
   it('renders the workbench at /', () => {
     renderAppAt('/');
     expect(screen.getByText('Dcode')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/ask a question/i)).toBeInTheDocument();
+    // Stable regardless of whether a repo is selected (empty thread state).
+    expect(screen.getByText(/ask this codebase anything/i)).toBeInTheDocument();
   });
 
   it('keeps the legacy Index page reachable off-nav until Phase 4', () => {
