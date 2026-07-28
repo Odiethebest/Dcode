@@ -57,7 +57,7 @@
 ### 4. 后续增强
 
 - [ ] 在检索质量改善后，再评估是否接入 LLM planner
-- [ ] 在检索质量改善后，再评估是否接入 LLM synthesis
+- [x] LLM synthesis 已接入——可选 OpenAI、逐 token 流式、引用白名单使 groundedness 达 1.0（2026-07-27）
 - [ ] 若前端类型漂移成为维护成本，再接入 OpenAPI 类型生成
 - [ ] 若评测结果继续迭代，让 `Compare` 页从版本化结果快照生成展示数据
 
@@ -67,7 +67,7 @@
 
 - [ ] 默认环境仍是 `EMBEDDING_MODEL=stub`
 - [ ] 当前 graph 是 v1：definitions + module import edges + best-effort intra-repo call edges
-- [ ] 当前 agent planner / synthesize 为规则与模板；已支持规则化多步循环，但不是 LLM planner
+- [ ] agent planner 仍为规则路由；synthesize 已可选 LLM（OpenAI，默认 stub 回退模板）
 - [ ] 当前 H1 判定只基于已落地指标，不含 Judge / pairwise，且尚未使用 real embedding/reranker 路径重新评测
 
 ---

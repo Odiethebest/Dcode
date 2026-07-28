@@ -73,7 +73,7 @@ Dcode 是一个**结构感知的代码理解平台**。系统接收 Git 仓库�
 - **Parse / Chunk**：当前实现使用 Python `ast`，不是 tree-sitter。
 - **Graph**：当前图层完成了 module / function / class / method symbol 落库、仓库内模块级 `imports` edges，以及 best-effort intra-repo `calls` edges；richer references / inheritance 仍未做深解析。
 - **Retrieval**：接口已经是 hybrid 形态，worker 和 API 均可通过 HTTP sidecar 调用真实 embedding；API 可通过 HTTP sidecar 调用 reranker。默认 `EMBEDDING_MODEL=stub` / `RERANKER_MODEL=stub` 时仍退化为 sparse-only 与 identity rerank。
-- **Agent**：LangGraph 已接通 SSE 与 8 个工具，但 planner / synthesize 是规则与模板实现，不是 LLM planner。
+- **Agent**：LangGraph 已接通 SSE 与工具链；planner 仍是规则路由，**synthesize 现为可选 LLM**（`SYNTHESIS_MODEL`，默认 stub 回退模板），流式生成带引用答案。
 - **Evaluation**：Recall@k / MRR / nDCG / groundedness 已落地；Judge / pairwise 仍未接通，因此 H1 当前只基于已实现指标做诚实判定。
 - **Deployment**：`docker-compose.prod.yml` 和 nginx static frontend 已完成；外部域名 `dcode.odieyang.com` 在 2026-07-11 仍未解析。生产 compose 尚未完整纳入 embedding/reranker sidecar。
 
@@ -152,7 +152,7 @@ query → [sparse 召回 (BM25)]    ─┘
 - **执行模式**：流式（SSE），中间步骤实时下发；
 - **最大步数**：单次查询上限 **8 步**（防止无限循环），超过即强制合成。
 
-当前实现说明：`plan_node` 为规则路由，`synthesize_node` 为 observation 模板拼接；graph 已支持规则化多步循环（如 `search_code` → `read_file` → `find_references` → `get_file_outline`），但仍不是 LLM planner。
+当前实现说明：`plan_node` 为规则路由；`synthesize_node` 默认模板拼接，**配置 `SYNTHESIS_MODEL` 后改用 LLM 基于检索证据流式生成带引用答案**（groundedness 护栏不变）；graph 已支持规则化多步循环（如 `search_code` → `read_file` → `find_references` → `get_file_outline`），planner 仍非 LLM。
 
 #### 2.3.2 工具清单
 

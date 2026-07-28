@@ -97,7 +97,7 @@ The project's engineering investment serves this **falsifiable** hypothesis. If 
 
 - **API Gateway** (FastAPI): auth, tenant scoped routing, SSE termination
 - **Index Worker**: `clone → Python AST chunk → embed → graph rebuild → persist`
-- **Agent Orchestrator**: LangGraph state machine with 8 tools and a groundedness guardrail
+- **Agent Orchestrator**: LangGraph state machine with rule-based planning, tools, optional LLM answer synthesis (`SYNTHESIS_MODEL`), and a groundedness guardrail
 - **Retrieval Layer**: hybrid search + atomic graph queries (`find_definition`, `find_references`, `get_dependencies`, `get_file_outline`)
 - **Storage**: PostgreSQL + pgvector as the single store for vectors and graph data, plus Redis for embedding, tool result, and query caches
 - **Evaluation Harness** (offline): five level baseline runner with stratified metrics
