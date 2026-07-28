@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 
 from dcode_agent import graph
+from dcode_agent.llm import create_llm_client
 from dcode_agent.settings import agent_settings
 from dcode_agent.sse import SSEEmitter
 from dcode_agent.state import AgentState
@@ -27,6 +28,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.compiled_graph = graph.build_graph()
     app.state.tool_cache = Redis.from_url(agent_settings.redis_url, decode_responses=True)
     app.state.db_session_factory = SessionLocal
+    app.state.llm_client = create_llm_client(
+        model=agent_settings.synthesis_model,
+        api_key=agent_settings.openai_api_key,
+        base_url=agent_settings.openai_base_url,
+        max_tokens=agent_settings.synthesis_max_tokens,
+        temperature=agent_settings.synthesis_temperature,
+    )
     try:
         yield
     finally:
@@ -75,6 +83,7 @@ async def internal_query(
             app.state.tool_registry,
             app.state.tool_cache,
             app.state.db_session_factory,
+            app.state.llm_client,
         )
     )
     return StreamingResponse(
@@ -91,6 +100,7 @@ async def _run_graph_pipeline(
     tool_registry: Any,
     tool_cache: Any,
     db_session_factory: Any,
+    llm_client: Any = None,
 ) -> None:
     """Invoke the compiled graph and flush terminal SSE events."""
     try:
@@ -104,6 +114,7 @@ async def _run_graph_pipeline(
                         "tool_registry": tool_registry,
                         "tool_cache": tool_cache,
                         "db": db,
+                        "llm": llm_client,
                     },
                 )
             )
@@ -118,10 +129,10 @@ async def _run_graph_pipeline(
                 verified=citation.verified,
             )
 
+        # partial_answer events are emitted during synthesis (streamed token
+        # deltas, or one whole-answer delta on the template path), so only the
+        # terminal citations + final answer are flushed here.
         answer = cast(str, state_dict.get("final_answer") or state_dict.get("draft_answer") or "")
-        if answer:
-            await emitter.emit_partial_answer(answer)
-
         await emitter.emit_final_answer(
             answer=answer,
             citations=citations,

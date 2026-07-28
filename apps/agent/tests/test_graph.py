@@ -147,6 +147,7 @@ class FakeEmitter:
         self.thoughts: list[tuple[int, str]] = []
         self.tool_calls: list[tuple[int, str, dict[str, Any]]] = []
         self.tool_results: list[tuple[int, str, str]] = []
+        self.partials: list[str] = []
 
     async def emit_thought(self, step: int, content: str) -> None:
         self.thoughts.append((step, content))
@@ -156,6 +157,9 @@ class FakeEmitter:
 
     async def emit_tool_result(self, step: int, tool: str, result_summary: str) -> None:
         self.tool_results.append((step, tool, result_summary))
+
+    async def emit_partial_answer(self, delta: str) -> None:
+        self.partials.append(delta)
 
 
 def _registry(*tools: Tool[Any, Any]) -> ToolRegistry:

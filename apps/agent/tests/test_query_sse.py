@@ -30,6 +30,9 @@ class FakeCompiledGraph:
         )
         if self.fail:
             raise RuntimeError("boom")
+        await emitter.emit_partial_answer(
+            "Definition matches:\n- `src.requests.auth.HTTPBasicAuth` at `src/requests/auth.py:85`"
+        )
         return {
             "final_answer": "Definition matches:\n- `src.requests.auth.HTTPBasicAuth` at `src/requests/auth.py:85`",
             "citations": [

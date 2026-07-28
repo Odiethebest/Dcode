@@ -17,6 +17,11 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export PYTORCH_ENABLE_MPS_FALLBACK=0
 
+# Workspace member packages are not installed editable in the root uv venv,
+# so make dcode_reranker importable before launching uvicorn (mirrors the
+# PYTHONPATH pattern the Makefile uses for eval-smoke).
+export PYTHONPATH="${PWD}/apps/reranker/src${PYTHONPATH:+:${PYTHONPATH}}"
+
 echo "==> Loading ${RERANKER_MODEL_NAME} on http://0.0.0.0:8003"
 echo "    First run downloads the model — may take several minutes."
 echo "    Wait for: Reranker model ready"

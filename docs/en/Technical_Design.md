@@ -103,7 +103,7 @@ The answer path is:
 1. classify the query intent;
 2. choose one or more tools;
 3. execute internal API calls;
-4. synthesize a response from tool results;
+4. synthesize a response from tool results — a rule-based template by default, or an optional LLM (`SYNTHESIS_MODEL`) that streams a grounded, citation-formatted answer;
 5. verify citations against indexed evidence;
 6. stream typed SSE events through the API gateway.
 
@@ -161,7 +161,7 @@ Internal routes are shared by agent tools and evaluation baselines. Route names,
 
 - Full inheritance and richer reference edges remain follow-up graph work.
 - The evaluation suite needs a larger question set and independent baseline retrieval paths.
-- LLM planner and synthesis are not required for the current basic integration path.
+- Answer synthesis can run through an optional LLM (`SYNTHESIS_MODEL`, default `stub`); the planner remains rule-based.
 - Production deployment still depends on DNS and runtime environment decisions.
 
 Any implementation change that affects these contracts should update this document and the matching execution notes.

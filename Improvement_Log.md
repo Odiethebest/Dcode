@@ -2,9 +2,9 @@
 
 > 本文件是 [`problem.md`](problem.md) 中**已完成项**的实现记录（changelog）——从问题登记表拆出，让活跃 backlog 保持精简。每项保留原始诊断 + `✅ 状态`（实现摘要 + 提交号）。
 >
-> 权威源是 git 历史；本表是人类可读的审计线索。全部改动在分支 `ziqi_review`（PR → `main`）。日期：2026-07-26。
+> 权威源是 git 历史；本表是人类可读的审计线索。全部改动在分支 `ziqi_review`（PR → `main`）。日期：2026-07-26；LLM 合成线（P1-4 合成 / P2-5）补充于 2026-07-27。
 
-## 已完成一览（15 项）
+## 已完成一览（17 项，含 P1-4 合成部分）
 
 | ID | 领域 | 提交 | 一句话 |
 |---|---|---|---|
@@ -23,6 +23,8 @@
 | P3-10 | Frontend | `09e2446` | a11y live region + 去重 + memo |
 | P3-11 | Agent | `c404b90` | 工具失败优雅降级 |
 | P3-16 | Frontend/测试 | `a311e16` | 修 Node 26 localStorage 测试 |
+| P2-5 | Agent/SSE | `f613265` | LLM 合成逐 token 流式 + 前端累加 delta |
+| P1-4(合成) | Agent | `62b8a49`/`f613265`/`859d8cc` | 可选 OpenAI LLM 合成：带引用人话答案 + 流式 + 白名单 grounded 1.0 |
 
 ---
 
@@ -100,3 +102,14 @@
 - **位置**：`apps/frontend/tests/setup.ts`；症状为 `QueryPage.test.tsx` / `IndexPage.test.tsx` 的 `beforeEach` 里 `window.localStorage.clear()` 抛 `Cannot read properties of undefined`。
 - **问题**：Node 26 引入实验性原生 `localStorage`（需 `--localstorage-file` 才启用），在 jsdom 环境下遮蔽了 DOM Storage，使 `window.localStorage` 变为 `undefined`。CI 用 Node 20 不受影响，故只在较新本机复现（本轮做 P3-4 前端时发现，已用 stash 证明与业务改动无关）。
 - **✅ 状态（2026-07-26，`a311e16`）**：在 `tests/setup.ts` 安装确定性的内存版 `Storage`（`defineProperty` 到 `window` + `globalThis`），版本无关且改善测试隔离。前端 vitest 现 8/8 通过，tsc/eslint/build 全绿。
+
+### P2-5 partial_answer 整段一次性发出，非流式
+- **位置**：`apps/agent/src/dcode_agent/main.py`（旧：图跑完后一次性 `emit_partial_answer(整段)`）、`apps/frontend/src/pages/QueryPage.tsx`（只取最后一个 delta）。
+- **问题**：SSE 协议支持逐 token，但完整答案作为单个 `partial_answer` 发出，失去流式体验、TTFB 无改善；前端还只渲染最后一个 delta（潜在 bug）。
+- **✅ 状态（2026-07-27，`f613265`）**：`LLMClient` 由 `synthesize` 改为 `stream`（`AsyncIterator[str]`），`OpenAILLMClient` 用 `stream=True` 逐块 yield；`synthesize_node` 边消费边 `emit_partial_answer` 每个 delta 并累加草稿（模板路径整段作为单个 delta，通道统一）；`main.py` 不再终发整段 partial。前端 `QueryPage` 改为**累加所有 delta**（修掉"只取最后一个"）呈现打字机效果、final_answer 仍为权威覆盖、原始事件日志过滤 per-token 洪流。groundedness 仍在累加后的草稿上运行。实测单条查询流式 ~280 个 delta。agent+前端测试/ruff/mypy 全绿。
+
+### P1-4（合成部分）Agent 合成从模板拼接升级为 LLM
+- **位置**：`apps/agent/src/dcode_agent/{llm.py,graph.py,settings.py,main.py}`。
+- **问题**：synthesis 是字符串模板拼接（"在这些位置找到了…"），非人话解释，B4 的"agent 增量"几乎只剩多跳检索、答案无推理生成。
+- **✅ 状态（2026-07-27，`62b8a49` + `f613265` + `859d8cc`）**：新增**可选** OpenAI 合成层——`llm.py`（`LLMClient` 抽象 + `OpenAILLMClient` + 工厂，默认 `SYNTHESIS_MODEL=stub` 返回 None，保持模板、不破坏现有行为）；`synthesize_node` 有 LLM 时用检索证据（chunk/read_file 内容 + 图 locations）流式生成带引用答案，出错/无上下文降级回模板。**groundedness 护栏原封不动**：从答案文本抽引用、查库核实、剥离幻觉。为把 groundedness 从 0.60–0.75 拉回 **1.0**，加入"引用白名单"——只允许逐字引用证据里确切存在、可核实的 `file:行`/点分符号（`859d8cc`）。附带修复：`base_url` 空串毒化 SDK（`39e088e`）、host sidecar 启动脚本 `ModuleNotFoundError`（`f6add9d`）。配置 `SYNTHESIS_MODEL`/`OPENAI_API_KEY`/… 接入 dev+prod compose 与 `.env.example`，`openai` 依赖加到 `apps/agent`。新增合成/流式测试；ruff/mypy --strict/pytest 全绿；对 `encode/httpx` 端到端验证真实流式人话答案 + grounded 1.0。
+- **仍未完成**：**LLM 规划**（工具选择/参数）仍是关键词路由——见 [`problem.md`](problem.md) P1-4。

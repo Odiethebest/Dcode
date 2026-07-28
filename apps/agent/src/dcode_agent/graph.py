@@ -11,6 +11,7 @@ from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
+from dcode_agent.llm import LLMClient
 from dcode_agent.settings import agent_settings
 from dcode_agent.state import AgentState
 
@@ -162,13 +163,141 @@ async def _record_tool_failure(
 
 
 async def synthesize_node(state: AgentState) -> AgentState:
-    """Compose a first-pass answer from the accumulated observations."""
+    """Compose a first-pass answer from the accumulated observations.
+
+    When an LLM synthesis client is configured (``state.runtime['llm']``), it
+    streams a grounded, citation-formatted answer from the retrieved evidence
+    (each token delta is emitted as a ``partial_answer`` event); otherwise the
+    rule-based template is used. Either way the groundedness node then verifies
+    and redacts citations, so the LLM cannot introduce unverified references.
+    """
     answer, citations = _synthesize_from_observations(state)
+
+    streamed = False
+    llm = state.runtime.get("llm")
+    if llm is not None and state.observations:
+        llm_answer = await _llm_stream(state, llm)
+        if llm_answer is not None:
+            # The groundedness node re-extracts citations from the answer text,
+            # so the template citations are dropped in favour of the LLM prose.
+            answer, citations = llm_answer, []
+            streamed = True
+
     if state.error is not None:
         answer = _prepend_tool_failure_notice(answer, state.error)
     state.draft_answer = answer
     state.citations = citations
+    if not streamed:
+        # Non-streaming (template) path: emit the whole draft as one delta so the
+        # client sees a pre-final answer via the same partial_answer channel.
+        await _emit_partial_answer(state, answer)
     return state
+
+
+async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
+    """Stream the LLM answer, emitting each delta live; return the full text.
+
+    Returns ``None`` on empty context or any failure so synthesis degrades to
+    the rule-based template.
+    """
+    context = _build_llm_context(state)
+    if not context.strip():
+        return None
+    await _emit_thought(state, "Synthesize a grounded answer from the retrieved evidence.")
+    parts: list[str] = []
+    try:
+        async for delta in llm.stream(question=state.query, context=context):
+            if not delta:
+                continue
+            parts.append(delta)
+            await _emit_partial_answer(state, delta)
+    except Exception as exc:  # noqa: BLE001 — LLM failure degrades to template synthesis
+        log_event(
+            logger,
+            "synthesis_error",
+            repo_id=state.repo_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return None
+    text = "".join(parts).strip()
+    return text or None
+
+
+_LLM_CONTENT_CHARS = 1200  # cap per-chunk content included in the LLM context
+
+
+def _build_llm_context(state: AgentState) -> str:
+    """Render the retrieved evidence (code + graph locations) for the LLM."""
+    blocks: list[str] = []
+    for observation in state.observations:
+        tool_name = observation["tool"]
+        result = observation["result"]
+        if tool_name == "search_code":
+            for chunk in result.get("chunks", [])[:5]:
+                blocks.append(
+                    f"[{chunk['file_path']}:{chunk['start_line']}] "
+                    f"symbol `{chunk['symbol_name']}`\n{_clip(chunk.get('content', ''))}"
+                )
+        elif tool_name == "read_file":
+            start_line, end_line = result["line_range"]
+            blocks.append(
+                f"[{result['path']}:{start_line}-{end_line}] (file excerpt)\n"
+                f"{_clip(result.get('content', ''))}"
+            )
+        elif "locations" in result:
+            loc_lines = [
+                f"- `{loc['symbol']}` at `{loc['file_path']}:{loc['line']}`"
+                for loc in result["locations"][:10]
+            ]
+            if loc_lines:
+                blocks.append(f"[{tool_name} results]\n" + "\n".join(loc_lines))
+        elif "entries" in result:
+            names = ", ".join(str(entry["name"]) for entry in result["entries"][:20])
+            blocks.append(f"[directory listing]\n{names}")
+
+    allowed = _allowed_citations(state)
+    if allowed:
+        blocks.append(
+            "Allowed citations (cite ONLY these, copied verbatim inside backticks):\n"
+            + "\n".join(f"- `{token}`" for token in allowed)
+        )
+    return "\n\n".join(blocks)
+
+
+def _allowed_citations(state: AgentState) -> list[str]:
+    """Exact citation tokens present in the evidence — the only references the
+    LLM may cite. Each one verifies against the index, keeping groundedness high.
+    """
+    allowed: list[str] = []
+    seen: set[str] = set()
+
+    def add(token: str) -> None:
+        if token and token not in seen:
+            seen.add(token)
+            allowed.append(token)
+
+    for observation in state.observations:
+        tool_name = observation["tool"]
+        result = observation["result"]
+        if tool_name == "search_code":
+            for chunk in result.get("chunks", []):
+                add(f"{chunk['file_path']}:{chunk['start_line']}")
+        elif tool_name == "read_file":
+            add(f"{result['path']}:{result['line_range'][0]}")
+        elif "locations" in result:
+            for location in result["locations"]:
+                add(f"{location['file_path']}:{location['line']}")
+                symbol = str(location["symbol"])
+                if "." in symbol:
+                    add(symbol)
+    return allowed
+
+
+def _clip(text: object) -> str:
+    rendered = str(text)
+    if len(rendered) <= _LLM_CONTENT_CHARS:
+        return rendered
+    return rendered[:_LLM_CONTENT_CHARS] + "\n... [truncated]"
 
 
 def _prepend_tool_failure_notice(answer: str, error: str) -> str:
@@ -486,6 +615,13 @@ async def _emit_tool_result(state: AgentState, tool_name: str, summary: str) -> 
     if emitter is None:
         return
     await emitter.emit_tool_result(step=state.step_count, tool=tool_name, result_summary=summary)
+
+
+async def _emit_partial_answer(state: AgentState, delta: str) -> None:
+    emitter = state.runtime.get("emitter")
+    if emitter is None:
+        return
+    await emitter.emit_partial_answer(delta)
 
 
 async def _cache_get(cache: Any, key: str) -> str | None:

@@ -239,3 +239,29 @@ After the smoke passes, evaluation and frontend owners can:
 3. verify baseline retrieval paths are independent;
 4. update frontend `evalSnapshot.ts`;
 5. reassess H1 from the refreshed results.
+
+## Verified Run — 2026-07-27
+
+A local real-model run against the committed `psf/requests` index (768-dim
+Jina, `repo_id` `bfe447be…`) confirmed the full path end-to-end. Sidecars were
+launched on the host via `make embedding-host` / `make reranker-host` (both host
+scripts export `PYTHONPATH` so the workspace app is importable); the API ran in
+Docker with `EMBEDDING_MODEL` / `RERANKER_MODEL` pointed at the host sidecars.
+
+- **Semantic retrieval works with zero keyword overlap.** For the query
+  *"how does it attach the user credentials to prove identity to the server"*
+  (no `auth` / `Authorization` / `HTTPBasicAuth` tokens): `mode=sparse` returned
+  only unrelated `tests/` files, while `mode=dense` returned
+  `src/requests/auth.py` (the `HTTP*Auth` constructors, cosine ≈ 0.52) as the top
+  hits.
+- **The reranker improves precision.** For *"store and reuse cookies across
+  multiple requests"*, `mode=dense` returned five `tests/test_requests.py` hits;
+  the full `mode=hybrid` (BGE reranker) flipped all five to
+  `src/requests/{sessions,cookies}.py`.
+- **Agent SSE end-to-end.** `POST /api/v1/query` ran `plan → search_code`
+  (top hit `src/requests/auth.py`) `→ read_file → find_references →
+  get_file_outline → synthesize`, emitting 14 citations all `verified=True` with
+  `groundedness=1.0`.
+
+Caveat unchanged: the agent planner/synthesis are rule-based, so the final
+answer is a grounded, citation-backed trace rather than LLM prose.

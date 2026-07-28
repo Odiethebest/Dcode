@@ -14,6 +14,11 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export PYTORCH_ENABLE_MPS_FALLBACK=0
 
+# Workspace member packages are not installed editable in the root uv venv,
+# so make dcode_embedding importable before launching uvicorn (mirrors the
+# PYTHONPATH pattern the Makefile uses for eval-smoke).
+export PYTHONPATH="${PWD}/apps/embedding/src${PYTHONPATH:+:${PYTHONPATH}}"
+
 echo "==> Loading ${EMBEDDING_MODEL_NAME} on http://0.0.0.0:8002"
 echo "    First run downloads the model — may take several minutes."
 echo "    Wait for: Application startup complete"
