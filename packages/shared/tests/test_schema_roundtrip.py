@@ -1,5 +1,6 @@
 """Schema roundtrip + cache key shape tests."""
 
+import hashlib
 from uuid import uuid4
 
 import pytest
@@ -85,3 +86,46 @@ def test_final_answer_event_carries_citations() -> None:
     )
     parsed = FinalAnswerEvent.model_validate_json(event.model_dump_json())
     assert parsed.citations[0].verified is True
+
+
+def _legacy_query_cache_key(repo_id: str, query: str) -> str:
+    """Byte-for-byte copy of the pre-history derivation — the regression oracle."""
+    digest = hashlib.sha256(query.encode("utf-8")).hexdigest()[:32]
+    return f"query:{repo_id}:{digest}"
+
+
+@pytest.mark.parametrize(
+    ("repo_id", "query"),
+    [
+        ("rid", "q"),
+        ("11111111-1111-1111-1111-111111111111", "Where is `HTTPBasicAuth` defined?"),
+        ("repo", ""),
+    ],
+)
+def test_query_cache_key_empty_history_is_byte_identical_to_legacy(
+    repo_id: str, query: str
+) -> None:
+    """Guardrail: adding history must not shift the key when history is absent,
+    or every existing single-turn cache entry silently orphans."""
+    legacy = _legacy_query_cache_key(repo_id, query)
+    assert query_cache_key(repo_id, query) == legacy
+    assert query_cache_key(repo_id, query, history=None) == legacy
+    assert query_cache_key(repo_id, query, history=[]) == legacy
+
+
+def test_query_cache_key_history_changes_key_and_is_context_sensitive() -> None:
+    single_turn = query_cache_key("rid", "who calls it?")
+    ctx_basic = query_cache_key(
+        "rid", "who calls it?", history=[{"role": "user", "content": "explain HTTPBasicAuth"}]
+    )
+    ctx_digest = query_cache_key(
+        "rid", "who calls it?", history=[{"role": "user", "content": "explain HTTPDigestAuth"}]
+    )
+    # A context-dependent follow-up must not replay the single-turn answer…
+    assert ctx_basic != single_turn
+    # …nor collide with the same query under a different context.
+    assert ctx_basic != ctx_digest
+    # Same repo + query + history is deterministic (cacheable).
+    assert ctx_basic == query_cache_key(
+        "rid", "who calls it?", history=[{"role": "user", "content": "explain HTTPBasicAuth"}]
+    )
