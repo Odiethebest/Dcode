@@ -287,6 +287,12 @@ export default function LandingPage() {
               <b className="font-semibold text-ink">unsupported</b>. The thresholds don&rsquo;t move after the numbers
               come in.
             </p>
+            <Link
+              to="/methodology"
+              className="mt-6 inline-flex items-center gap-1.5 font-mono text-[13px] font-medium text-brand hover:underline"
+            >
+              See the full methodology →
+            </Link>
           </Reveal>
           <Reveal className="rounded-card border border-line bg-surface p-[30px]">
             <div className="mb-[22px] font-mono text-[11px] uppercase tracking-[0.13em] text-ink-3">

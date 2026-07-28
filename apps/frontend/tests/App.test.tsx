@@ -27,6 +27,11 @@ describe('App IA', () => {
     expect(screen.getByText(/ask this codebase anything/i)).toBeInTheDocument();
   });
 
+  it('renders the methodology page at /methodology', () => {
+    renderAppAt('/methodology');
+    expect(screen.getByText(/currently unsupported/i)).toBeInTheDocument();
+  });
+
   it('keeps the legacy Index page reachable off-nav until Phase 4', () => {
     renderAppAt('/legacy/index');
     expect(screen.getByText(/Index a repository/i)).toBeInTheDocument();

@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 import { RepoSwitcher } from '@/components/workbench/RepoSwitcher';
 import { cx } from '@/lib/cx';
+
+const navLinkClass = 'rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-2 transition hover:bg-sunk hover:text-ink';
 
 function IconButton({
   label,
@@ -45,10 +48,14 @@ export function Topbar({ activeRepoId, onSelectRepo, onToggleRail, onToggleCode 
         </svg>
       </IconButton>
 
-      <div className="flex items-baseline gap-2 font-display text-[21px] font-semibold tracking-tight">
+      <Link
+        to="/"
+        aria-label="Dcode home"
+        className="flex items-baseline gap-2 font-display text-[21px] font-semibold tracking-tight"
+      >
         Dcode
         <span className="h-1.5 w-1.5 -translate-y-0.5 rounded-full bg-brand" aria-hidden="true" />
-      </div>
+      </Link>
 
       <span className="h-[22px] w-px bg-line-2" aria-hidden="true" />
 
@@ -57,15 +64,15 @@ export function Topbar({ activeRepoId, onSelectRepo, onToggleRail, onToggleCode 
       <div className="flex-1" />
 
       <nav className="flex gap-1 max-[760px]:hidden">
-        {['About', 'Methodology', 'GitHub'].map((label) => (
-          <a
-            key={label}
-            href="#"
-            className="rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-2 transition hover:bg-sunk hover:text-ink"
-          >
-            {label}
-          </a>
-        ))}
+        <Link to="/" className={navLinkClass}>
+          Overview
+        </Link>
+        <Link to="/methodology" className={navLinkClass}>
+          Methodology
+        </Link>
+        <a href="https://github.com" target="_blank" rel="noreferrer" className={navLinkClass}>
+          GitHub
+        </a>
       </nav>
 
       <IconButton label="Code" onClick={onToggleCode} className="hidden max-[1180px]:flex">
