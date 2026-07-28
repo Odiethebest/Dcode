@@ -54,8 +54,8 @@ class SharedSettings(BaseSettings):
     rrf_sparse_weight: float = 1.0
     reranker_model: str = "stub"
     reranker_endpoint: str = ""
-    reranker_candidate_limit: int = 50
-    reranker_max_retries: int = 12
+    reranker_candidate_limit: int = 16
+    reranker_max_retries: int = 3
     judge_model: str = "stub"
 
 

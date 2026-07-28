@@ -1,5 +1,6 @@
 """Internal retrieval and graph-query endpoints."""
 
+import logging
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from sqlalchemy.orm import aliased
 from dcode_api.deps import get_db
 from dcode_api.settings import api_settings
 
+logger = logging.getLogger(__name__)
+
 
 async def _require_internal_api_key(
     x_dcode_internal_key: str | None = Header(default=None, alias=INTERNAL_API_KEY_HEADER),
@@ -35,6 +38,11 @@ router = APIRouter(tags=["internal"], dependencies=[Depends(_require_internal_ap
 _TERM_SPLIT_RE = re.compile(r"\s+")
 _SEARCH_CANDIDATE_LIMIT = 50
 _RRF_K = 60
+# Cap per-passage length sent to the reranker. BGE on CPU is token-bound: full
+# chunk bodies (up to max_chunk_chars) push a 10-passage rerank past 40s, while
+# short passages finish in ~1s. The symbol name + path + opening lines carry the
+# ranking signal, so this keeps rerank interactive without losing quality.
+_RERANK_PASSAGE_CHARS = 256
 _REFERENCE_EDGE_TYPES = ("calls", "references")
 _MODULE_REFERENCE_EDGE_TYPES = ("calls", "references", "imports")
 
@@ -255,7 +263,7 @@ def _get_query_reranker_client() -> RerankerClient | None:
 
 def _passage_text(candidate: SearchCandidate) -> str:
     row = candidate.row
-    return f"{row.symbol_name}\n{row.file_path}\n{row.content}"
+    return f"{row.symbol_name}\n{row.file_path}\n{row.content[:_RERANK_PASSAGE_CHARS]}"
 
 
 async def _rerank_candidates(
@@ -280,7 +288,12 @@ async def _rerank_candidates(
         ),
         reverse=True,
     )[: api_settings.reranker_candidate_limit]
-    scores = await reranker.rerank(query, [_passage_text(candidate) for candidate in pool])
+    passages = [_passage_text(candidate) for candidate in pool]
+    try:
+        scores = await reranker.rerank(query, passages)
+    except Exception as exc:  # noqa: BLE001 — a slow/unavailable reranker degrades ranking, not the whole search
+        logger.warning("reranker unavailable; falling back to fused (RRF) order: %s", exc)
+        return _identity_rerank(candidates)
     reranked = [
         SearchCandidate(
             row=candidate.row,
