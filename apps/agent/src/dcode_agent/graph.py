@@ -11,6 +11,7 @@ from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
+from dcode_agent.llm import LLMClient
 from dcode_agent.settings import agent_settings
 from dcode_agent.state import AgentState
 
@@ -162,13 +163,89 @@ async def _record_tool_failure(
 
 
 async def synthesize_node(state: AgentState) -> AgentState:
-    """Compose a first-pass answer from the accumulated observations."""
+    """Compose a first-pass answer from the accumulated observations.
+
+    When an LLM synthesis client is configured (``state.runtime['llm']``), it
+    writes a grounded, citation-formatted answer from the retrieved evidence;
+    otherwise the rule-based template is used. Either way the groundedness node
+    then verifies and redacts citations, so the LLM cannot introduce unverified
+    references.
+    """
     answer, citations = _synthesize_from_observations(state)
+
+    llm = state.runtime.get("llm")
+    if llm is not None and state.observations:
+        llm_answer = await _llm_synthesize(state, llm)
+        if llm_answer is not None:
+            # The groundedness node re-extracts citations from the answer text,
+            # so the template citations are dropped in favour of the LLM prose.
+            answer, citations = llm_answer, []
+
     if state.error is not None:
         answer = _prepend_tool_failure_notice(answer, state.error)
     state.draft_answer = answer
     state.citations = citations
     return state
+
+
+async def _llm_synthesize(state: AgentState, llm: LLMClient) -> str | None:
+    """Ask the LLM to synthesize a grounded answer; ``None`` on empty/failure."""
+    context = _build_llm_context(state)
+    if not context.strip():
+        return None
+    await _emit_thought(state, "Synthesize a grounded answer from the retrieved evidence.")
+    try:
+        answer = await llm.synthesize(question=state.query, context=context)
+    except Exception as exc:  # noqa: BLE001 — LLM failure degrades to template synthesis
+        log_event(
+            logger,
+            "synthesis_error",
+            repo_id=state.repo_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return None
+    return answer or None
+
+
+_LLM_CONTENT_CHARS = 1200  # cap per-chunk content included in the LLM context
+
+
+def _build_llm_context(state: AgentState) -> str:
+    """Render the retrieved evidence (code + graph locations) for the LLM."""
+    blocks: list[str] = []
+    for observation in state.observations:
+        tool_name = observation["tool"]
+        result = observation["result"]
+        if tool_name == "search_code":
+            for chunk in result.get("chunks", [])[:5]:
+                blocks.append(
+                    f"[{chunk['file_path']}:{chunk['start_line']}] "
+                    f"symbol `{chunk['symbol_name']}`\n{_clip(chunk.get('content', ''))}"
+                )
+        elif tool_name == "read_file":
+            start_line, end_line = result["line_range"]
+            blocks.append(
+                f"[{result['path']}:{start_line}-{end_line}] (file excerpt)\n"
+                f"{_clip(result.get('content', ''))}"
+            )
+        elif "locations" in result:
+            loc_lines = [
+                f"- `{loc['symbol']}` at `{loc['file_path']}:{loc['line']}`"
+                for loc in result["locations"][:10]
+            ]
+            if loc_lines:
+                blocks.append(f"[{tool_name} results]\n" + "\n".join(loc_lines))
+        elif "entries" in result:
+            names = ", ".join(str(entry["name"]) for entry in result["entries"][:20])
+            blocks.append(f"[directory listing]\n{names}")
+    return "\n\n".join(blocks)
+
+
+def _clip(text: object) -> str:
+    rendered = str(text)
+    if len(rendered) <= _LLM_CONTENT_CHARS:
+        return rendered
+    return rendered[:_LLM_CONTENT_CHARS] + "\n... [truncated]"
 
 
 def _prepend_tool_failure_notice(answer: str, error: str) -> str:

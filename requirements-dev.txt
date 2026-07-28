@@ -28,6 +28,7 @@ annotated-types==0.7.0
 anyio==4.13.0
     # via
     #   httpx
+    #   openai
     #   starlette
     #   watchfiles
 ast-serialize==0.5.0
@@ -51,6 +52,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   pytest
     #   tqdm
     #   uvicorn
+distro==1.9.0
+    # via openai
 fastapi==0.136.3
     # via
     #   dcode-agent
@@ -86,6 +89,7 @@ httpx==0.28.1
     #   dcode-shared
     #   langgraph-sdk
     #   langsmith
+    #   openai
 huggingface-hub==0.36.2
     # via
     #   sentence-transformers
@@ -101,6 +105,8 @@ iniconfig==2.3.0
     # via pytest
 jinja2==3.1.6
     # via torch
+jiter==0.16.0
+    # via openai
 joblib==1.5.3
     # via scikit-learn
 jsonpatch==1.33
@@ -154,6 +160,8 @@ numpy==2.4.6
     #   scikit-learn
     #   scipy
     #   transformers
+openai==2.49.0
+    # via dcode-agent
 orjson==3.11.9
     # via
     #   langgraph-sdk
@@ -188,6 +196,7 @@ pydantic==2.13.4
     #   langchain-core
     #   langgraph
     #   langsmith
+    #   openai
     #   pydantic-settings
 pydantic-core==2.46.4
     # via pydantic
@@ -242,6 +251,8 @@ sentence-transformers==4.1.0
     #   dcode-reranker
 setuptools==81.0.0
     # via torch
+sniffio==1.3.1
+    # via openai
 sqlalchemy==2.0.50
     # via
     #   alembic
@@ -269,6 +280,7 @@ torch==2.12.1+cpu ; python_full_version >= '3.15' or sys_platform != 'darwin'
 tqdm==4.68.3
     # via
     #   huggingface-hub
+    #   openai
     #   sentence-transformers
     #   transformers
 transformers==4.57.6
@@ -285,6 +297,7 @@ typing-extensions==4.15.0
     #   langchain-core
     #   langchain-protocol
     #   mypy
+    #   openai
     #   pydantic
     #   pydantic-core
     #   pytest-asyncio
