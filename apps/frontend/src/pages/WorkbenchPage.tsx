@@ -56,7 +56,12 @@ export default function WorkbenchPage() {
           activeCitationKey={activeCitation ? citationKey(activeCitation) : null}
           onOpenCitation={openCitation}
         />
-        <InspectorPane open={showCode} onClose={() => setShowCode(false)} citation={activeCitation} />
+        <InspectorPane
+          open={showCode}
+          onClose={() => setShowCode(false)}
+          repoId={activeRepoId}
+          citation={activeCitation}
+        />
       </div>
 
       {/* Scrim for the mobile drawers. */}
