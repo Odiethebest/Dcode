@@ -48,7 +48,7 @@ export default function WorkbenchPage() {
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-[262px_1fr_384px] max-[1180px]:grid-cols-[240px_1fr] max-[760px]:grid-cols-[1fr]">
-        <HistoryRail open={showRail} />
+        <HistoryRail open={showRail} turns={turns} onNavigate={() => setShowRail(false)} />
         <ThreadPane
           turns={turns}
           canSubmit={Boolean(activeRepoId)}

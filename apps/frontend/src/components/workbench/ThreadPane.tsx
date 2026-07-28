@@ -91,6 +91,7 @@ export function ThreadPane({
 
           <div className="flex items-end gap-2.5 rounded-[14px] border border-line-2 bg-surface p-2 pl-4 transition focus-within:border-brand focus-within:shadow-[0_0_0_3px_var(--brand-wash)]">
             <textarea
+              id="workbench-input"
               ref={textareaRef}
               rows={1}
               value={input}

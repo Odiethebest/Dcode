@@ -35,7 +35,7 @@ export function Turn({ turn, activeCitationKey, onOpenCitation }: TurnProps) {
   const sources = status === 'done' ? unmatchedCitations(answerText, citations) : [];
 
   return (
-    <section className="border-b border-line py-8 last:border-0">
+    <section id={turn.id} className="scroll-mt-4 border-b border-line py-8 last:border-0">
       <div className="mb-5 flex gap-3">
         <span className="mt-1.5 flex-none font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
           Asked
