@@ -5,6 +5,7 @@ Services MUST import these types rather than redefining.
 """
 
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -106,11 +107,26 @@ class RepoStatusResponse(BaseModel):
 # ===========================================================================
 
 
+class QueryTurn(BaseModel):
+    """One prior conversation turn, sent by the client on a follow-up query.
+
+    History is client-supplied on every request (services stay stateless); the
+    gateway bounds it before it reaches the planner or the cache key.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class QueryRequest(BaseModel):
     """POST /api/v1/query request body."""
 
     repo_id: UUID
     query: str = Field(..., min_length=1)
+    history: list[QueryTurn] = Field(
+        default_factory=list,
+        description="Prior turns for multi-turn follow-ups (bounded by the gateway).",
+    )
 
 
 # ===========================================================================

@@ -18,6 +18,7 @@ from dcode_shared.events import (
 )
 from dcode_shared.schemas import (
     QueryRequest,
+    QueryTurn,
     RepoCreateRequest,
     RepoCreateResponse,
     RepoStatus,
@@ -129,3 +130,25 @@ def test_query_cache_key_history_changes_key_and_is_context_sensitive() -> None:
     assert ctx_basic == query_cache_key(
         "rid", "who calls it?", history=[{"role": "user", "content": "explain HTTPBasicAuth"}]
     )
+
+
+def test_query_request_accepts_history_turns() -> None:
+    req = QueryRequest(
+        repo_id=uuid4(),
+        query="who calls it?",
+        history=[
+            QueryTurn(role="user", content="explain HTTPBasicAuth"),
+            QueryTurn(role="assistant", content="It attaches an Authorization header."),
+        ],
+    )
+    dumped = req.model_dump(mode="json")
+    assert [turn["role"] for turn in dumped["history"]] == ["user", "assistant"]
+    assert set(dumped["history"][0]) == {"role", "content"}
+    parsed = QueryRequest.model_validate_json(req.model_dump_json())
+    assert parsed.history[1].content.startswith("It attaches")
+
+
+def test_query_request_history_defaults_empty_and_rejects_bad_role() -> None:
+    assert QueryRequest(repo_id=uuid4(), query="q").history == []
+    with pytest.raises(ValueError):
+        QueryTurn(role="system", content="nope")
