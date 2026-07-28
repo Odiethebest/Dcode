@@ -254,7 +254,43 @@ def _build_llm_context(state: AgentState) -> str:
         elif "entries" in result:
             names = ", ".join(str(entry["name"]) for entry in result["entries"][:20])
             blocks.append(f"[directory listing]\n{names}")
+
+    allowed = _allowed_citations(state)
+    if allowed:
+        blocks.append(
+            "Allowed citations (cite ONLY these, copied verbatim inside backticks):\n"
+            + "\n".join(f"- `{token}`" for token in allowed)
+        )
     return "\n\n".join(blocks)
+
+
+def _allowed_citations(state: AgentState) -> list[str]:
+    """Exact citation tokens present in the evidence — the only references the
+    LLM may cite. Each one verifies against the index, keeping groundedness high.
+    """
+    allowed: list[str] = []
+    seen: set[str] = set()
+
+    def add(token: str) -> None:
+        if token and token not in seen:
+            seen.add(token)
+            allowed.append(token)
+
+    for observation in state.observations:
+        tool_name = observation["tool"]
+        result = observation["result"]
+        if tool_name == "search_code":
+            for chunk in result.get("chunks", []):
+                add(f"{chunk['file_path']}:{chunk['start_line']}")
+        elif tool_name == "read_file":
+            add(f"{result['path']}:{result['line_range'][0]}")
+        elif "locations" in result:
+            for location in result["locations"]:
+                add(f"{location['file_path']}:{location['line']}")
+                symbol = str(location["symbol"])
+                if "." in symbol:
+                    add(symbol)
+    return allowed
 
 
 def _clip(text: object) -> str:

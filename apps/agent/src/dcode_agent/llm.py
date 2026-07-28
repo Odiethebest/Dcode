@@ -29,14 +29,15 @@ SYSTEM_PROMPT = (
     "question about a codebase using ONLY the retrieved code evidence provided. "
     "Be concise and concrete, and explain how the pieces fit together.\n\n"
     "Citation rules (mandatory — every citation is machine-verified against the "
-    "index, and any unverified citation is stripped and lowers the answer's "
-    "groundedness score):\n"
-    "- Cite each code location inline as a backticked `path/to/file.py:LINE`, "
-    "using the exact path and line from the evidence.\n"
-    "- Cite symbols as backticked dotted qualified names, e.g. "
-    "`module.Class.method`.\n"
-    "- Never invent files, lines, or symbols that are not in the evidence.\n"
-    "- If the evidence is insufficient to answer, say so plainly."
+    "index; any citation that is NOT in the 'Allowed citations' list is stripped "
+    "and lowers the answer's groundedness score below the acceptance bar):\n"
+    "- Cite ONLY tokens copied verbatim from the 'Allowed citations' list at the "
+    "end of the evidence, each inside backticks (e.g. `path/to/file.py:42` or "
+    "`module.Class.method`).\n"
+    "- Do NOT cite any file, line, or symbol that is not in that list — not even "
+    "ones you recognise from general knowledge or infer from the code text.\n"
+    "- Attach a `file.py:line` citation from the list to each concrete claim.\n"
+    "- If the allowed citations are insufficient to answer, say so plainly."
 )
 
 
