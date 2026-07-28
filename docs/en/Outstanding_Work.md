@@ -58,7 +58,7 @@ The recorded H1 result remains **unsupported** on the checked-in evaluation suit
 ## Follow-Up Enhancements
 
 - [ ] Reconsider LLM planner integration after retrieval quality is stable.
-- [ ] Reconsider LLM synthesis after grounded retrieval quality is stable.
+- [x] LLM answer synthesis — opt-in OpenAI, token-streamed, citation-whitelisted to groundedness 1.0 (2026-07-27).
 - [ ] Add OpenAPI type generation if frontend type drift becomes maintenance cost.
 - [ ] Generate Compare page data from versioned evaluation snapshots if evaluation continues to change.
 
@@ -66,6 +66,6 @@ The recorded H1 result remains **unsupported** on the checked-in evaluation suit
 
 - Default local environment still uses `EMBEDDING_MODEL=stub`.
 - Graph v1 includes definitions, module import edges, and best-effort intra-repository call edges.
-- The agent planner and synthesis path are rule-based, not LLM-driven.
+- The agent planner is rule-based; answer synthesis is optional LLM (OpenAI; default `stub` keeps the rule-based template).
 - The current H1 decision does not include judge or pairwise metrics.
 - The current H1 decision predates a full real-sidecar evaluation refresh.

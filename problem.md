@@ -8,6 +8,8 @@
 > **更新 2026-07-26**（同步 `origin/main`@`4710602`，PR #10）：已并入「加权 RRF 融合」——混合检索由 1:1 等权改为 **dense:sparse = 2:1**（`RRF_DENSE_WEIGHT`/`RRF_SPARSE_WEIGHT`，tie-break 改 dense 优先；见 `apps/api/src/dcode_api/routes/internal.py` `_fuse_search_candidates`）。该改动**只在真实 embedding 下生效**（stub 下 dense 返回空、权重为零），不改变下列任何问题的成立性。
 >
 > **拆分 2026-07-26**：已完成项（划线）的实现细节移至 [`Improvement_Log.md`](Improvement_Log.md)；本文件保留全量概览表 + **仅未完成项**的详情 + 改进路线。
+>
+> **更新 2026-07-27**：LLM 合成线落地——**P2-5**（token 流式）✅、**P1-4 的合成部分**✅（可选 OpenAI，带引用 + 逐 token 流式 + 引用白名单 grounded 1.0）；P1-4 仅剩 **LLM 规划**未做。真实 sidecar（Jina 768 + BGE）端到端跑通并记入 [`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)（P1-1 路径已验证，但完整评测刷新 P0-2 仍未做）。详见 [`Improvement_Log.md`](Improvement_Log.md)。
 
 ## 如何阅读
 
@@ -28,12 +30,12 @@
 | P1-1 | P1 | 缺口 | Eval/模型 | 默认全 stub 模型 → H1 无法真实测量，B2=B3=B4 指标相同 | M |
 | P1-2 | P1 | 缺口 | Eval/Judge | LLM-as-Judge 是 stub → pairwise win-rate 恒为 None | M |
 | P1-3 | P1 | 缺口 | Eval/数据集 | 仅 16 题、单一仓库、无统计显著性（固定 0.05 阈值启发式） | L |
-| P1-4 | P1 | 缺口 | Agent | 规划与合成为规则驱动/模板拼接，非 LLM → H1 的"agent"臂偏弱 | L |
+| P1-4 | P1 | 缺口 | Agent | 合成已接 LLM（可选 OpenAI，带引用+流式+白名单 grounded 1.0）✅；**规划仍关键词路由** | M |
 | ~~P2-1~~ | P2 | 缺口 | Worker/Graph | ✅**已修复**（`67fb694`）：产出 inherits + references 边（references 经 find_references 透出） | M |
 | P2-2 | P2 | 缺口 | Worker | 仅索引 Python | L |
 | ~~P2-3~~ | P2 | 缺陷 | Worker/Chunk | ✅**已修复**（`a2318bf`）：改用 `ast.unparse` 重建完整签名 | S |
 | ~~P2-4~~ | P2 | 缺陷 | Worker | ✅**已修复**（`565233d`）：max_file_bytes(1MB) 跳过 + max_chunk_chars(20k) 截断 | S |
-| P2-5 | P2 | 缺口 | Agent/SSE | `partial_answer` 整段一次性发出，非逐 token 流式 | M |
+| ~~P2-5~~ | P2 | 缺口 | Agent/SSE | ✅**已修复**：LLM 合成逐 token 流式 + 前端累加 delta | M |
 | ~~P3-1~~ | P3 | 债务 | Worker/依赖 | ✅**已修复**（`2a45c4a`）：删除死依赖 + 重新锁定 | S |
 | ~~P3-2~~ | P3 | 债务 | API | ✅**已修复**（`7ee4ac7`）：删除死代码 `errors.py` | S |
 | ~~P3-3~~ | P3 | 债务 | Agent/配置 | ✅**已修复**（`ff02fab`）：去重，改为读 `AgentSettings.max_steps` | S |
@@ -51,7 +53,7 @@
 | P3-15 | P3 | 缺口 | 测试 | 全部靠注入 fake，无真实 PG/Redis/RabbitMQ 的集成/端到端测试 | M |
 | ~~P3-16~~ | P3 | 缺陷 | 前端/测试 | ✅**已修复**（`a311e16`）：Node 26 原生 localStorage 破坏 jsdom → vitest 全挂 | S |
 
-> 已修复 15 项、未完成 12 项。下方详情仅列未完成项。
+> 已修复 16 项、未完成 11 项（P1-4 合成部分已完成，仅剩 LLM 规划）。下方详情仅列未完成项。
 
 ---
 
@@ -92,12 +94,13 @@
 - **建议修复**：扩到 50–80 题、覆盖 ≥2 个仓库、混合三种构造来源；把 H1 判定升级为配对 bootstrap 或置换检验并报告置信区间；文档化标注协议与 hold-out。
 - **工作量**：L。
 
-### P1-4 Agent 规划/合成为规则驱动，非 LLM
-- **位置**：`apps/agent/src/dcode_agent/graph.py`（`_select_initial_tool` 关键词路由、`_synthesize_*` 模板拼接）。
-- **问题**：H1 主张的是"**工具化 agent 编排**"的增益，但当前 planner 是子串关键词路由、synthesis 是字符串模板拼接，全程无 LLM（`main.py` 里"planner LLM"只是注释）。这是有意的基础集成路径，但它让 B4 相对 B3 的"agent 增量"几乎只剩多跳检索，答案本身没有推理生成。
-- **影响**：B4 与 H1 想验证的"agent orchestration"存在实现-目标落差；模板答案也拉低 judge 质量分。
-- **建议修复**：引入 LLM 规划（工具选择/参数）与 LLM 合成（基于工具观测生成带引用的答案），保留 groundedness 作为后置校验。规则路径可保留为降级模式。这是把 B4 做成"真·全系统"的关键。
-- **工作量**：L。
+### P1-4 Agent 规划仍规则驱动（合成已升级为 LLM）
+- **位置**：`apps/agent/src/dcode_agent/graph.py`（`_select_initial_tool` 关键词路由——**规划部分**）。
+- **进展（2026-07-27，合成已完成）**：新增可选 OpenAI 合成层（`SYNTHESIS_MODEL`/`OPENAI_API_KEY`，默认 stub）——基于检索证据流式生成带引用的人话答案、逐 token 流式（P2-5）、并用"引用白名单"把 groundedness 稳在 **1.0**；模板保留为降级路径；groundedness 护栏不变。详见 [`Improvement_Log.md`](Improvement_Log.md)（`62b8a49`/`f613265`/`859d8cc`）。
+- **仍未完成（本项剩余）**：**LLM 规划**——工具选择/参数仍是子串关键词路由（`_select_initial_tool`），未交给 LLM。
+- **影响**：合成侧"实现-目标落差"已消除（B4 答案是真推理生成 + 可核实引用）；规划侧仍规则驱动。
+- **建议修复**：把工具选择/参数交给 LLM（保留规则路径为降级），完成"真·全系统"最后一块。
+- **工作量**：M（仅剩规划）。
 
 ---
 
@@ -108,12 +111,6 @@
 - **问题**：非 Python 仓库无法索引。README/文档也已声明此边界。
 - **建议修复**：中长期引入语言无关解析（此处 `tree-sitter` 依赖终于有了用武之地——注：已在 P3-1 删除，实现多语言时按需加回），先支持 JS/TS。
 - **工作量**：L。
-
-### P2-5 partial_answer 整段一次性发出，非流式
-- **位置**：`apps/agent/src/dcode_agent/main.py:122-123`。
-- **问题**：SSE 协议支持逐 token，但当前把完整答案作为单个 `partial_answer` 发出，失去流式体验、TTFB 无改善。
-- **建议修复**：接入 LLM 合成（P1-4）后按 token/句子分块 emit `partial_answer`。
-- **工作量**：M（与 P1-4 绑定）。
 
 ---
 
@@ -163,7 +160,7 @@
 - P3-15（端到端集成测试兜底）。
 
 **阶段 3 — 把 B4 做成"真·全系统"**
-- P1-4（LLM 规划 + 合成）、P2-5（token 流式）。
+- ✅ P2-5（token 流式）；✅ P1-4 合成（LLM 合成 + 流式 + 白名单 grounded 1.0）；P1-4 规划（LLM 工具选择）待做。
 - ✅ P3-8（连接池/lifespan）；P3-13（可观测性）。
 
 **阶段 4 — 产品化与扩展**
