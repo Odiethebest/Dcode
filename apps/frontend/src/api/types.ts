@@ -38,6 +38,7 @@ export interface StagesStatus {
 
 export interface RepoStatusResponse {
   repo_id: UUID;
+  url: string;
   status: RepoStatus;
   progress: number;
   stages: StagesStatus;
@@ -47,9 +48,16 @@ export interface RepoStatusResponse {
 
 // --- Query API (DESIGN.md §4.3) ---
 
+export interface QueryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface QueryRequest {
   repo_id: UUID;
   query: string;
+  /** Prior turns for multi-turn follow-ups (bounded by the gateway). */
+  history?: QueryTurn[];
 }
 
 export type SSEEventName =
