@@ -4,12 +4,16 @@ import { cx } from '@/lib/cx';
 
 const tones = {
   verified: {
-    idle: 'bg-brand-wash text-brand hover:border-brand',
-    active: 'bg-brand text-white',
+    idle: 'border-transparent bg-brand-wash text-brand hover:border-brand',
+    active: 'border-transparent bg-brand text-white',
   },
   unverified: {
-    idle: 'bg-warn-wash text-warn hover:border-warn',
-    active: 'bg-warn text-white',
+    // Never solid. Amber outline + pale-amber fill — the same honest language as
+    // VerifiedMark's hollow amber mark. Active adds a soft ring, not a fill, so an
+    // unverified citation never reads as more emphasized (more trustworthy) than
+    // a verified one. Solid emphasis is reserved for verified/active.
+    idle: 'border-warn bg-warn-wash text-warn',
+    active: 'border-warn bg-warn-wash text-warn ring-2 ring-[color-mix(in_srgb,var(--warn)_30%,transparent)]',
   },
 };
 
@@ -40,7 +44,7 @@ export function CitationChip({
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        'inline-flex items-center whitespace-nowrap rounded-md border border-transparent px-[7px] py-0.5 align-[1px] font-mono text-[0.76em] transition',
+        'inline-flex items-center whitespace-nowrap rounded-md border px-[7px] py-0.5 align-[1px] font-mono text-[0.76em] transition',
         active ? tone.active : tone.idle,
         className
       )}

@@ -29,8 +29,10 @@
     --good: #1f7a46;
     --good-wash: #deefe3;
     --bad: #c23a2b;
-    /* No prototype hex for this one — derived on-hue so it stays on-palette */
-    --bad-wash: color-mix(in srgb, var(--bad) 16%, var(--paper));
+    /* No prototype hex — derived on-hue, kept light (12%) so it reads cool on
+     * the paper and matches the finish of good-wash / warn-wash rather than
+     * going warm/muddy. */
+    --bad-wash: color-mix(in srgb, var(--bad) 12%, var(--paper));
     --warn: #9a6a15;
     --warn-wash: #f0e6d0;
   }
