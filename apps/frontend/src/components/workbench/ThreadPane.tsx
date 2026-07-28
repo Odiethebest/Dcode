@@ -1,28 +1,38 @@
+import { cx } from '@/lib/cx';
+
 const SUGGESTIONS = ['Who calls HTTPBasicAuth?', 'What breaks if I change prepare_auth?'];
 
+// The one reading axis: the empty state, future answers, and the composer all
+// sit on this fixed-width, centered column inside the 1fr center pane — so
+// nothing scatters in the full-bleed void on wide displays.
+const readingColumn = 'mx-auto w-full max-w-[720px] px-10 max-[760px]:px-[22px]';
+
 /**
- * Center conversation pane: scrolling thread + pinned composer. The thread body
- * is an empty state here; real turns (streamed SSE) are wired in slice 3, and
- * the composer becomes functional then. Structure/voice are final.
+ * Center conversation pane: scrolling thread + pinned composer, both on the
+ * shared reading axis. The empty state is top-anchored (a fixed offset, so it
+ * doesn't drift as the viewport grows taller). Real turns (streamed SSE) and a
+ * functional composer arrive in slice 3; structure/voice/alignment are final.
  */
 export function ThreadPane() {
   return (
     <main className="relative flex min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto py-2">
-        <div className="mx-auto max-w-[720px] px-10 max-[760px]:px-[22px]">
-          <div className="flex min-h-[52vh] flex-col items-center justify-center text-center">
-            <h1 className="font-display text-4xl font-medium tracking-tight text-ink">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className={cx(readingColumn, 'pb-8 pt-20 max-[760px]:pt-12')}>
+          {/* Top-anchored, left-aligned — reads as the start of the answer column. */}
+          <div className="max-w-[34rem]">
+            <h1 className="font-display text-4xl font-medium leading-tight tracking-tight text-ink">
               Ask this codebase anything
             </h1>
-            <p className="mt-3 max-w-md font-display text-lg leading-relaxed text-ink-2">
-              Every answer streams its reasoning and cites real, verified code you can open on the right.
+            <p className="mt-3 font-display text-lg leading-relaxed text-ink-2">
+              Every answer streams its reasoning and cites real, verified code you can open on the
+              right.
             </p>
           </div>
         </div>
       </div>
 
       <div className="flex-none border-t border-line bg-[color-mix(in_srgb,var(--paper)_80%,transparent)] py-3.5 backdrop-blur-[8px]">
-        <div className="mx-auto max-w-[720px] px-10 max-[760px]:px-[22px]">
+        <div className={readingColumn}>
           <div className="flex flex-wrap gap-2 pb-2.5">
             {SUGGESTIONS.map((text) => (
               <button
