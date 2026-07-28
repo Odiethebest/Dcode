@@ -19,13 +19,20 @@ const sizes: Record<ButtonSize, string> = {
   lg: 'rounded-[11px] px-6 py-[15px] text-[15.5px]',
 };
 
+/** The button's class string — reuse on link CTAs (`<a>`/`<Link>`) that navigate. */
+export function buttonClasses(
+  variant: ButtonVariant = 'primary',
+  size: ButtonSize = 'md',
+  className?: string
+): string {
+  return cx(base, variants[variant], sizes[size], className);
+}
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
 }
 
 export function Button({ variant = 'primary', size = 'md', className, type = 'button', ...props }: ButtonProps) {
-  return (
-    <button type={type} className={cx(base, variants[variant], sizes[size], className)} {...props} />
-  );
+  return <button type={type} className={buttonClasses(variant, size, className)} {...props} />;
 }

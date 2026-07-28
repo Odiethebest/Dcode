@@ -17,10 +17,13 @@ function renderAppAt(path: string) {
 }
 
 describe('App IA', () => {
-  it('renders the workbench at /', () => {
+  it('renders the marketing landing at /', () => {
     renderAppAt('/');
-    expect(screen.getByText('Dcode')).toBeInTheDocument();
-    // Stable regardless of whether a repo is selected (empty thread state).
+    expect(screen.getByText(/Understand any codebase/i)).toBeInTheDocument();
+  });
+
+  it('renders the workbench at /workbench', () => {
+    renderAppAt('/workbench');
     expect(screen.getByText(/ask this codebase anything/i)).toBeInTheDocument();
   });
 

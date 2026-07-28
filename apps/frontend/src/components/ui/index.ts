@@ -1,4 +1,4 @@
-export { Button } from './Button';
+export { Button, buttonClasses } from './Button';
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
 export { StatusPill } from './StatusPill';
 export type { PillStatus, StatusPillProps } from './StatusPill';
