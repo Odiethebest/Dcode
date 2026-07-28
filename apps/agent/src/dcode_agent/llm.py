@@ -65,9 +65,12 @@ class OpenAILLMClient(LLMClient):
         self._model = model
         self._max_tokens = max_tokens
         self._temperature = temperature
+        # An empty OPENAI_BASE_URL (compose passes it through as "") would
+        # otherwise poison the SDK into building a scheme-less URL, so fall back
+        # to the public OpenAI endpoint explicitly instead of passing "".
         self._client: AsyncOpenAI = AsyncOpenAI(
             api_key=api_key,
-            base_url=base_url or None,
+            base_url=base_url.strip() or "https://api.openai.com/v1",
             timeout=timeout_seconds,
         )
 
