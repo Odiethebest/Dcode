@@ -32,8 +32,19 @@ describe('App IA', () => {
     expect(screen.getByText(/currently unsupported/i)).toBeInTheDocument();
   });
 
-  it('keeps the legacy Index page reachable off-nav until Phase 4', () => {
-    renderAppAt('/legacy/index');
-    expect(screen.getByText(/Index a repository/i)).toBeInTheDocument();
+  it('renders the primitives gallery at /preview', () => {
+    renderAppAt('/preview');
+    expect(screen.getByText(/check the identity/i)).toBeInTheDocument();
+  });
+
+  it('no longer serves the retired legacy IA', () => {
+    // Phase 4 deleted the Index/Query/Compare pages outright. Nothing linked to
+    // them and they were still on the pre-token palette, so a redirect would
+    // have served no one.
+    for (const path of ['/legacy/index', '/legacy/query', '/legacy/compare']) {
+      const { unmount } = renderAppAt(path);
+      expect(document.body.textContent?.trim()).toBe('');
+      unmount();
+    }
   });
 });
