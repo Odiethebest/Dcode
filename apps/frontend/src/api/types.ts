@@ -27,6 +27,11 @@ export interface RepoCreateRequest {
 export interface RepoCreateResponse {
   repo_id: UUID;
   status: RepoStatus;
+  /**
+   * An existing repo with the same URL was returned instead of cloning it
+   * again — nothing was queued. Response is 200, not 202.
+   */
+  reused: boolean;
 }
 
 export interface StagesStatus {

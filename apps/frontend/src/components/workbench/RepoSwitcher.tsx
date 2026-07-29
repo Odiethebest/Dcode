@@ -46,6 +46,12 @@ const dotColor: Record<PillStatus, string> = {
   failed: 'bg-bad',
 };
 
+// Poll fast while a repo is moving, but don't hammer a gateway that is down:
+// with the backend unreachable there is no terminal status to stop on, so a
+// fixed interval retries forever. Back off, and snap back on the next success.
+const POLL_MS = 1500;
+const POLL_MS_OFFLINE = 15000;
+
 export interface RepoSwitcherProps {
   activeRepoId: string | null;
   onSelect: (repoId: string) => void;
@@ -62,6 +68,7 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
   const [recents, setRecents] = useState<RecentRepoRecord[]>(() => loadRecentRepos());
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +94,10 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
       onSelect(response.repo_id);
       setAdding(false);
       setUrl('');
+      // Submitting an already-indexed repo now switches to it rather than
+      // re-cloning. Say so — silently jumping to `ready` would read as an
+      // implausibly fast index rather than as the no-op it is.
+      setNotice(response.reused ? 'Already indexed — switched to it.' : null);
     },
   });
 
@@ -96,7 +107,8 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
     enabled: Boolean(activeRepoId),
     refetchInterval: (query) => {
       const data = query.state.data as RepoStatusResponse | undefined;
-      return data && TERMINAL.has(data.status) ? false : 1500;
+      if (data && TERMINAL.has(data.status)) return false;
+      return query.state.status === 'error' ? POLL_MS_OFFLINE : POLL_MS;
     },
   });
   const liveStatus = statusQuery.data;
@@ -130,11 +142,17 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
     () => recents.find((item) => item.repoId === activeRepoId) ?? null,
     [recents, activeRepoId]
   );
+
+  // We couldn't reach the gateway, so we don't know this repo's state. The
+  // stored status is the last thing we saw, not a fact about now — showing a
+  // confident green "ready" for a repo we can't reach claims something we
+  // can't check. Fall back to an explicit unknown instead.
+  const unreachable = Boolean(activeRepoId) && statusQuery.isError;
   const activeBucket = liveStatus
     ? bucketOf(liveStatus.status)
-    : activeRepo
-      ? bucketOf(activeRepo.status)
-      : null;
+    : unreachable || !activeRepo
+      ? null
+      : bucketOf(activeRepo.status);
 
   return (
     <div ref={rootRef} className="relative">
@@ -152,6 +170,9 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
         </span>
         {activeBucket === 'indexing' && liveStatus && (
           <span className="flex-none font-mono text-[11px] text-warn">· {liveStatus.status}</span>
+        )}
+        {unreachable && (
+          <span className="flex-none font-mono text-[11px] text-ink-3">· status unavailable</span>
         )}
         <svg
           width="13"
@@ -176,12 +197,23 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
           ) : (
             recents.map((repo) => {
               const isActive = repo.repoId === activeRepoId;
-              const bucket = bucketOf(isActive && liveStatus ? liveStatus.status : repo.status);
-              const progress =
-                isActive && liveStatus && bucket === 'indexing' ? liveStatus.progress : null;
-              // The live (active) repo shows its moving stage; others show the
-              // coarse bucket from their last-known stored status.
-              const meta = isActive && liveStatus ? repoStatusLabel(liveStatus.status) : bucket;
+              const live = isActive ? liveStatus : undefined;
+              const unknown = isActive && unreachable;
+              // Only the active repo is polled. It shows its real moving stage;
+              // if the gateway is unreachable it shows nothing rather than a
+              // stale certainty, and the rest are labelled as last-known so a
+              // cached "ready" isn't read as a live one.
+              const bucket = live
+                ? bucketOf(live.status)
+                : unknown
+                  ? null
+                  : bucketOf(repo.status);
+              const progress = live && bucket === 'indexing' ? live.progress : null;
+              const meta = live
+                ? repoStatusLabel(live.status)
+                : unknown
+                  ? 'status unavailable'
+                  : `last known · ${bucketOf(repo.status)}`;
               return (
                 <button
                   key={repo.repoId}
@@ -195,7 +227,13 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
                     isActive && 'bg-brand-wash'
                   )}
                 >
-                  <span className={cx('h-[7px] w-[7px] flex-none rounded-full', dotColor[bucket])} aria-hidden="true" />
+                  <span
+                    className={cx(
+                      'h-[7px] w-[7px] flex-none rounded-full',
+                      bucket ? dotColor[bucket] : 'bg-ink-3'
+                    )}
+                    aria-hidden="true"
+                  />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-mono text-[13px] text-ink">{repoSlug(repo.url)}</span>
                     <span className="mt-0.5 block text-[11px] text-ink-3">{meta}</span>
@@ -252,11 +290,20 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
           ) : (
             <button
               type="button"
-              onClick={() => setAdding(true)}
+              onClick={() => {
+                setNotice(null);
+                setAdding(true);
+              }}
               className="mt-1 flex w-full items-center gap-2 rounded-b-lg border-t border-line px-3 py-2.5 text-left text-[13px] font-semibold text-brand transition hover:bg-brand-wash"
             >
               + Index a new repository
             </button>
+          )}
+
+          {notice && (
+            <p className="border-t border-line px-3 py-2.5 font-mono text-[11px] text-ink-2">
+              {notice}
+            </p>
           )}
         </div>
       )}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import type { QueryRequest, QueryTurn, RepoStatusResponse } from '@/api/types';
+import type {
+  QueryRequest,
+  QueryTurn,
+  RepoCreateResponse,
+  RepoStatusResponse,
+} from '@/api/types';
 
 /**
  * Manual-mirror guardrail. types.ts is hand-synced to the Python
@@ -26,6 +31,16 @@ describe('QueryRequest history mirrors QueryTurn', () => {
     // Single-turn requests omit history (the field is optional).
     const singleTurn: QueryRequest = { repo_id: 'repo-1', query: 'where is X?' };
     expect(singleTurn.history).toBeUndefined();
+  });
+});
+
+describe('RepoCreateResponse mirrors the idempotency flag', () => {
+  it('carries `reused`, so the UI can tell indexing from switching', () => {
+    const created: RepoCreateResponse = { repo_id: 'repo-1', status: 'queued', reused: false };
+    const reused: RepoCreateResponse = { repo_id: 'repo-1', status: 'ready', reused: true };
+
+    expect(created.reused).toBe(false);
+    expect(reused.reused).toBe(true);
   });
 });
 
