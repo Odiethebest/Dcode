@@ -1,12 +1,13 @@
 /**
- * H1 evaluation snapshot — generated from `results/eval-real/`, the full
- * real-model run (Jina v2-base-code 768-dim + BGE reranker v2-m3 + gpt-4o-mini)
+ * H1 evaluation snapshot — generated from `results/eval-real/`, the full real-model run
+ * (Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini)
  * recorded 2026-07-28 against the psf/requests corpus.
  *
  * Every number below is copied verbatim from a committed artifact in that
  * directory. Nothing here is rounded, adjusted, or hand-entered: `/methodology`
  * claims these match the recorded run, so they have to be checkable against it.
- * Regenerate rather than edit by hand.
+ *
+ * Regenerate with `python3 scripts/gen_eval_snapshot.py` — do not edit by hand.
  */
 
 export type BaselineName = 'B1' | 'B2' | 'B3' | 'B4';
