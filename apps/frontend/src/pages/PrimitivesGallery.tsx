@@ -4,6 +4,7 @@ import {
   Button,
   CitationChip,
   CodeChip,
+  IndexedMark,
   StatusPill,
   VerifiedMark,
 } from '@/components/ui';
@@ -57,6 +58,8 @@ export default function PrimitivesGallery() {
           <Row label="VerifiedMark">
             <VerifiedMark verified />
             <VerifiedMark verified={false} />
+            <span className="text-sm text-ink-3">walked graph node →</span>
+            <IndexedMark />
           </Row>
 
           <Row label="CodeChip">

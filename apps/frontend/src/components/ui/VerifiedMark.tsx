@@ -39,3 +39,33 @@ export function VerifiedMark({ verified = true, className }: VerifiedMarkProps) 
     </span>
   );
 }
+
+export interface IndexedMarkProps {
+  className?: string;
+}
+
+/**
+ * Provenance, not verification. A symbol reached by walking the call graph came
+ * out of the index — but it never went through the groundedness check, so it has
+ * not earned `verified`. Stamping it verified would over-claim; showing nothing
+ * at all reads as untrustworthy. Neutral grey and a list glyph, deliberately
+ * outside the good/warn status language: this is not a trust verdict.
+ */
+export function IndexedMark({ className }: IndexedMarkProps) {
+  return (
+    <span
+      className={cx(wrap, 'bg-sunk text-ink-2', className)}
+      title="Reached by walking the call graph. Present in the index, but not checked by the groundedness guardrail."
+    >
+      <svg viewBox="0 0 12 12" fill="none" className="h-2.5 w-2.5" aria-hidden="true">
+        <path
+          d="M2 3.25h8M2 6h8M2 8.75h5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
+      indexed
+    </span>
+  );
+}

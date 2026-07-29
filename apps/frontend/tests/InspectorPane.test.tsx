@@ -99,4 +99,20 @@ describe('InspectorPane', () => {
       )
     );
   });
+
+  it('stamps the cited node verified, but a walked node only indexed', async () => {
+    renderInspector();
+
+    // At the citation: it passed groundedness, so it earns the verified stamp.
+    expect(await screen.findByText('verified')).toBeInTheDocument();
+    expect(screen.queryByText('indexed')).toBeNull();
+
+    // Walk one hop. Nothing about this node went through groundedness — it is in
+    // the index, and that is the whole of what we may claim about it.
+    fireEvent.click(await screen.findByText('requests.auth.HTTPBasicAuth'));
+
+    expect(await screen.findByText('indexed')).toBeInTheDocument();
+    expect(screen.queryByText('verified')).toBeNull();
+    expect(screen.queryByText('unverified')).toBeNull();
+  });
 });

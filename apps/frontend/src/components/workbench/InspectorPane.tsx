@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { getNeighbors, getSource } from '@/api/client';
 import type { CitationPayload, Location, SymbolNeighbors } from '@/api/types';
-import { VerifiedMark } from '@/components/ui';
+import { IndexedMark, VerifiedMark } from '@/components/ui';
 import { SourceView } from '@/components/workbench/SourceView';
 import { cx } from '@/lib/cx';
 
@@ -97,7 +97,10 @@ export function InspectorPane({ open, onClose, repoId, citation }: InspectorPane
               <span className="font-mono text-[11px] text-ink-2">
                 {src?.symbol_name ?? focus.symbol} · line {src?.cited_line ?? focus.line}
               </span>
-              {atCitation && citation && <VerifiedMark verified={citation.verified} />}
+              {/* At the cited location this reports the groundedness outcome.
+                  Anywhere else we walked to, it reports provenance only — the
+                  node is in the index, but it was never verified. */}
+              {atCitation && citation ? <VerifiedMark verified={citation.verified} /> : <IndexedMark />}
             </div>
           </>
         ) : (
