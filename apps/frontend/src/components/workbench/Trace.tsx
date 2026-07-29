@@ -11,6 +11,9 @@ const pillTone: Record<TurnStatus, string> = {
   streaming: 'bg-sunk text-ink-2',
   done: 'bg-good-wash text-good',
   error: 'bg-bad-wash text-bad',
+  // Neutral, deliberately NOT amber: amber means "unverified" (checked, failed).
+  // An interrupted turn was never checked at all — a different thing.
+  interrupted: 'bg-sunk text-ink-2',
 };
 
 function argsSummary(args: Record<string, unknown>): string {
@@ -79,10 +82,19 @@ export function Trace({ events, status, groundedness, toolCount }: TraceProps) {
           </>
         ) : status === 'error' ? (
           <>trace</>
-        ) : (
+        ) : status === 'streaming' ? (
           <>
             <span className="h-2 w-2 animate-pulse rounded-full bg-ink-3 motion-reduce:animate-none" aria-hidden="true" />
             reasoning…
+            {toolCount > 0 && <span className="border-l border-line-2 pl-2.5">{toolCount} tools</span>}
+          </>
+        ) : (
+          // Interrupted (and the impossible done-without-groundedness) — the
+          // fallback is STATIC on purpose. A pulsing dot on a stream that has
+          // stopped implies work still happening.
+          <>
+            <span className="h-2 w-2 rounded-full bg-ink-3" aria-hidden="true" />
+            interrupted
             {toolCount > 0 && <span className="border-l border-line-2 pl-2.5">{toolCount} tools</span>}
           </>
         )}

@@ -30,7 +30,13 @@ export function Turn({ turn, activeCitationKey, onOpenCitation }: TurnProps) {
   const answerText = finalAnswer?.answer ?? partial;
   const citations = mergeCitations(turn.events, finalAnswer);
   const toolCount = turn.events.filter((event) => event.event === 'tool_call').length;
-  // Chips + verified state bind ONLY at settle — while streaming, refs render inert.
+  // Chips + verified state bind ONLY at settle — i.e. only once `final_answer`
+  // arrived. While streaming AND on an interrupted turn, refs render inert.
+  //
+  // The interrupted case matters and is not incidental: citations flush just
+  // before `final_answer`, so a turn can hold individually-verified citation
+  // events while its text was never redacted by groundedness. Binding them would
+  // stamp a guarantee onto prose that never earned it.
   const boundCitations = status === 'done' ? citations : [];
   const sources = status === 'done' ? unmatchedCitations(answerText, citations) : [];
 
@@ -58,6 +64,8 @@ export function Turn({ turn, activeCitationKey, onOpenCitation }: TurnProps) {
             <span className="font-mono text-xs">{errorData?.code ?? 'ERROR'}</span> —{' '}
             {errorData?.message ?? 'Something went wrong while answering.'}
           </div>
+        ) : status === 'interrupted' ? (
+          <InterruptedDraft draft={partial} stopped={Boolean(turn.stopped)} />
         ) : answerText ? (
           <AnswerMarkdown
             text={answerText}
@@ -90,5 +98,40 @@ export function Turn({ turn, activeCitationKey, onOpenCitation }: TurnProps) {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * A turn whose stream ended without `final_answer`. The draft is kept — the user
+ * usually pressed Stop precisely to read what it had so far — but demoted out of
+ * the settled-answer voice and labelled in plain prose, so it cannot be mistaken
+ * for an answer even at a glance in a screenshot. Every ref inside stays an inert
+ * CodeChip (the caller passes no citations), because "never checked" is a
+ * different claim from "checked and failed" and must not borrow its chip.
+ */
+function InterruptedDraft({ draft, stopped }: { draft: string; stopped: boolean }) {
+  return (
+    <div className="border-l-2 border-line-2 pl-4">
+      <div className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+        Draft · never verified
+      </div>
+
+      {draft && (
+        <AnswerMarkdown
+          muted
+          text={draft}
+          citations={[]}
+          activeKey={null}
+          onOpenCitation={() => {}}
+        />
+      )}
+
+      <p className="mt-3 text-[13px] leading-relaxed text-ink-3">
+        {stopped ? 'You stopped this answer before verification.' : 'The stream ended before verification.'}{' '}
+        {draft
+          ? 'This draft was never checked against the index — nothing in it is verified. Ask again to get a verified answer.'
+          : 'Nothing was produced. Ask again to get a verified answer.'}
+      </p>
+    </div>
   );
 }

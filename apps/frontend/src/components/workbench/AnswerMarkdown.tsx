@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import type { CitationPayload } from '@/api/types';
 import { CitationChip, CodeChip } from '@/components/ui';
 import { citationKey, findCitationForToken } from '@/lib/citations';
+import { cx } from '@/lib/cx';
 
 export interface AnswerMarkdownProps {
   text: string;
@@ -12,6 +13,12 @@ export interface AnswerMarkdownProps {
   citations: CitationPayload[];
   activeKey: string | null;
   onOpenCitation: (citation: CitationPayload) => void;
+  /**
+   * Demote the prose off the settled-answer voice (interrupted drafts). A real
+   * prop rather than a `className` override: two same-specificity Tailwind text
+   * colors would resolve by stylesheet order, not by class-attribute order.
+   */
+  muted?: boolean;
 }
 
 /**
@@ -20,7 +27,13 @@ export interface AnswerMarkdownProps {
  * citation renders a clickable CitationChip; an inline ref with no citation
  * renders an inert CodeChip (never a dead citation chip).
  */
-export function AnswerMarkdown({ text, citations, activeKey, onOpenCitation }: AnswerMarkdownProps) {
+export function AnswerMarkdown({
+  text,
+  citations,
+  activeKey,
+  onOpenCitation,
+  muted = false,
+}: AnswerMarkdownProps) {
   const components: Components = {
     code({ className, children }) {
       const token = String(children).replace(/\n$/, '');
@@ -64,7 +77,12 @@ export function AnswerMarkdown({ text, citations, activeKey, onOpenCitation }: A
   };
 
   return (
-    <div className="font-display text-[18px] leading-[1.62] text-ink [&_li]:mb-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3.5 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5">
+    <div
+      className={cx(
+        'font-display text-[18px] leading-[1.62] [&_li]:mb-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3.5 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5',
+        muted ? 'text-ink-2' : 'text-ink'
+      )}
+    >
       <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </Markdown>

@@ -7,6 +7,8 @@ function itemMeta(turn: Turn): string {
   const status = turnStatus(turn);
   if (status === 'streaming') return 'answering…';
   if (status === 'error') return 'error';
+  // No citation count for an interrupted turn — none of them ever bound.
+  if (status === 'interrupted') return 'interrupted';
   const final = turn.events.find(
     (event): event is Extract<QueryStreamEvent, { event: 'final_answer' }> =>
       event.event === 'final_answer'

@@ -8,26 +8,36 @@ export interface Turn {
   question: string;
   events: QueryStreamEvent[];
   closed: boolean;
+  /** The user pressed Stop (vs. the stream dropping on its own). */
+  stopped?: boolean;
 }
 
-export type TurnStatus = 'streaming' | 'done' | 'error';
+export type TurnStatus = 'streaming' | 'done' | 'error' | 'interrupted';
 
 /**
  * A turn's phase is derived purely from which events have arrived — never a
- * timer. `error` if the stream errored; `done` once `final_answer` lands (or
- * the stream closed); otherwise `streaming`. This is what keeps verified
- * marks + groundedness off-screen until end-of-run.
+ * timer. `error` if the stream errored; `done` ONLY once `final_answer` lands;
+ * `interrupted` if the stream ended without one (Stop, or a dropped
+ * connection); otherwise `streaming`.
+ *
+ * `done` is deliberately gated on `final_answer` alone. A stream that just
+ * closes has produced nothing groundedness ever redacted, so treating it as
+ * settled would present an unverified draft as the authoritative answer — the
+ * one thing the honesty rules forbid. Every `status === 'done'` gate downstream
+ * (citation chips, the Sources footer, the groundedness pill) therefore excludes
+ * interrupted turns for free.
  */
 export function turnStatus(turn: Turn): TurnStatus {
   if (turn.events.some((event) => event.event === 'error')) return 'error';
   if (turn.events.some((event) => event.event === 'final_answer')) return 'done';
-  return turn.closed ? 'done' : 'streaming';
+  return turn.closed ? 'interrupted' : 'streaming';
 }
 
 /**
  * Prior turns as multi-turn context: each completed turn contributes a
- * user/assistant pair (its question + the authoritative final answer). Streaming
- * or errored turns are skipped — only settled answers are trustworthy context.
+ * user/assistant pair (its question + the authoritative final answer). Streaming,
+ * errored, and interrupted turns are skipped — keying on `final_answer` means an
+ * unredacted draft can never be fed back as context and re-cited downstream.
  * The gateway bounds this further (turn/char cap) and folds it into the cache key.
  */
 export function buildHistory(turns: Turn[]): QueryTurn[] {
@@ -50,6 +60,8 @@ export interface UseThread {
   turns: Turn[];
   isStreaming: boolean;
   submit: (query: string) => void;
+  /** Stop the in-flight stream. The turn settles as `interrupted`, not `done`. */
+  cancel: () => void;
 }
 
 /** Repo-scoped conversation state driving the SSE thread. */
@@ -76,11 +88,28 @@ export function useThread(repoId: string | null): UseThread {
     setTurns((current) => current.map((turn) => (turn.id === id ? fn(turn) : turn)));
   }, []);
 
+  /**
+   * Stop the in-flight stream. Flags the open turn first so the UI can say
+   * "you stopped this" rather than "the connection dropped" — both settle as
+   * `interrupted`; the split is only about telling the user which happened.
+   */
+  const cancel = useCallback(() => {
+    const controller = abortRef.current;
+    if (!controller) return;
+    setTurns((current) =>
+      current.map((turn) => (turn.closed ? turn : { ...turn, stopped: true }))
+    );
+    controller.abort();
+    abortRef.current = null;
+  }, []);
+
   const submit = useCallback(
     (raw: string) => {
       const query = raw.trim();
       if (!query || !repoId) return;
 
+      // Backstop only — the composer blocks submitting while a stream is live,
+      // so this should never truncate a turn the user didn't stop themselves.
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -110,5 +139,5 @@ export function useThread(repoId: string | null): UseThread {
   );
 
   const isStreaming = turns.some((turn) => turnStatus(turn) === 'streaming');
-  return { turns, isStreaming, submit };
+  return { turns, isStreaming, submit, cancel };
 }

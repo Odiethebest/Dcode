@@ -17,6 +17,9 @@ export interface ThreadPaneProps {
   onSubmit: (query: string) => void;
   activeCitationKey: string | null;
   onOpenCitation: (citation: CitationPayload) => void;
+  /** A stream is live — the send button becomes Stop and submitting is blocked. */
+  isStreaming: boolean;
+  onCancel: () => void;
 }
 
 export function ThreadPane({
@@ -25,6 +28,8 @@ export function ThreadPane({
   onSubmit,
   activeCitationKey,
   onOpenCitation,
+  isStreaming,
+  onCancel,
 }: ThreadPaneProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -36,9 +41,12 @@ export function ThreadPane({
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns]);
 
+  // Submitting mid-stream used to silently abort the open turn, leaving an
+  // unverified draft rendered as a settled answer. Interrupting stays possible —
+  // but only through the explicit Stop button, never as a side effect.
   const send = (value: string) => {
     const query = value.trim();
-    if (!query || !canSubmit) return;
+    if (!query || !canSubmit || isStreaming) return;
     onSubmit(query);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -79,7 +87,7 @@ export function ThreadPane({
                 <button
                   key={text}
                   type="button"
-                  disabled={!canSubmit}
+                  disabled={!canSubmit || isStreaming}
                   onClick={() => send(text)}
                   className="rounded-full border border-line-2 bg-surface px-3 py-1.5 text-[12.5px] text-ink-2 transition hover:border-brand hover:bg-brand-wash hover:text-brand disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line-2 disabled:hover:bg-surface disabled:hover:text-ink-2"
                 >
@@ -112,17 +120,30 @@ export function ThreadPane({
               }}
               className="max-h-[120px] flex-1 resize-none bg-transparent py-2 font-sans text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-3 disabled:cursor-not-allowed"
             />
-            <button
-              type="button"
-              aria-label="Send"
-              disabled={!canSubmit || input.trim() === ''}
-              onClick={() => send(input)}
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path d="M10 16V4M5 9l5-5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                aria-label="Stop"
+                onClick={onCancel}
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-brand text-white transition hover:bg-brand-hover"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true">
+                  <rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Send"
+                disabled={!canSubmit || input.trim() === ''}
+                onClick={() => send(input)}
+                className="flex h-10 w-10 flex-none items-center justify-center rounded-[10px] bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M10 16V4M5 9l5-5 5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
           </div>
 
           <p className="mt-2.5 text-center font-mono text-[10.5px] text-ink-3">

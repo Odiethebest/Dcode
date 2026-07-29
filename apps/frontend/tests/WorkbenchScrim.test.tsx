@@ -29,7 +29,15 @@ const citationTurn: Turn = {
 
 vi.mock('@/hooks/useThread', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/hooks/useThread')>();
-  return { ...actual, useThread: () => ({ turns: [citationTurn], isStreaming: false, submit: vi.fn() }) };
+  return {
+    ...actual,
+    useThread: () => ({
+      turns: [citationTurn],
+      isStreaming: false,
+      submit: vi.fn(),
+      cancel: vi.fn(),
+    }),
+  };
 });
 
 function mockViewport(belowDrawerBreakpoint: boolean) {

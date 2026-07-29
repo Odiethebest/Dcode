@@ -23,7 +23,7 @@ export default function WorkbenchPage() {
   );
   const [activeCitation, setActiveCitation] = useState<CitationPayload | null>(null);
 
-  const { turns, submit } = useThread(activeRepoId);
+  const { turns, isStreaming, submit, cancel } = useThread(activeRepoId);
 
   // A new repo means a new thread + no selected source.
   useEffect(() => setActiveCitation(null), [activeRepoId]);
@@ -57,6 +57,8 @@ export default function WorkbenchPage() {
           turns={turns}
           canSubmit={Boolean(activeRepoId)}
           onSubmit={submit}
+          isStreaming={isStreaming}
+          onCancel={cancel}
           activeCitationKey={activeCitation ? citationKey(activeCitation) : null}
           onOpenCitation={openCitation}
         />
