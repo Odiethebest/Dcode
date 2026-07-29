@@ -29,15 +29,8 @@
 
 **Reviewing this project?** Read this page, then
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md) for the verdict, then run it
-and click a citation — see [Documentation](#documentation) for the full set.
-
-| Document | What it answers |
-|---|---|
-| [Final Report](docs/en/Final_Report.md) | Does the claim hold? Numbers, the H1 decision, and what would re-open it |
-| [Honesty Constraints](docs/en/Honesty_Constraints.md) | What the UI is allowed to assert, and why — most rules are test-pinned |
-| [Technical Design](docs/en/Technical_Design.md) | Architecture, contracts, data model |
-| [Final Report](docs/en/Final_Report.md#outstanding-work) | What is unfinished, including known regressions |
-| [results/](results/README.md) | Which recorded run is the current conclusion |
+and click a citation — that interaction is the product. Full document set under
+[Documentation](#documentation).
 
 ---
 
@@ -51,7 +44,7 @@ When a new engineer joins a mature codebase, the useful questions are relational
 | Flat vector RAG | Standard RAG implementations | Text similarity only; loses call relationships |
 | General chat assistants | Generic LLM apps | Lacks grounded codebase context; citation hallucination |
 
-Dcode is a structure aware retrieval platform. It asynchronously builds a dual index with semantic vectors and a static call graph, then exposes that index through a ReAct agent with multiple tools. Every code reference in a final answer is verified against the index before reaching the user.
+Dcode builds a dual index — semantic vectors plus a static call graph — and exposes it through a ReAct agent. Every code reference in a final answer is verified against the index before reaching the user.
 
 ### What it handles
 
@@ -118,7 +111,6 @@ The project's engineering investment serves this **falsifiable** hypothesis. If 
 - **Python workspace**: `uv` workspaces (7 members) + Hatch backend
 - **Frontend**: React 18 + TypeScript (strict) + Vite + Tailwind + TanStack Query
 - **Apps**: FastAPI gateway + worker + standalone agent service + embedding sidecar + reranker sidecar + frontend, orchestrated by Docker Compose
-- **Deployment target**: `dcode.odieyang.com` (DNS unresolved as of 2026-07-11)
 
 Full architecture, component design, and design decisions: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
@@ -140,39 +132,22 @@ repos (1) ──── (N) chunks
 
 ### Schema Highlights
 
-```sql
--- Chunks: AST boundary slices, vector and tsvector colocated for hybrid retrieval
-CREATE TABLE chunks (
-    id            UUID PRIMARY KEY,
-    repo_id       UUID REFERENCES repos(id),
-    file_path     TEXT NOT NULL,
-    chunk_type    chunk_type,        -- function / method / class / module_doc
-    parent_symbol TEXT,              -- enclosing class for methods (NULL otherwise)
-    symbol_name   TEXT NOT NULL,
-    signature     TEXT,              -- full def/class header (ast.unparse)
-    start_line    INT, end_line INT,
-    imports       JSONB,
-    content       TEXT,
-    embedding     VECTOR(N),         -- N from EMBEDDING_DIM env var
-    tsv           TSVECTOR           -- BM25 / full-text
-);
-CREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON chunks USING gin (tsv);
+`chunks` is one AST-boundary slice per row, carrying **both retrieval surfaces
+together** — `embedding VECTOR(N)` under an HNSW index for dense search, `tsv
+TSVECTOR` under a GIN index for full-text — alongside `file_path`, `chunk_type`
+(function / method / class / module_doc), `symbol_name`, `signature`, and the line
+range. `N` comes from `EMBEDDING_DIM` and is **fixed at migration time**. Hybrid
+retrieval therefore fuses two rankings over one table rather than joining two
+stores.
 
--- Symbols + edges form the call graph
-CREATE TABLE edges (
-    id          UUID PRIMARY KEY,
-    repo_id     UUID,
-    source_id   UUID REFERENCES symbols(id),
-    target_id   UUID REFERENCES symbols(id),
-    edge_type   edge_type,         -- calls / imports / inherits / references
-    source_line INT
-);
-CREATE INDEX ON edges (repo_id, source_id, edge_type);
-CREATE INDEX ON edges (repo_id, target_id, edge_type);  -- reverse lookups
-```
+`symbols` + `edges` form the call graph. `edges` carries `edge_type` (calls /
+imports / inherits / references) and is indexed in **both** directions, on
+`source_id` and on `target_id` — which is what makes the reverse lookup behind
+*who calls this?* a single indexed query rather than a scan.
 
-Full schema, indexes, and Redis key naming conventions: [`docs/en/Technical_Design.md` §3](docs/en/Technical_Design.md).
+Authoritative schema: the Alembic migration under `infra/alembic/`. Design
+reasoning, storage topology, and the Redis keyspace:
+[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
 ---
 
@@ -186,18 +161,12 @@ Full schema, indexes, and Redis key naming conventions: [`docs/en/Technical_Desi
 | `GET`  | `/api/v1/repos/{repo_id}/status` | Index progress and per-stage status |
 
 ```http
-POST /api/v1/repos
-Content-Type: application/json
-
-{ "url": "https://github.com/psf/requests.git" }
+POST /api/v1/repos          { "url": "https://github.com/psf/requests.git" }
+→ 202 Accepted              { "repo_id": "uuid", "status": "queued", "reused": false }
 ```
 
-```http
-HTTP/1.1 202 Accepted
-Content-Type: application/json
-
-{ "repo_id": "uuid", "status": "queued" }
-```
+Submitting a URL that is already indexed returns `200` with `reused: true` and the
+existing `repo_id` — no second clone.
 
 ### Query
 
@@ -206,14 +175,8 @@ Content-Type: application/json
 | `POST` | `/api/v1/query` | Ask a natural language question; returns an SSE stream |
 
 ```http
-POST /api/v1/query
-Content-Type: application/json
-Accept: text/event-stream
-
-{
-  "repo_id": "uuid",
-  "query": "How is authentication wired end to end?"
-}
+POST /api/v1/query          { "repo_id": "uuid", "query": "How is auth wired end to end?" }
+Accept: text/event-stream   → a stream of the events below
 ```
 
 **SSE event types** (fixed payload schema):
@@ -228,23 +191,31 @@ Accept: text/event-stream
 | `final_answer` | Complete answer + citations + groundedness score |
 | `error` | Failure code + message |
 
-Full request / response contracts and error semantics: [`docs/en/Technical_Design.md` §4](docs/en/Technical_Design.md).
+### Inspector
+
+Read-only, Postgres-only, scoped by `repo_id`. These back the click-a-citation
+interaction.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/repos/{repo_id}/source` | Real indexed source behind a `file_path` + `line` or `symbol`, with the cited line marked. Degrades through chunk → symbol chunk → file outline → honest "not indexed at this granularity"; never 500s |
+| `GET` | `/api/v1/repos/{repo_id}/neighbors` | Call-graph neighbours of a symbol — *called by* / *calls* / *references* — each with `file:line` so it is clickable |
+
+Full request / response contracts and error semantics: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
 ---
 
 ## Getting Started
 
-> **Status (2026-07-29)**: indexing, retrieval, agent SSE, the workbench frontend,
-> the evaluation harness, and production packaging are implemented and running.
-> `make check`, `make frontend-build`, and `make eval-smoke` pass locally.
-> H1 has been measured on a **full real-model run** (Jina v2-base-code 768-dim +
-> BGE reranker v2-m3 + gpt-4o-mini) and the recorded decision is **unsupported** —
-> see [Current Result](#current-result) for the numbers and for why the call
-> graph's contribution is unmeasured rather than absent.
-> The default stack still runs `EMBEDDING_MODEL=stub` / `RERANKER_MODEL=stub`;
-> the real models are host sidecars and need three commands, not one (below).
-> See [`docs/en/Final_Report.md`](docs/en/Final_Report.md)
-> for status detail, including what is unfinished.
+> **Status (2026-07-29)**: the full path — indexing, retrieval, agent SSE, the
+> workbench frontend, the evaluation harness, production packaging — is implemented
+> and running; `make check`, `make frontend-build`, and `make eval-smoke` pass.
+> H1 has been measured on a **full real-model run** and the recorded decision is
+> **unsupported**: see [Current Result](#current-result) for the numbers and why
+> the call graph's contribution is unmeasured rather than absent.
+> The default stack runs stub models; the real ones are host sidecars needing
+> three commands, not one (below). Status detail and what is unfinished:
+> [`docs/en/Final_Report.md`](docs/en/Final_Report.md).
 
 ### Prerequisites
 
@@ -275,11 +246,10 @@ make check
 
 ### Real Model Mode
 
-The default stack uses stub embedding and identity rerank so local development
-stays lightweight. The real path — the one the recorded result was measured on —
-runs the models as **host** sidecars, because `.env` points
-`EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at `host.docker.internal:8002`/`8003`.
-That means **three** processes, not one:
+The default stack uses stub embedding and identity rerank to stay lightweight. The
+real path — the one the recorded result was measured on — runs the models as
+**host** sidecars, because `.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT`
+at `host.docker.internal:8002`/`8003`. That means **three** processes, not one:
 
 ```bash
 make embedding-host   # :8002 — wait for "Embedding model ready"
@@ -287,46 +257,42 @@ make reranker-host    # :8003 — wait for "Reranker model ready"
 make up               # core stack: postgres, redis, rabbitmq, api, agent, worker
 ```
 
-1. Set `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code`, `EMBEDDING_DIM=768`, and `RERANKER_MODEL=BAAI/bge-reranker-v2-m3` in `.env`.
-2. Recreate the database if it was initialized with another embedding dimension.
-3. Start both sidecars **before** indexing — or use the `embedding` / `reranker`
-   Docker Compose profiles instead, which need ~6 GB of Docker RAM.
-4. Re-index the target repository before running evaluation.
+Set `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code`, `EMBEDDING_DIM=768`, and
+`RERANKER_MODEL=BAAI/bge-reranker-v2-m3` in `.env`; recreate the database if it was
+initialised at another dimension; start both sidecars **before** indexing. The
+Docker `embedding` / `reranker` profiles are the alternative and need ~6 GB of
+Docker RAM.
 
-Two failure modes worth recognising. `make up` alone gives a stack whose API
-reports healthy while every query dies at the embedding step. And a wall of
-Vite `ECONNREFUSED` on `/api/v1/*` in the dev-server log means the backend is
-down, not that the frontend broke.
+Two failure modes worth recognising: `make up` alone gives a stack whose API
+reports healthy while every query dies at the embedding step, and a wall of Vite
+`ECONNREFUSED` on `/api/v1/*` means the backend is down, not that the frontend
+broke. Full runbook: [`docs/en/Operations.md`](docs/en/Operations.md).
 
 ### Quick Smoke Test
 
-These commands exercise the running stack.
-
 ```bash
-# Submit a repo
+# Submit a repo → returns repo_id
 curl -X POST http://localhost:8000/api/v1/repos \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://github.com/psf/requests.git"}'
 
-# Poll status until `status=ready`
+# Poll until status=ready (a first real index takes several minutes and
+# plateaus visibly at the embedding stage — that is real work, not a hang)
 curl http://localhost:8000/api/v1/repos/<repo_id>/status
 
-# Ask a question after indexing reaches `ready`
+# Then ask
 curl -N -X POST http://localhost:8000/api/v1/query \
   -H 'Content-Type: application/json' \
-  -d '{"repo_id":"<repo_id>","query":"Where is `HTTPBasicAuth` defined?"}'
+  -d '{"repo_id":"<repo_id>","query":"How does a Session prepare a request?"}'
 ```
 
 ---
 
 ## Deployment
 
-Two compose entrypoints are now tracked:
-
-- `docker-compose.yml`: developer stack, with the frontend served as an nginx static SPA on `http://localhost:5173` and proxied `/api/*` calls.
-- `docker-compose.prod.yml`: production oriented stack, where only the frontend is public and `/api/*` is proxied to the internal API service.
-
-Production setup:
+Two compose entrypoints: `docker-compose.yml` for the developer stack, and
+`docker-compose.prod.yml` where only the frontend is public and `/api/*` proxies to
+the internal API service.
 
 ```bash
 cp .env.production.example .env.production
@@ -335,17 +301,14 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
   uv run alembic -c infra/migrations/alembic.ini upgrade head
 ```
 
-As of **2026-07-11**, the production compose stack is validated locally, but
-`dcode.odieyang.com` does **not** resolve publicly yet, so the external demo
-exit criterion is still open. The production compose file currently keeps the
-public frontend/API shape separate from the optional embedding and reranker
-sidecars used in local development.
+The production stack is validated locally only — `dcode.odieyang.com` does **not**
+resolve publicly, so the external-demo exit criterion is still open.
 
 ---
 
 ## Evaluation Protocol
 
-The evaluation harness is the core deliverable for verifying H1. It runs five baselines on the same question set and reports stratified metrics so that each layer's marginal contribution is isolated.
+The harness runs five baselines on the same question set and reports stratified metrics, so each layer's marginal contribution is isolated.
 
 ### Baseline Ladder
 
@@ -365,17 +328,17 @@ The evaluation harness is the core deliverable for verifying H1. It runs five ba
 | L2 | Cross file structural | **Primary H1 check** |
 | L3 | Architecture level | **Primary H1 check** |
 
-H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down.
+H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. L3 currently has **n=3**, small enough that one question moves the average — see the Final Report before reading it in either direction.
 
 ### Acceptance Thresholds
 
 | Metric | Target |
 |---|---|
 | Retrieval (Recall@k / MRR / nDCG) | B4 strictly improves over every B0 through B3; statistically significant on L2 / L3 |
-| Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% |
+| Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% — **unmeasured**, the judge is still a stub |
 | Groundedness (programmatic) | ≥ 95% |
 
-Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/en/Technical_Design.md` §2.4](docs/en/Technical_Design.md).
+Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
 ### Current Result
 
@@ -440,16 +403,16 @@ explicitly not the current conclusion — see [`results/README.md`](results/READ
 Dcode chunks code at function, method, class, and module docstring boundaries via Python `ast` (`D-2.1.1`). This keeps import context and symbol boundaries attached to retrieved chunks, which makes the evidence easier to cite and verify.
 
 **Vectors and call graph in a single PostgreSQL instance**
-Vectors and graph relationships live in PostgreSQL. `pgvector` stores embeddings with HNSW and GIN indexes, while normal relational tables store symbols and edges. This gives the system one connection pool, one backup boundary, and one consistency model. The tradeoff is additional custom logic around hybrid retrieval.
+`pgvector` stores embeddings with HNSW and GIN indexes; ordinary relational tables store symbols and edges. One connection pool, one backup boundary, one consistency model — and a citation's chunk and its graph neighbours are read in the same transaction, so the inspector cannot show source from one snapshot and edges from another. The tradeoff is custom hybrid-retrieval logic.
 
 **Hybrid retrieval is required**
-Code search needs exact symbol matching (`validate_token`) and semantic intent ("auth related code"). Dcode runs sparse and dense retrieval in parallel, fuses the candidates by Reciprocal Rank Fusion (`k=60`), then reranks them with a cross encoder (`D-2.2.1`). This keeps the comparison against GitHub Search fair because GitHub Search remains a sparse retrieval baseline.
+Code search needs exact symbol matching *and* semantic intent. Sparse and dense retrieval run in parallel, fuse by Reciprocal Rank Fusion (`k=60`), then rerank through a cross encoder (`D-2.2.1`). This is also the finding that survived evaluation: `B1 < B2 < B3` is a clean ladder.
 
 **Groundedness as a hard guardrail**
-For code answers, inventing a symbol that does not exist is a critical failure. The groundedness check (`D-2.3.1`) extracts every citation in a final answer, checks it against the indexed symbol table, and strips or flags missing references. The same check produces the ≥ 95% acceptance number from indexed evidence.
+Inventing a symbol that does not exist is the critical failure mode for code answers. The check (`D-2.3.1`) extracts every citation from a final answer, verifies it against the indexed symbol table, and strips what it cannot verify. It is deliberately scored on the draft **before** redaction, which is why the guardrail can visibly fail — and does, at 0.916. Counting only surviving citations would make the number meaningless: [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md).
 
 **Async indexing supports the platform story**
-The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second.
+H1 could be evaluated with a simpler indexing script; the queue, worker, state machine, and cached embeddings exist to make this usable as a service. Priority order stayed strict regardless: H1-critical work first, infrastructure second.
 
 ---
 
