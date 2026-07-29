@@ -151,6 +151,8 @@ Net guarantees: you can never get "prose shows a ref that looks clickable but do
 
 **Never fabricate data.** Both prototypes mock the SSE stream, groundedness, source, and graph edges. The real UI is driven by real endpoints only. If an endpoint is missing, add a thin real one or report the gap — never stub the UI with fake "verified" data.
 
+**Don't present cached state as current.** When a fetch fails, say so instead of falling back to the last value as though it were live — the repo switcher shows `status unavailable` when the gateway is unreachable, and labels un-polled repos `last known · <status>`. Stale data displayed confidently is the same failure as an invented number, just harder to notice.
+
 ---
 
 ## 7. H1 evaluation — current status (PAUSED)
@@ -221,10 +223,10 @@ Both items in this slot are closed; kept here briefly because the *reasons* stil
 
 ### Backlog
 
-- **`POST /repos` is not idempotent.** Re-submitting the same URL always creates a new `repo_id` and re-clones, so indexing the same repo twice yields duplicate DB rows *and* duplicate switcher entries. A real user (or someone at a demo) will do this. Fix: on submit, look for an existing ready repo with the same URL and reuse it, or surface "already indexed," instead of blindly creating.
+- ~~**`POST /repos` is not idempotent.**~~ Fixed 2026-07-29: reuse prefers `ready`, then in-progress; `failed` is never reused so retry still works; matching normalises trailing slash / `.git` / host case. Returns `reused: true` and 200 instead of 202, and the switcher says "already indexed — switched to it". **Still open:** two *concurrent* submits can both miss the check and create two rows — closing that needs a uniqueness constraint on a normalised URL column, i.e. a migration. Also, the five duplicate `psf/requests` rows already in the dev DB are not cleaned up retroactively.
 - **Contract is still hand-mirrored.** `types.ts` mirrors the Python schemas by hand; a compile-time test pins it, but **openapi-typescript** (generating TS from the gateway's OpenAPI) is the durable fix and the README's stated M2 plan. Note the inspector response types are now mirrored too, widening the surface. *(Re-checked field-by-field against `dcode_shared/schemas.py` + `events.py` on 2026-07-29: no drift at that point.)*
 - **B4 groundedness occasionally dips below the 0.95 guardrail** (0.916 aggregate on the real run) — the agent sometimes emits a citation that fails verification. Worth investigating at the source (see C2 above); do **not** "fix" it by changing how the score is computed.
-- **Optional:** a `GET /repos` list endpoint. The switcher currently lists repos from `localStorage` recents (per the brief — correct for now); a cross-device/global list would need a thin new endpoint. Also, only the active repo polls live; others show last-known status. Both fine for the demo.
+- **Optional:** a `GET /repos` list endpoint. The switcher currently lists repos from `localStorage` recents (per the brief — correct for now); a cross-device/global list would need a thin new endpoint. Only the active repo polls live; the others are now explicitly labelled `last known · <status>` rather than implying they're current.
 
 ---
 
