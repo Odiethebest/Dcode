@@ -1,5 +1,11 @@
 # Dcode 数据库参考 (Database Reference)
 
+> ## 📁 已归档 — 中文文档快照，**非当前状态**
+> 
+> 中文文档已于 2026-07-29 停止维护（原因见 [README.md](README.md)）。**当前状态请看 `docs/en/`。**
+> 本文可能与实现不一致，请勿据此判断项目现状。
+
+
 > ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
 
 本文档是 Dcode 持久层的权威参考：PostgreSQL schema（表、列、枚举、索引、约束）、
@@ -477,5 +483,5 @@ LIMIT 10;
 
 - [`Technical_Design_ch.md`](Technical_Design_ch.md) —— 架构、API 契约、NFR
 - [`Sidecar_Smoke_ch.md`](Sidecar_Smoke_ch.md) —— 真实 embedding/reranker 路径 + DB 维度重建
-- [`Final_Report_ch.md`](Final_Report_ch.md) —— 评测快照与 H1 结论
+- [`Final_Report_ch.md`](../../ch/Final_Report_ch.md) —— 评测快照与 H1 结论
 - [`Outstanding_Work_ch.md`](Outstanding_Work_ch.md) —— 遗留工作（含 `tsv`/BM25、更丰富的图边）

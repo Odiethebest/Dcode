@@ -1,5 +1,13 @@
 # Dcode 最终报告
 
+> **英文版为权威。** 本文是唯一仍在维护的中文文档；其余中文文档已归档至
+> [`docs/archive/ch/`](../archive/ch/README.md)。若本文与
+> [`docs/en/Final_Report.md`](../en/Final_Report.md) 有出入，以英文版为准。
+>
+> 保留本文的理由是结构性的：它是唯一包含**生成块**的中文文档，数字由
+> `scripts/sync_eval_artifacts.py` 从 `results/eval-real/` 直接写入，`make check`
+> 会在漂移时失败 —— 也就是说关键数字不可能悄悄过期。
+
 > ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
 
 ## 总结

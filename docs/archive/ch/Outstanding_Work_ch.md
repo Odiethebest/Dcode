@@ -1,14 +1,20 @@
 # Dcode TODO
 
+> ## 📁 已归档 — 中文文档快照，**非当前状态**
+> 
+> 中文文档已于 2026-07-29 停止维护（原因见 [README.md](README.md)）。**当前状态请看 `docs/en/`。**
+> 本文可能与实现不一致，请勿据此判断项目现状。
+
+
 > ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
 
 > 当前仓库状态基于 **2026-07-11** 的代码审查与本地验证，不再保留早期 M0 skeleton 清单。
 >
-> 关联文档：[README.md](../../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](Final_Report_ch.md)。
+> 关联文档：[README.md](../../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](../../ch/Final_Report_ch.md)。
 >
-> 本文是剩余工作的当前视图。开发期的代码级登记表已归档至 [`problem.md`](../archive/problem.md)，其 changelog 见 [`Improvement_Log.md`](../archive/Improvement_Log.md) —— 两者都停在 2026-07，属于历史记录而非当前状态。面向 agent 会话的操作说明见 [`CLAUDE.md`](../../CLAUDE.md)。
+> 本文是剩余工作的当前视图。开发期的代码级登记表已归档至 [`problem.md`](../problem.md)，其 changelog 见 [`Improvement_Log.md`](../Improvement_Log.md) —— 两者都停在 2026-07，属于历史记录而非当前状态。面向 agent 会话的操作说明见 [`CLAUDE.md`](../../../CLAUDE.md)。
 >
-> 历史执行日志已归档到 [archive/执行路线.md](../archive/执行路线.md)。新的剩余工作只在本文维护。
+> 历史执行日志已归档到 [archive/执行路线.md](../执行路线.md)。新的剩余工作只在本文维护。
 
 ---
 

@@ -1,8 +1,12 @@
 # Dcode Documentation Map
 
-Documentation entry point. `docs/en/` is the single source of truth; `docs/ch/`
-holds Chinese counterparts for team handoff — treat those as **possibly-stale
-snapshots** and update English first.
+Documentation entry point. **`docs/en/` is authoritative.** The Chinese doc set was
+retired on 2026-07-29 — eight hand-maintained translations had drifted
+independently of the English originals, and one still described a frontend that no
+longer exists. They are archived at
+[`archive/ch/`](archive/ch/README.md). The one surviving Chinese document,
+[`ch/Final_Report_ch.md`](ch/Final_Report_ch.md), is the only one whose numbers are
+generated rather than transcribed.
 
 ## Reviewing this project — three steps
 
@@ -58,7 +62,7 @@ docs/
 │   ├── Project_Plan.md           goals, milestones, ownership, risks
 │   ├── Operations.md             running the stack, real-model path, eval harness, gotchas
 │   └── Agentic_Workflow.md       how Claude Code, Codex, and Cursor were cross checked
-├── ch/                           Chinese counterparts (possibly stale)
+├── ch/                           Final_Report_ch.md only (English is authoritative)
 └── archive/                      historical records — not current guidance
     ├── problem.md                development-era code-level problem register (to 2026-07)
     ├── Improvement_Log.md        its changelog of completed items
@@ -69,16 +73,16 @@ docs/
 
 ## Document Index
 
-| English | Chinese | Purpose |
-|---|---|---|
-| [Final_Report.md](en/Final_Report.md) | [Final_Report_ch.md](ch/Final_Report_ch.md) | Implemented system, evaluation snapshot, H1 decision, iteration history, re-open criteria |
-| [Honesty_Constraints.md](en/Honesty_Constraints.md) | — | Rules governing what the UI may claim, with reasoning |
-| [Technical_Design.md](en/Technical_Design.md) | [Technical_Design_ch.md](ch/Technical_Design_ch.md) | Architecture, components, data model, APIs, NFRs |
-| [Database.md](en/Database.md) | [Database_ch.md](ch/Database_ch.md) | Schema, enums, indexes, Redis keyspace, SQL cookbook |
-| [Repository_Structure.md](en/Repository_Structure.md) | [Repository_Structure_ch.md](ch/Repository_Structure_ch.md) | Repository layout and service responsibilities |
-| [Project_Plan.md](en/Project_Plan.md) | [Project_Plan_ch.md](ch/Project_Plan_ch.md) | Execution plan, ownership, milestones, risks, decisions |
-| [Operations.md](en/Operations.md) | [Sidecar_Smoke_ch.md](ch/Sidecar_Smoke_ch.md) | Real embedding and reranker integration smoke |
-| [Agentic_Workflow.md](en/Agentic_Workflow.md) | [Agentic_Workflow_ch.md](ch/Agentic_Workflow_ch.md) | How the team cross checked Claude Code, Codex, and Cursor |
+| Document | Purpose |
+|---|---|
+| [Final_Report.md](en/Final_Report.md) | Implemented system, evaluation snapshot, H1 decision, iteration history, re-open criteria |
+| [Honesty_Constraints.md](en/Honesty_Constraints.md) | Rules governing what the UI may claim, with reasoning |
+| [Technical_Design.md](en/Technical_Design.md) | Architecture, components, data model, APIs, NFRs |
+| [Database.md](en/Database.md) | Schema, enums, indexes, Redis keyspace, SQL cookbook |
+| [Repository_Structure.md](en/Repository_Structure.md) | Repository layout and service responsibilities |
+| [Project_Plan.md](en/Project_Plan.md) | Execution plan, ownership, milestones, risks, decisions |
+| [Operations.md](en/Operations.md) | Real embedding and reranker integration smoke |
+| [Agentic_Workflow.md](en/Agentic_Workflow.md) | How the team cross checked Claude Code, Codex, and Cursor |
 
 ## Elsewhere in the repository
 
