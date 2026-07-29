@@ -153,6 +153,8 @@ Net guarantees: you can never get "prose shows a ref that looks clickable but do
 
 **Don't present cached state as current.** When a fetch fails, say so instead of falling back to the last value as though it were live — the repo switcher shows `status unavailable` when the gateway is unreachable, and labels un-polled repos `last known · <status>`. Stale data displayed confidently is the same failure as an invented number, just harder to notice.
 
+**Say when the index is incomplete.** The worker skips files that are too large or fail to parse, so answers built on that index are incomplete too. The switcher shows the skipped count on its *closed* state (not only in the dropdown) and leads with the consequence — "these aren't in the index, so no answer can cite them" — because a silently partial index lets someone trust a confidently incomplete answer. Same reasoning applies to a failed index: show the reason, not just the red dot. (`warnings` lives only in Redis job state on a 7-day TTL, so an old index reports an empty list rather than a stale one; `error` is a durable DB column.)
+
 ---
 
 ## 7. H1 evaluation — current status (PAUSED)
@@ -220,6 +222,14 @@ Both items in this slot are closed; kept here briefly because the *reasons* stil
 
 1. ~~Phase 4 — retire the old IA.~~ Deleted, not redirected. No orphans; `recentRepos` / `repoStatus` retained.
 2. ~~Reconcile the landing ladder.~~ The bars were hardcoded `22/34/58/72/100` with B4 maxed — the front page said "we won" while `/methodology` said "we haven't yet." Now drawn from the snapshot with the verdict stated on the card. **The general rule stands: no number reaches a user surface unless it can be traced to a committed artifact.** B0 in particular gets a row with *no bar* and "not measured · requires an API token" — a concrete bar for an unrun baseline was worse than the B4 win, because it invented data rather than exaggerating it.
+
+### ⚠️ Known open regression from the rebuild
+
+**A11y live regions were lost.** The pre-rebuild QueryPage had `aria-live="polite"` on the status region and `role="log" aria-live="polite"` on the streaming event log — an explicit past fix (P3-10, commit `09e2446`, marked closed). The rebuilt workbench has **no live region anywhere**, so a screen-reader user hears nothing as an answer streams, as a turn settles, or as citations bind. Found during the 2026-07-29 audit and consciously deferred, not overlooked.
+
+The design question to settle first: announcing every `partial_answer` token would be unusable noise. The right shape is almost certainly to announce **once** when streaming begins and **once** with the settled `final_answer` text — which means the live region belongs around the settled answer, not the streaming preview. Decide that before wiring it.
+
+*Lesson from how this was missed: Phase 4 was checked for dead-code orphans but not for orphaned **capabilities**. Deleting a page can silently delete a feature. When retiring a surface, diff what it consumed from the API against what the replacement consumes.*
 
 ### Backlog
 
