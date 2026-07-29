@@ -1,9 +1,26 @@
 # Dcode Database Reference
 
+> ## 📁 Archived — superseded, not current guidance
+>
+> The parts of this reference that were **design reasoning** (the storage
+> topology, why vectors and the graph share one PostgreSQL instance) moved to
+> [`docs/en/Technical_Design.md`](../en/Technical_Design.md). The parts that were
+> **operational** (the embedding-dimension trap, telling stub vectors from real
+> ones, the graph's coverage limits, the partial-failure window) moved to
+> [`docs/en/Operations.md`](../en/Operations.md).
+>
+> What remains here is DDL, a SQL cookbook, `psql` recipes, and a Redis keyspace
+> listing — all **restatements** whose real sources are the Alembic migration
+> under `infra/alembic/` and `packages/shared/src/dcode_shared/cache.py`. Kept
+> because the cookbook is genuinely handy and discarding a real deliverable is
+> not this project's habit; not kept as authority. If this file and the migration
+> disagree, the migration is right.
+
+
 This document is the authoritative reference for Dcode's persistence layer: the
 PostgreSQL schema (tables, columns, enums, indexes, constraints), the Redis
 keyspace, how data is written and read, and how to inspect it with SQL. It
-expands [`Technical_Design.md` §3 (Data Model)](Technical_Design.md) with
+expands [`Technical_Design.md` §3 (Data Model)](../en/Technical_Design.md) with
 column-level detail and an operational SQL cookbook.
 
 **Source of truth in code:**
@@ -48,7 +65,7 @@ owning `repos.id`, and all queries filter by it.
 
 Keeping vectors and the graph in a single PostgreSQL instance gives Dcode one
 connection pool, one backup boundary, and one consistency model (see
-[`Technical_Design.md`](Technical_Design.md), Key Design Decisions).
+[`Technical_Design.md`](../en/Technical_Design.md), Key Design Decisions).
 
 ---
 
@@ -221,7 +238,7 @@ Created in `001_initial_schema.py`.
   and the API's query-side embedder returns `None`, so **dense search is inert
   and hybrid degrades to sparse** (this is why the checked-in eval shows
   B2 = B3 = B4; see `Final_Report.md`). Real vectors require the embedding
-  sidecar (see [`Operations.md`](Operations.md)).
+  sidecar (see [`Operations.md`](../en/Operations.md)).
 - **`tsv`** — declared with a GIN index, **but never populated**: the embed
   stage does not write `tsv`, and there is no trigger or generated column. The
   API's "sparse" search does **not** use `tsv` either — it runs
@@ -494,7 +511,7 @@ two newer edge types.
 
 ## Related documents
 
-- [`Technical_Design.md`](Technical_Design.md) — architecture, API contracts, NFRs
-- [`Operations.md`](Operations.md) — real embedding/reranker path + DB-dimension rebuild
-- [`Final_Report.md`](Final_Report.md) — evaluation snapshot and the H1 decision
-- [`Final_Report.md`](Final_Report.md) — remaining work (incl. `tsv`/BM25, richer graph edges)
+- [`Technical_Design.md`](../en/Technical_Design.md) — architecture, API contracts, NFRs
+- [`Operations.md`](../en/Operations.md) — real embedding/reranker path + DB-dimension rebuild
+- [`Final_Report.md`](../en/Final_Report.md) — evaluation snapshot and the H1 decision
+- [`Final_Report.md`](../en/Final_Report.md) — remaining work (incl. `tsv`/BM25, richer graph edges)

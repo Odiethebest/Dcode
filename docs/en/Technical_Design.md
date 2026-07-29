@@ -4,7 +4,7 @@
 
 This document is the technical authority for Dcode. It describes the system architecture, service boundaries, data model, API contracts, non-functional requirements, technology choices, and implementation decisions that guide the codebase.
 
-For execution planning, ownership, milestones, and risks, see [Project_Plan.md](Project_Plan.md). For the project overview and setup instructions, see [README.md](../../README.md).
+For the project overview and the recorded evaluation result, see the [root README](../../README.md); for the H1 verdict and outstanding work, [Final_Report.md](Final_Report.md); for running the stack, [Operations.md](Operations.md).
 
 ## System Overview
 

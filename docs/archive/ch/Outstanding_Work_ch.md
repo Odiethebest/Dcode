@@ -10,7 +10,7 @@
 
 > 当前仓库状态基于 **2026-07-11** 的代码审查与本地验证，不再保留早期 M0 skeleton 清单。
 >
-> 关联文档：[README.md](../../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](../../ch/Final_Report_ch.md)。
+> 关联文档：[README.md](../../../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](../../ch/Final_Report_ch.md)。
 >
 > 本文是剩余工作的当前视图。开发期的代码级登记表已归档至 [`problem.md`](../problem.md)，其 changelog 见 [`Improvement_Log.md`](../Improvement_Log.md) —— 两者都停在 2026-07，属于历史记录而非当前状态。面向 agent 会话的操作说明见 [`CLAUDE.md`](../../../CLAUDE.md)。
 >

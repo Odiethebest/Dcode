@@ -13,7 +13,7 @@
 | **文档类型** | Technical Design Document |
 | **版本** | v1.0 |
 | **状态** | Approved for Execution |
-| **关联文档** | [Project_Plan_ch.md](Project_Plan_ch.md)（项目计划）、[README.md](../../README.md)（项目导览） |
+| **关联文档** | [Project_Plan_ch.md](Project_Plan_ch.md)（项目计划）、[README.md](../../../README.md)（项目导览） |
 | **范围** | 系统架构、组件设计、数据模型、接口契约、非功能性需求、技术选型、决策记录与接入点 |
 | **不涉及** | 项目目标、范围、团队分工、里程碑、风险（见 Project_Plan_ch.md） |
 
@@ -548,4 +548,4 @@ results/{run_id}/
 
 ---
 
-*本文档为执行层基线。实施过程中产生的接口、模式、选型变更须以 PR 形式更新本文档并经接口拥有者确认。项目目标与里程碑见 [Project_Plan_ch.md](Project_Plan_ch.md)，项目导览见 [README.md](../../README.md)。*
+*本文档为执行层基线。实施过程中产生的接口、模式、选型变更须以 PR 形式更新本文档并经接口拥有者确认。项目目标与里程碑见 [Project_Plan_ch.md](Project_Plan_ch.md)，项目导览见 [README.md](../../../README.md)。*

@@ -1,7 +1,7 @@
 # CLAUDE.md — working notes for agent sessions
 
 Operational state for whoever picks this up next. Project documentation for
-humans lives in [`docs/`](docs/README.md) — start at
+humans lives in [`docs/en/`](docs/en/Final_Report.md) — start at
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md) for the verdict and
 [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md) for the rules
 that govern the UI. This file is the part that doesn't belong in either: current

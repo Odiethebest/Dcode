@@ -1,15 +1,27 @@
 # Dcode Repository Structure
 
+> ## 📁 Archived — superseded, not current guidance
+>
+> The repository tree and the frontend route/file tables moved into
+> [`docs/en/Technical_Design.md`](../en/Technical_Design.md), under *Repository
+> Layout*. A standalone document for a directory listing drifted fastest of
+> anything here — this one silently omitted `design/` entirely until it was
+> audited — so it now lives next to the architecture it describes.
+>
+> The per-service path tables below are still broadly accurate but are not
+> maintained. The code is the source of truth for layout.
+
+
 ## Purpose
 
 This document describes the current repository layout for developers taking over the project. It reflects the implemented codebase rather than the original skeleton.
 
 Related documents:
 
-- [Technical_Design.md](Technical_Design.md) for architecture and contracts;
+- [Technical_Design.md](../en/Technical_Design.md) for architecture and contracts;
 - [Project_Plan.md](Project_Plan.md) for milestones and ownership;
-- [Final_Report.md](Final_Report.md) for remaining work;
-- [Final_Report.md](Final_Report.md) for the current evaluation snapshot and H1 decision.
+- [Final_Report.md](../en/Final_Report.md) for remaining work;
+- [Final_Report.md](../en/Final_Report.md) for the current evaluation snapshot and H1 decision.
 
 ## Root Layout
 
@@ -128,7 +140,7 @@ hand-copies a repository UUID between pages.
 | `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
 | `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
 | `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-real/` — do not edit |
-| `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
+| `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](../en/Honesty_Constraints.md) |
 
 ## Infrastructure
 

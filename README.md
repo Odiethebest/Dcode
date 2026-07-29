@@ -27,17 +27,15 @@
 - [Key Design Decisions](#key-design-decisions)
 - [Team](#team)
 
-**Reviewing this project?** [`docs/README.md`](docs/README.md) has a three-step
-path. The short version: this page, then
+**Reviewing this project?** Read this page, then
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md) for the verdict, then run it
-and click a citation.
+and click a citation — see [Documentation](#documentation) for the full set.
 
 | Document | What it answers |
 |---|---|
 | [Final Report](docs/en/Final_Report.md) | Does the claim hold? Numbers, the H1 decision, and what would re-open it |
 | [Honesty Constraints](docs/en/Honesty_Constraints.md) | What the UI is allowed to assert, and why — most rules are test-pinned |
 | [Technical Design](docs/en/Technical_Design.md) | Architecture, contracts, data model |
-| [Repository Structure](docs/en/Repository_Structure.md) | Where everything lives |
 | [Final Report](docs/en/Final_Report.md#outstanding-work) | What is unfinished, including known regressions |
 | [results/](results/README.md) | Which recorded run is the current conclusion |
 
@@ -377,7 +375,7 @@ H1 is expected to hold most strongly on L2 / L3, where flat similarity retrieval
 | Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% |
 | Groundedness (programmatic) | ≥ 95% |
 
-Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/en/Technical_Design.md` §2.4](docs/en/Technical_Design.md) and [`docs/en/Project_Plan.md` §3](docs/en/Project_Plan.md).
+Question set construction (manual / function reverse synthesis / GitHub issue mining), result schema, and the LLM as Judge protocol: [`docs/en/Technical_Design.md` §2.4](docs/en/Technical_Design.md).
 
 ### Current Result
 
@@ -451,23 +449,34 @@ Code search needs exact symbol matching (`validate_token`) and semantic intent (
 For code answers, inventing a symbol that does not exist is a critical failure. The groundedness check (`D-2.3.1`) extracts every citation in a final answer, checks it against the indexed symbol table, and strips or flags missing references. The same check produces the ≥ 95% acceptance number from indexed evidence.
 
 **Async indexing supports the platform story**
-The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second. See [`docs/en/Project_Plan.md` §4](docs/en/Project_Plan.md) for the full degradation path.
+The async pipeline combines a queue, worker, state machine, and Redis cached embeddings. H1 can be evaluated with a simpler indexing script, but the asynchronous path makes the platform usable as a service and strengthens the engineering story. The priority order remains strict: H1 critical work first, infrastructure second.
 
 ---
 
 ## Documentation
 
-| Document | Role | Contents |
-|---|---|---|
-| **[`docs/README.md`](docs/README.md)** | Documentation map | Reading order, en/ch document pairs, and archive boundaries |
-| **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
-| **[`docs/en/Project_Plan.md`](docs/en/Project_Plan.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
-| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)**                   | Outstanding work      | Now carries its own outstanding-work section: remaining gaps, known limits, deployment follow-ups |
-| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report + H1 decision | Implemented system summary, evaluation snapshot, next steps, and the H1 judgment + re-open criteria |
-| **[`docs/en/Repository_Structure.md`](docs/en/Repository_Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
-| **[`docs/en/Operations.md`](docs/en/Operations.md)** | Operations | Running the stack, the real-model path, the eval harness, and operational gotchas |
-| **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
-| **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability only |
+Five documents. `docs/en/` is authoritative.
+
+| Document | Contents |
+|---|---|
+| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | **The acceptance core.** Implemented system, the evaluation numbers, the H1 decision and why, iteration history, re-open criteria, outstanding work, known limits, and what was and was not verified |
+| **[`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md)** | What the interface is allowed to assert, and the reasoning behind each rule. Most are pinned by tests |
+| **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)** | Technical authority: repository layout, architecture, service boundaries, data model, API contracts, NFRs, technology choices |
+| **[`docs/en/Operations.md`](docs/en/Operations.md)** | Running the stack, the real-model path, the evaluation harness, and the operational gotchas worth knowing before you hit them |
+| **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | How Claude Code, Codex, and Cursor were cross checked during development |
+
+Colocated with what they describe: [`results/README.md`](results/README.md) (which
+recorded run is the current conclusion), [`design/README.md`](design/README.md)
+(the HTML prototypes the UI was built from), and
+[`CLAUDE.md`](CLAUDE.md) (operational notes for agent sessions).
+
+[`docs/archive/`](docs/archive) holds historical records — the development-era
+problem register and its changelog, the executed frontend redesign brief, the
+retired Chinese doc set, and superseded planning notes. Every file there carries a
+banner saying so. Not current guidance.
+
+**Reviewing this?** Read this page, then the Final Report for the verdict, then
+run it and click a citation — that interaction is the product.
 
 ---
 

@@ -1,8 +1,20 @@
 # Dcode Project Plan
 
+> ## 📁 Archived — historical planning document
+>
+> Milestones, ownership, a weekly schedule, and a risk register for work that is
+> now finished. Useful for seeing how the project was planned; not a description
+> of its current state.
+>
+> **Current status:** [`docs/en/Final_Report.md`](../en/Final_Report.md) — the
+> verdict, the outstanding work, and the criteria that would re-open H1. The
+> hypothesis and acceptance thresholds it defined are stated in the
+> [root README](../../README.md) and carried out in the Final Report.
+
+
 ## Purpose
 
-This document defines the execution plan for Dcode: goals, scope, acceptance criteria, priorities, ownership, milestones, risks, and closed decisions. Technical architecture is covered in [Technical_Design.md](Technical_Design.md).
+This document defines the execution plan for Dcode: goals, scope, acceptance criteria, priorities, ownership, milestones, risks, and closed decisions. Technical architecture is covered in [Technical_Design.md](../en/Technical_Design.md).
 
 ## Goals
 
@@ -127,4 +139,4 @@ As of the latest documented handoff:
 
 ## Handoff Notes
 
-Future work should begin from the current main branch, run the sidecar smoke in [Operations.md](Operations.md), and then refresh the evaluation suite with the same model configuration. Any H1 update should cite the exact result directory and question set version.
+Future work should begin from the current main branch, run the sidecar smoke in [Operations.md](../en/Operations.md), and then refresh the evaluation suite with the same model configuration. Any H1 update should cite the exact result directory and question set version.
