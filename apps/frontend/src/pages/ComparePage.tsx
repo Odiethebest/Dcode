@@ -67,7 +67,7 @@ export default function ComparePage() {
                   <dl className="mt-3 space-y-2 text-sm text-stone-700">
                     <div className="flex items-center justify-between gap-4">
                       <dt>B4 composite</dt>
-                      <dd>{comparison.baselineComposite.toFixed(3)}</dd>
+                      <dd>{comparison.b4Composite.toFixed(3)}</dd>
                     </div>
                     <div className="flex items-center justify-between gap-4">
                       <dt>vs B2</dt>
