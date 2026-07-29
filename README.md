@@ -38,7 +38,7 @@ and click a citation.
 | [Honesty Constraints](docs/en/Honesty_Constraints.md) | What the UI is allowed to assert, and why — most rules are test-pinned |
 | [Technical Design](docs/en/Technical_Design.md) | Architecture, contracts, data model |
 | [Repository Structure](docs/en/Repository_Structure.md) | Where everything lives |
-| [Outstanding Work](docs/en/Outstanding_Work.md) | What is unfinished, including known regressions |
+| [Final Report](docs/en/Final_Report.md#outstanding-work) | What is unfinished, including known regressions |
 | [results/](results/README.md) | Which recorded run is the current conclusion |
 
 ---
@@ -246,7 +246,7 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 > The default stack still runs `EMBEDDING_MODEL=stub` / `RERANKER_MODEL=stub`;
 > the real models are host sidecars and need three commands, not one (below).
 > See [`docs/en/Final_Report.md`](docs/en/Final_Report.md)
-> and [`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md) for status detail.
+> for status detail, including what is unfinished.
 
 ### Prerequisites
 
@@ -462,7 +462,7 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 | **[`docs/README.md`](docs/README.md)** | Documentation map | Reading order, en/ch document pairs, and archive boundaries |
 | **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)**       | Technical authority   | System architecture, component design, data model, interface contracts, NFRs, technology selection, open decisions |
 | **[`docs/en/Project_Plan.md`](docs/en/Project_Plan.md)**           | Execution authority   | Goals, scope, acceptance criteria, priority, team RACI, milestones (M1 to M4), risk register, open decision timeline |
-| **[`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md)**           | Outstanding work      | Current remaining gaps, known implementation limits, external deployment follow-ups |
+| **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)**                   | Outstanding work      | Now carries its own outstanding-work section: remaining gaps, known limits, deployment follow-ups |
 | **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report + H1 decision | Implemented system summary, evaluation snapshot, next steps, and the H1 judgment + re-open criteria |
 | **[`docs/en/Repository_Structure.md`](docs/en/Repository_Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
 | **[`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)** | Integration smoke | Reproducible Jina v2, BGE reranker, 768-dim re-index, and agent smoke guide |

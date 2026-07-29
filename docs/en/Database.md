@@ -497,4 +497,4 @@ two newer edge types.
 - [`Technical_Design.md`](Technical_Design.md) — architecture, API contracts, NFRs
 - [`Sidecar_Smoke.md`](Sidecar_Smoke.md) — real embedding/reranker path + DB-dimension rebuild
 - [`Final_Report.md`](Final_Report.md) — evaluation snapshot and the H1 decision
-- [`Outstanding_Work.md`](Outstanding_Work.md) — remaining work (incl. `tsv`/BM25, richer graph edges)
+- [`Final_Report.md`](Final_Report.md) — remaining work (incl. `tsv`/BM25, richer graph edges)

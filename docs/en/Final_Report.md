@@ -170,20 +170,6 @@ would be inaccurate.
   The UI, this report, and the README cannot disagree without `make check`
   failing.
 
-## What Did Not Land
-
-- **Judge / pairwise answer scoring** — still a stub, so pairwise win-rate is
-  `null` throughout and the acceptance threshold on it is unmeasured.
-- **Corrected scoring of B4's post-graph evidence** — designed and approved, not
-  yet implemented; see the re-open criteria below.
-- **An L3 set large enough to read** — n=3 today.
-- **A second corpus.** One repository, 16 questions. No claim here generalises.
-- **Non-Python indexing** — the worker parses Python only.
-- Richer graph edges beyond calls/imports/inherits/references.
-- Public DNS / external demo availability.
-- Accessibility live regions in the rebuilt frontend — a regression against a
-  previously closed issue, tracked in `CLAUDE.md`.
-
 ## Iteration History
 
 The previous version of this report set re-open criteria and they were met, so
@@ -269,4 +255,82 @@ expanded suite and corrected scoring both fixed before any number is seen.
   diagnosed cause and precise re-open criteria is a stronger result than a tuned
   pass.
 
-See [Sidecar_Smoke.md](Sidecar_Smoke.md) for the real-model path.
+---
+
+## Outstanding Work
+
+The single list of what is unfinished. Items marked **▲** block the H1 re-run;
+everything else is independent of it.
+
+### Evaluation
+
+- **▲ Score B4 on its final verified evidence set.** Criteria set 2, item 1 above.
+  Without it the call graph cannot reach the metrics at all.
+- **▲ Expand L3 beyond n=3** (target ~12), human-reviewed and committed before
+  the re-run.
+- **Judge / pairwise scoring is a stub.** Pairwise win-rate is `null` throughout,
+  so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
+- **B0 is not measured** — it needs an API token. Either produce it or keep
+  reporting it as unmeasured; it has no bearing on the H1 verdict.
+- **Investigate B4's groundedness dip at the source** — the agent emitting
+  citations that fail verification. Do **not** address it by changing how the
+  score is computed (see criteria set 2, item 3).
+- **A second corpus.** One repository, 16 questions. Nothing here generalises,
+  and no wording in this document should imply otherwise.
+
+### Retrieval and indexing
+
+- **Python only.** The worker parses no other language.
+- Richer graph edges beyond calls / imports / inherits / references — no type
+  inference, and inherited `self.method()` calls do not resolve. See
+  [Sidecar_Smoke.md](Sidecar_Smoke.md) for the precise coverage limits.
+- Reconsider an LLM planner once retrieval quality is stable. Planning is
+  currently keyword routing; answer synthesis is already optional LLM.
+
+### Frontend
+
+- **Accessibility live regions are missing** — a regression against a previously
+  closed item. A screen-reader user hears nothing as an answer streams. The
+  unresolved design question is recorded in [`CLAUDE.md`](../../CLAUDE.md), since
+  it needs deciding before implementing.
+- The API contract is hand-mirrored into TypeScript. A compile-time test pins it;
+  `openapi-typescript` is the durable fix.
+- `POST /repos` is idempotent per URL, but two *simultaneous* submits can still
+  create two rows. Closing that needs a uniqueness constraint on a normalised URL
+  column, i.e. a migration.
+
+### Deployment
+
+- DNS for `dcode.odieyang.com` is unresolved; production Compose has only been
+  smoke-tested locally.
+- Decide whether production runs the model sidecars or depends on external model
+  services.
+
+## Known Limits
+
+Read these as scope, not as defects.
+
+- The default local stack runs `EMBEDDING_MODEL=stub`; the recorded result used
+  real host sidecars, which is a deliberate three-command setup
+  ([Sidecar_Smoke.md](Sidecar_Smoke.md)).
+- The graph is **best-effort static evidence**: name-based analysis, no type
+  inference, no MRO resolution.
+- The agent planner is rule-based. Only answer synthesis is LLM-backed, and it is
+  opt-in.
+- The H1 decision includes no judge or pairwise metric.
+- Skipped-file warnings live only in Redis on a 7-day TTL, so an older index
+  honestly reports none rather than a stale count.
+
+## Verification
+
+What was actually run, as opposed to asserted: `make check` (lint, typecheck,
+Python and frontend test suites, plus the evaluation-artifact drift check),
+`make frontend-build`, `make eval-smoke`, and a real-sidecar integration smoke
+against a live stack.
+
+Not verified: visual appearance and interaction were never machine-checked —
+headless screenshots do not work in the development sandbox, so the UI's
+rendering has only ever been confirmed by a human in a browser. There is no
+automated end-to-end test spanning the browser and a live backend.
+
+Reproducing the real-model path: [Sidecar_Smoke.md](Sidecar_Smoke.md).

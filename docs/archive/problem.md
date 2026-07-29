@@ -4,7 +4,7 @@
 >
 > 这是开发过程中用的代码级问题登记表，**内容停在 2026-07-27**，此后发生的事（前端整体重写、真实模型 H1 运行、评估数字改为机械生成）都不在里面。其中若干条已经完成但未划掉，例如 P0-2（评估快照早于代码）和 P1-1（全 stub 模型导致 B2=B3=B4）都已解决。
 >
-> **当前状态请看**：[`docs/en/Outstanding_Work.md`](../en/Outstanding_Work.md)（剩余工作）、[`docs/en/Final_Report.md`](../en/Final_Report.md)（H1 结论与重开条件）、[`CLAUDE.md`](../../CLAUDE.md)（面向 agent 会话的操作状态）。
+> **当前状态请看**：[`docs/en/Final_Report.md`](../en/Final_Report.md)（H1 结论、重开条件、剩余工作）、[`CLAUDE.md`](../../CLAUDE.md)（面向 agent 会话的操作状态）。
 >
 > 保留原因：P0–P3 的分级与诊断过程本身有参考价值，而删掉一份真实的历史记录不是这个项目的做法。
 
