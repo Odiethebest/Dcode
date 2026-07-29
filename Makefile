@@ -65,6 +65,9 @@ ps:
 lint:
 	uv run ruff check apps packages
 	cd apps/frontend && npm run lint
+	@# Fails if README / Final_Report / evalSnapshot.ts restate numbers that have
+	@# moved. Every figure has one source (results/) and everything else is generated.
+	python3 scripts/sync_eval_artifacts.py --check
 
 typecheck:
 	MYPYPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run mypy -p dcode_shared -p dcode_api -p dcode_worker -p dcode_agent -p dcode_eval

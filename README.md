@@ -226,15 +226,17 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 
 ## Getting Started
 
-> **Status (2026-07-11)**: the end to end indexing, retrieval, agent SSE, frontend,
-> evaluation harness, local sidecar model path, and production packaging are implemented.
+> **Status (2026-07-29)**: indexing, retrieval, agent SSE, the workbench frontend,
+> the evaluation harness, and production packaging are implemented and running.
 > `make check`, `make frontend-build`, and `make eval-smoke` pass locally.
-> The default stack still runs `EMBEDDING_MODEL=stub` and `RERANKER_MODEL=stub`;
-> real embedding and reranking require explicit sidecar configuration and re-indexing.
-> The current recorded H1 decision remains **unsupported** on the checked-in
-> 16-question suite, which predates a fresh evaluation of the real model path.
+> H1 has been measured on a **full real-model run** (Jina v2-base-code 768-dim +
+> BGE reranker v2-m3 + gpt-4o-mini) and the recorded decision is **unsupported** —
+> see [Current Result](#current-result) for the numbers and for why the call
+> graph's contribution is unmeasured rather than absent.
+> The default stack still runs `EMBEDDING_MODEL=stub` / `RERANKER_MODEL=stub`;
+> the real models are host sidecars and need three commands, not one (below).
 > See [`docs/en/Final_Report.md`](docs/en/Final_Report.md)
-> and [`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md) for the current implementation status.
+> and [`docs/en/Outstanding_Work.md`](docs/en/Outstanding_Work.md) for status detail.
 
 ### Prerequisites
 
@@ -266,12 +268,27 @@ make check
 ### Real Model Mode
 
 The default stack uses stub embedding and identity rerank so local development
-stays lightweight. To evaluate the real retrieval path:
+stays lightweight. The real path — the one the recorded result was measured on —
+runs the models as **host** sidecars, because `.env` points
+`EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at `host.docker.internal:8002`/`8003`.
+That means **three** processes, not one:
+
+```bash
+make embedding-host   # :8002 — wait for "Embedding model ready"
+make reranker-host    # :8003 — wait for "Reranker model ready"
+make up               # core stack: postgres, redis, rabbitmq, api, agent, worker
+```
 
 1. Set `EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code`, `EMBEDDING_DIM=768`, and `RERANKER_MODEL=BAAI/bge-reranker-v2-m3` in `.env`.
 2. Recreate the database if it was initialized with another embedding dimension.
-3. Start `make embedding-host` and `make reranker-host` in separate terminals, or use the `embedding` and `reranker` Docker Compose profiles.
+3. Start both sidecars **before** indexing — or use the `embedding` / `reranker`
+   Docker Compose profiles instead, which need ~6 GB of Docker RAM.
 4. Re-index the target repository before running evaluation.
+
+Two failure modes worth recognising. `make up` alone gives a stack whose API
+reports healthy while every query dies at the embedding step. And a wall of
+Vite `ECONNREFUSED` on `/api/v1/*` in the dev-server log means the backend is
+down, not that the frontend broke.
 
 ### Quick Smoke Test
 
@@ -354,19 +371,58 @@ Question set construction (manual / function reverse synthesis / GitHub issue mi
 
 ### Current Result
 
-The recorded suite under `results/eval-suite/` currently yields:
+Measured on the full real-model run. Every figure below is generated from the
+results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
 
-- `B2`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `1.0`
-- `B3`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `1.0`
-- `B4`: Recall@5 `0.1979`, MRR `0.2125`, nDCG@5 `0.1917`, groundedness `0.95`
+<!-- BEGIN generated: eval-suite-metrics -->
 
-The resulting H1 decision is **unsupported** because B4 did not exceed B2/B3 on
-either L2 or L3. Details: [`docs/en/Final_Report.md`](docs/en/Final_Report.md) §H1 Decision.
+| Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
+|---|---:|---:|---:|---|
+| `B1` BM25 sparse | 0.214 | 0.221 | 0.204 | 1.000 |
+| `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
+| `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
 
-This result is the current committed evaluation snapshot. A fresh measurement
-of the real embedding/reranker sidecar path requires re-indexing the target
-repository with `EMBEDDING_DIM=768`, enabling the reranker, and regenerating
-`results/eval-suite/` and the frontend comparison snapshot from the same run.
+Source: `results/eval-real/` · recorded 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+
+<!-- END generated: eval-suite-metrics -->
+
+<!-- BEGIN generated: eval-h1-verdict -->
+
+**Decision: `unsupported`**
+
+H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composite points on **both** L2 and L3.
+
+| Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `L2` cross-file | 8 | 0.448 | 0.586 | 0.562 | +0.113 | −0.024 | no |
+| `L3` architecture | 3 | 0.315 | 0.371 | 0.324 | +0.009 | −0.047 | no |
+
+<!-- END generated: eval-h1-verdict -->
+
+Three things a reader should take from that table, stated plainly:
+
+1. **H1 is unsupported.** B4 clears the bar against dense RAG on cross-file
+   questions and against nothing else. The threshold was fixed before the run
+   and has not moved.
+2. **Hybrid retrieval is validated.** `B1 < B2 < B3` is a clean ladder — this
+   result is independent of the H1 verdict and it is the finding that held up.
+3. **B4's groundedness falls below the 0.95 guardrail.** The agent sometimes
+   emits a citation that fails verification. Unverifiable references are
+   stripped from the delivered answer, but the score deliberately counts the
+   draft *before* redaction, so a heavily-redacted answer still scores low.
+   That is a real dip in a pre-registered guardrail and it is reported as one.
+
+**Why B4 cannot currently beat B3:** B4's *scored* retrieval is the same hybrid
+search as B3's, so the two rows match to the digit. The call-graph tools fire
+later, inside the agent's answer, which this harness does not score. The graph's
+contribution is therefore **unmeasured** — a diagnosed limitation of the
+evaluation design, not evidence that the graph does not work. Full reasoning,
+including the corrected scoring that would re-open H1:
+[`docs/en/Final_Report.md`](docs/en/Final_Report.md).
+
+`results/eval-suite/` is an **earlier stub-model run**, kept for history and
+explicitly not the current conclusion — see [`results/README.md`](results/README.md).
 
 ---
 

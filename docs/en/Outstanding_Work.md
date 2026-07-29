@@ -13,7 +13,7 @@ Completed:
 - LangGraph SSE agent path;
 - eight registered agent tools;
 - groundedness checks;
-- frontend Index, Query, and Compare views;
+- the `/workbench` exploration surface, plus `/` and `/methodology`;
 - evaluation harness;
 - embedding sidecar;
 - reranker sidecar;
@@ -27,7 +27,11 @@ Verified in the recorded handoff:
 - targeted agent graph and query SSE tests;
 - local real-sidecar integration smoke.
 
-The recorded H1 result remains **unsupported** on the checked-in evaluation suite.
+The recorded H1 result remains **unsupported**, now measured on a full real-model
+run (`results/eval-real/`) rather than the earlier stub snapshot. The obstacle is
+no longer muted baselines: B4's scored retrieval is the same call as B3's, so the
+call graph is never scored. See [Final_Report.md](Final_Report.md) for the numbers,
+the diagnosis, and the criteria that would re-open the question.
 
 ## Retrieval Quality
 
@@ -41,12 +45,15 @@ The recorded H1 result remains **unsupported** on the checked-in evaluation suit
 
 ## Evaluation Completeness
 
-- [ ] Connect judge and pairwise scoring.
-- [ ] Expand the current 16-question `requests` suite.
-- [ ] Produce stable B0 and B1 results under the same reporting format as B2, B3, and B4.
-- [ ] Split baseline retrieval paths so B1, B2, B3, and B4 do not accidentally reuse the same `/internal/search` behavior.
-- [ ] Regenerate `results/eval-suite/` with real embedding and reranker sidecars.
-- [ ] Update frontend `evalSnapshot.ts` from the refreshed result files.
+- [x] Run the suite under real embedding + reranker — `results/eval-real/` (2026-07-28).
+- [x] Produce B1 under the same reporting format as B2/B3/B4.
+- [x] Generate every displayed figure from the results directory, with `make check` failing on drift.
+- [ ] **Score B4 on its final verified evidence set** — the correction that would let the call graph reach the metrics at all. Criteria set 2, item 1 in [Final_Report.md](Final_Report.md).
+- [ ] **Expand L3 beyond n=3** (target ~12), human-reviewed before the re-run.
+- [ ] Connect judge and pairwise scoring — still a stub, so pairwise win-rate is `null` and that acceptance threshold is unmeasured.
+- [ ] Produce a stable B0 result, or keep reporting it as **not measured** (needs an API token).
+- [ ] Investigate B4's groundedness dip at the source — the agent emitting citations that fail verification. Do **not** address it by changing how the score is computed.
+- [ ] Add a second corpus. One repository supports no claim about generality.
 
 ## External Deployment
 
@@ -60,7 +67,7 @@ The recorded H1 result remains **unsupported** on the checked-in evaluation suit
 - [ ] Reconsider LLM planner integration after retrieval quality is stable.
 - [x] LLM answer synthesis — opt-in OpenAI, token-streamed, citation-whitelisted to groundedness 1.0 (2026-07-27).
 - [ ] Add OpenAPI type generation if frontend type drift becomes maintenance cost.
-- [ ] Generate Compare page data from versioned evaluation snapshots if evaluation continues to change.
+- [ ] Restore accessibility live regions in the rebuilt workbench — a regression against a previously closed item; details and the design question in `CLAUDE.md`.
 
 ## Known Limits
 
