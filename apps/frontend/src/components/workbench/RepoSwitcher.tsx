@@ -69,6 +69,7 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
+  const [showSkipped, setShowSkipped] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -148,6 +149,13 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
   // confident green "ready" for a repo we can't reach claims something we
   // can't check. Fall back to an explicit unknown instead.
   const unreachable = Boolean(activeRepoId) && statusQuery.isError;
+
+  // Files the worker couldn't index, and why an index failed. Both come from
+  // the status poll; `error` is a durable DB column, `warnings` lives only in
+  // the Redis job state (7-day TTL), so an old index reports an empty list
+  // rather than a wrong one.
+  const skipped = liveStatus?.warnings ?? [];
+  const failure = liveStatus?.status === 'failed' ? liveStatus.error : null;
   const activeBucket = liveStatus
     ? bucketOf(liveStatus.status)
     : unreachable || !activeRepo
@@ -173,6 +181,16 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
         )}
         {unreachable && (
           <span className="flex-none font-mono text-[11px] text-ink-3">· status unavailable</span>
+        )}
+        {/* An incomplete index changes what answers can possibly say, so it gets
+            a marker on the closed switcher rather than living behind a click. */}
+        {skipped.length > 0 && (
+          <span
+            className="flex-none rounded-full bg-warn-wash px-1.5 py-px font-mono text-[10px] font-medium text-warn"
+            title={`${skipped.length} file(s) were skipped when indexing this repo`}
+          >
+            {skipped.length} skipped
+          </span>
         )}
         <svg
           width="13"
@@ -246,6 +264,44 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
                 </button>
               );
             })
+          )}
+
+          {failure && (
+            <div className="mt-1 border-t border-line bg-bad-wash px-3 py-2.5">
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-bad">
+                Indexing failed
+              </div>
+              <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-bad">
+                {failure}
+              </p>
+            </div>
+          )}
+
+          {skipped.length > 0 && (
+            <div className="mt-1 border-t border-line bg-warn-wash px-3 py-2.5">
+              <button
+                type="button"
+                onClick={() => setShowSkipped((value) => !value)}
+                aria-expanded={showSkipped}
+                className="flex w-full items-center justify-between gap-2 text-left font-mono text-[11px] font-medium text-warn"
+              >
+                {skipped.length} file{skipped.length === 1 ? '' : 's'} skipped while indexing
+                <span aria-hidden="true">{showSkipped ? '−' : '+'}</span>
+              </button>
+              {/* The point isn't the file list, it's what it implies about answers. */}
+              <p className="mt-1 text-[11px] leading-relaxed text-warn">
+                These aren&rsquo;t in the index, so no answer can cite them.
+              </p>
+              {showSkipped && (
+                <ul className="mt-2 space-y-1 border-t border-warn/25 pt-2">
+                  {skipped.map((warning) => (
+                    <li key={warning} className="break-all font-mono text-[10.5px] text-warn">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
           {adding ? (

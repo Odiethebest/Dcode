@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as client from '@/api/client';
+import type { RepoStatusResponse } from '@/api/types';
 import { RepoSwitcher, repoStatusLabel } from '@/components/workbench/RepoSwitcher';
 import { saveRecentRepo } from '@/lib/recentRepos';
 
@@ -76,6 +77,83 @@ describe('RepoSwitcher honesty when the gateway is unreachable', () => {
 
     // repo-2 is never polled, so its stored status is history, not a live claim.
     expect(await screen.findByText(/last known · ready/i)).toBeInTheDocument();
+  });
+});
+
+describe('RepoSwitcher surfaces an incomplete or failed index', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.clearAllMocks();
+    saveRecentRepo({
+      repoId: 'repo-1',
+      url: 'https://github.com/psf/requests.git',
+      status: 'ready',
+      savedAt: new Date().toISOString(),
+    });
+  });
+
+  function status(overrides: Partial<RepoStatusResponse>): RepoStatusResponse {
+    return {
+      repo_id: 'repo-1',
+      url: 'https://github.com/psf/requests.git',
+      status: 'ready',
+      progress: 100,
+      stages: { cloning: 'done', parsing: 'done', embedding: 'done', graphing: 'done' },
+      error: null,
+      warnings: [],
+      ...overrides,
+    };
+  }
+
+  it('marks a repo whose index skipped files, without needing the dropdown open', async () => {
+    // A partial index changes what any answer can possibly say. Hiding that
+    // behind a click would let someone read a confidently incomplete answer.
+    vi.mocked(client.getRepoStatus).mockResolvedValue(
+      status({ warnings: ['src/huge.py: file too large', 'src/broken.py: parse error'] })
+    );
+
+    renderSwitcher('repo-1');
+
+    expect(await screen.findByText('2 skipped')).toBeInTheDocument();
+  });
+
+  it('explains what a skipped file means and lists them on demand', async () => {
+    vi.mocked(client.getRepoStatus).mockResolvedValue(
+      status({ warnings: ['src/huge.py: file too large'] })
+    );
+
+    renderSwitcher('repo-1');
+    fireEvent.click(await screen.findByText('psf/requests'));
+
+    expect(await screen.findByText(/1 file skipped while indexing/i)).toBeInTheDocument();
+    expect(screen.getByText(/no answer can cite them/i)).toBeInTheDocument();
+
+    // The list itself is detail, so it starts collapsed.
+    expect(screen.queryByText('src/huge.py: file too large')).toBeNull();
+    fireEvent.click(screen.getByText(/1 file skipped while indexing/i));
+    expect(screen.getByText('src/huge.py: file too large')).toBeInTheDocument();
+  });
+
+  it('shows why an index failed, not just that it did', async () => {
+    vi.mocked(client.getRepoStatus).mockResolvedValue(
+      status({ status: 'failed', progress: 0, error: 'Clone failed: repository not found' })
+    );
+
+    renderSwitcher('repo-1');
+    fireEvent.click(await screen.findByText('psf/requests'));
+
+    expect(await screen.findByText(/indexing failed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Clone failed: repository not found/i)).toBeInTheDocument();
+  });
+
+  it('stays quiet for a clean index', async () => {
+    vi.mocked(client.getRepoStatus).mockResolvedValue(status({}));
+
+    renderSwitcher('repo-1');
+    fireEvent.click(await screen.findByText('psf/requests'));
+
+    expect(screen.queryByText(/skipped/i)).toBeNull();
+    expect(screen.queryByText(/indexing failed/i)).toBeNull();
   });
 });
 
