@@ -13,6 +13,16 @@ from dcode_shared.db.models import Repo
 from fastapi.testclient import TestClient
 
 
+class NoMatches:
+    """Empty result for the submit path's reuse lookup — see test_repos_route.py."""
+
+    def scalars(self) -> "NoMatches":
+        return self
+
+    def all(self) -> list[Repo]:
+        return []
+
+
 class FakeSession:
     def __init__(self, repo: Repo | None = None) -> None:
         self.repo = repo
@@ -20,6 +30,11 @@ class FakeSession:
         self.commit_count = 0
         self.rolled_back = False
         self.events: list[str] = []
+
+    async def execute(self, _statement: object) -> NoMatches:
+        # These tests cover the create-and-queue path, so the URL is always new.
+        # Idempotent-reuse behaviour has its own suite.
+        return NoMatches()
 
     def add(self, repo: Repo) -> None:
         self.repo = repo

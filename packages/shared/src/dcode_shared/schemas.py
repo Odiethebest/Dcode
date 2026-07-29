@@ -75,10 +75,17 @@ class RepoCreateRequest(BaseModel):
 
 
 class RepoCreateResponse(BaseModel):
-    """POST /api/v1/repos response body (202 Accepted)."""
+    """POST /api/v1/repos response body (202 Accepted, or 200 OK when reused)."""
 
     repo_id: UUID
     status: RepoStatus
+    reused: bool = Field(
+        False,
+        description=(
+            "True when an existing repo with the same URL was returned instead of "
+            "cloning and indexing it again. Nothing was queued."
+        ),
+    )
 
 
 class StagesStatus(BaseModel):
