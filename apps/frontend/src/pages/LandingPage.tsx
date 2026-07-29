@@ -2,7 +2,20 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { buttonClasses } from '@/components/ui';
+import { h1Report, snapshotSource, suiteSummary, type BaselineName } from '@/demo/evalSnapshot';
 import { cx } from '@/lib/cx';
+
+const LADDER_LABELS: Record<BaselineName, string> = {
+  B1: 'BM25 sparse',
+  B2: 'Dense RAG',
+  B3: 'Hybrid + rerank',
+  B4: 'Dcode + graph + agent',
+};
+const LADDER_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
+/** Highest nDCG wins; ties keep the earlier rung, so B3 leads over a tied B4. */
+const LADDER_LEADER = LADDER_ORDER.reduce((best, b) =>
+  suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
+);
 
 function prefersReducedMotion(): boolean {
   return (
@@ -283,9 +296,12 @@ export default function LandingPage() {
             <p className="mt-[26px] border-l-2 border-brand pl-[22px] font-display text-[clamp(15px,1.7vw,17px)] leading-[1.7] text-ink-2">
               The hypothesis: structure-aware retrieval beats flat RAG and keyword search on cross-file questions — by a
               margin set <b className="font-semibold text-ink">before</b> measuring, on a five-rung baseline ladder over
-              standard IR metrics. If it doesn&rsquo;t clear the bar, the result is recorded{' '}
-              <b className="font-semibold text-ink">unsupported</b>. The thresholds don&rsquo;t move after the numbers
-              come in.
+              standard IR metrics. The thresholds don&rsquo;t move after the numbers come in.
+            </p>
+            <p className="mt-5 max-w-[54ch] font-display text-[clamp(15px,1.7vw,17px)] leading-[1.7] text-ink-2">
+              On the current run it <b className="font-semibold text-ink">didn&rsquo;t clear that bar</b>, so H1 stands
+              recorded <b className="font-semibold text-ink">{h1Report.decision}</b> — you can read the whole scoreboard,
+              including why, one click away. A test you can only pass isn&rsquo;t a test.
             </p>
             <Link
               to="/methodology"
@@ -295,28 +311,58 @@ export default function LandingPage() {
             </Link>
           </Reveal>
           <Reveal className="rounded-card border border-line bg-surface p-[30px]">
-            <div className="mb-[22px] font-mono text-[11px] uppercase tracking-[0.13em] text-ink-3">
-              Baseline ladder · same questions, same metrics
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <span className="font-mono text-[11px] uppercase tracking-[0.13em] text-ink-3">
+                Baseline ladder · nDCG@{snapshotSource.k}
+              </span>
+              <span className="rounded-full border border-warn bg-warn-wash px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-warn">
+                H1 — {h1Report.decision}
+              </span>
             </div>
-            {[
-              ['B0', 'GitHub Search', 22, false],
-              ['B1', 'BM25 sparse', 34, false],
-              ['B2', 'Dense RAG', 58, false],
-              ['B3', 'Hybrid + rerank', 72, false],
-              ['B4', 'Dcode + graph + agent', 100, true],
-            ].map(([rk, rn, width, top]) => (
-              <div key={rk as string} className="flex items-center gap-4 border-b border-line py-[13px] last:border-0">
-                <span className={cx('w-[26px] flex-none font-mono text-[12px] font-semibold', top ? 'text-brand' : 'text-ink-3')}>
-                  {rk}
-                </span>
-                <span className="h-[9px] flex-1 overflow-hidden rounded-full bg-sunk">
-                  <span className={cx('block h-full rounded-full', top ? 'bg-brand' : 'bg-line-2')} style={{ width: `${width}%` }} />
-                </span>
-                <span className={cx('w-[130px] flex-none font-display text-[15px]', top ? 'font-medium text-ink' : 'text-ink-2')}>
-                  {rn}
-                </span>
-              </div>
-            ))}
+
+            {/* B0 has never been measured — it needs an API token this run didn't
+                have. A bar here would be an invented number, which is precisely
+                what this section is claiming not to do. */}
+            <div className="flex items-center gap-4 border-b border-line py-[13px]">
+              <span className="w-[26px] flex-none font-mono text-[12px] font-semibold text-ink-3">B0</span>
+              <span className="flex-1 font-mono text-[11px] italic text-ink-3">
+                not measured · requires an API token
+              </span>
+              <span className="w-[130px] flex-none font-display text-[15px] text-ink-3">GitHub Search</span>
+            </div>
+
+            {LADDER_ORDER.map((b) => {
+              const score = suiteSummary[b].ndcgAtK;
+              const top = b === LADDER_LEADER;
+              return (
+                <div key={b} className="flex items-center gap-4 border-b border-line py-[13px] last:border-0">
+                  <span className={cx('w-[26px] flex-none font-mono text-[12px] font-semibold', top ? 'text-brand' : 'text-ink-3')}>
+                    {b}
+                  </span>
+                  <span className="flex flex-1 items-center gap-2.5">
+                    <span className="h-[9px] flex-1 overflow-hidden rounded-full bg-sunk">
+                      <span
+                        className={cx('block h-full rounded-full', top ? 'bg-brand' : 'bg-line-2')}
+                        style={{ width: `${(score * 100).toFixed(1)}%` }}
+                      />
+                    </span>
+                    <span className="w-[38px] flex-none text-right font-mono text-[11px] tabular-nums text-ink-2">
+                      {score.toFixed(3)}
+                    </span>
+                  </span>
+                  <span className={cx('w-[130px] flex-none font-display text-[15px]', top ? 'font-medium text-ink' : 'text-ink-2')}>
+                    {LADDER_LABELS[b]}
+                  </span>
+                </div>
+              );
+            })}
+
+            <p className="mt-4 font-mono text-[10.5px] leading-relaxed text-ink-3">
+              {suiteSummary.B4.questions} questions · {snapshotSource.corpus} · from{' '}
+              <span className="text-ink-2">{snapshotSource.path}</span>. B4 ties B3 on retrieval — its call-graph tools
+              run inside the answer, which this harness doesn&rsquo;t score — and its groundedness dips to{' '}
+              {suiteSummary.B4.groundedness.toFixed(3)}.
+            </p>
           </Reveal>
         </div>
       </section>
