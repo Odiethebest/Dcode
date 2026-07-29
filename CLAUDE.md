@@ -1,14 +1,28 @@
 # CLAUDE.md — working notes for agent sessions
 
-Operational state for whoever picks this up next. Project documentation for
-humans lives in [`docs/en/`](docs/en/Final_Report.md) — start at
-[`docs/en/Final_Report.md`](docs/en/Final_Report.md) for the verdict and
-[`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md) for the rules
-that govern the UI. This file is the part that doesn't belong in either: current
-state, next actions, environment gotchas, and how to not break things.
+Operational state for whoever picks this up next. This file is deliberately *only*
+the part that isn't project documentation: environment gotchas, the visual-identity
+rules, and how to not break things.
 
 **Read this, then `git log --oneline`.** The work is committed in small scoped
 slices and the messages carry the reasoning.
+
+Project documentation is five files, all authoritative over this one:
+
+| Document | Read it for |
+|---|---|
+| [`docs/en/Final_Report.md`](docs/en/Final_Report.md) | The H1 verdict, **the single outstanding-work list**, known limits, what was verified |
+| [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md) | The eleven rules governing what the UI may assert, with reasoning. Most are pinned by tests — read before touching the thread, the chips, or the inspector |
+| [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md) | Repository layout, architecture, data model, API contracts |
+| [`docs/en/Operations.md`](docs/en/Operations.md) | Running the stack, the real-model path, the eval harness, operational gotchas |
+| [`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md) | How the three AI tools were cross-checked during development |
+
+Plus [`results/README.md`](results/README.md) (which recorded run is current) and
+[`design/README.md`](design/README.md) (the prototypes, still the visual
+authority). [`docs/archive/`](docs/archive) is history — every file there says so
+in a banner. The Chinese doc set was retired; only
+[`docs/ch/Final_Report_ch.md`](docs/ch/Final_Report_ch.md) is maintained, because
+its numbers are generated rather than translated.
 
 ---
 
@@ -36,7 +50,15 @@ packages/shared/ Pydantic schemas, SSE events, cache keys, DB models
 design/          the two HTML prototypes the UI was built from (still the visual authority)
 results/         recorded evaluation runs — see results/README.md for which one counts
 scripts/         helper scripts, incl. sync_eval_artifacts.py
+docs/en/         five authoritative documents (table above); docs/archive/ is history
 ```
+
+**Numbers are generated, never typed.** Every evaluation figure in the UI and the
+docs comes from `results/eval-real/` via `scripts/sync_eval_artifacts.py`, and
+`make check` fails if any of them drifts. Markdown targets use
+`<!-- BEGIN generated: … -->` markers. If you need to change a displayed number,
+change the run and regenerate — do not edit the number. Prose is *not* generated,
+so re-read the narrative after any regeneration.
 
 Frontend routes: `/` landing · `/workbench` the product · `/methodology` the
 evaluation story · `/preview` design-system gallery. There is no `/legacy/*` —
@@ -113,22 +135,16 @@ a feature — the skipped-file warnings and the index-failure reason were lost t
 same way and had to be restored later. When retiring a surface, diff what it
 consumed from the API against what the replacement consumes.
 
-**Backlog**
+**Backlog lives in one place:**
+[`docs/en/Final_Report.md` § Outstanding Work](docs/en/Final_Report.md#outstanding-work).
+Not duplicated here — three copies of "what's left" is the drift pattern this
+project keeps having to fix, and a stale copy in an agent-facing file is the worst
+of the three.
 
-- **Contract is hand-mirrored.** `openapi-typescript` is the durable fix and the
-  stated M2 plan. Inspector response types are mirrored too, widening the surface.
-- **`POST /repos` concurrency.** Idempotent on URL now, but two *simultaneous*
-  submits can both miss the check and create two rows. Closing that needs a
-  uniqueness constraint on a normalised URL column, i.e. a migration. The five
-  duplicate `psf/requests` rows already in the dev DB are not cleaned up.
-- **B4 groundedness dips below the 0.95 guardrail** (0.916). Investigate at the
-  source — the agent emitting citations that fail verification. Do **not**
-  "fix" it by changing how the score is computed; see Honesty_Constraints §6.
-- **`warnings` are ephemeral.** Skipped-file warnings live only in the Redis job
-  state on a 7-day TTL, so an older index honestly reports an empty list.
-  Persisting them needs a `repos` column and a migration.
-- **Optional:** a `GET /repos` list endpoint. The switcher lists `localStorage`
-  recents, which is correct for now.
+Two dev-environment facts that belong here rather than in a report: the five
+duplicate `psf/requests` rows already in the local DB are not cleaned up
+retroactively by the `POST /repos` idempotency fix, and `make down-all` wipes the
+volumes, which means re-indexing at whatever `EMBEDDING_DIM` you migrate at.
 
 ## 5. Environment
 
