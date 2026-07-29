@@ -1,5 +1,11 @@
 # Dcode 改进记录（Improvement Log）
 
+> ## 📁 已归档 — 开发期 changelog，非当前状态
+>
+> [`problem.md`](problem.md) 中已完成项的实现记录，**停在 2026-07-27**。它记录的是"某个问题当时是怎么修的"，不是"现在还剩什么"。更晚的改动请直接读 `git log --oneline`。
+>
+> **当前状态请看**：[`docs/en/Outstanding_Work.md`](../en/Outstanding_Work.md)、[`docs/en/Final_Report.md`](../en/Final_Report.md)、[`CLAUDE.md`](../../CLAUDE.md)。
+
 > 本文件是 [`problem.md`](problem.md) 中**已完成项**的实现记录（changelog）——从问题登记表拆出，让活跃 backlog 保持精简。每项保留原始诊断 + `✅ 状态`（实现摘要 + 提交号）。
 >
 > 权威源是 git 历史；本表是人类可读的审计线索。全部改动在分支 `ziqi_review`（PR → `main`）。日期：2026-07-26；LLM 合成线（P1-4 合成 / P2-5）补充于 2026-07-27。

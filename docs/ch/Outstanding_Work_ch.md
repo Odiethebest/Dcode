@@ -6,7 +6,7 @@
 >
 > 关联文档：[README.md](../../README.md)、[Technical_Design_ch.md](Technical_Design_ch.md)、[Project_Plan_ch.md](Project_Plan_ch.md)、[Final_Report_ch.md](Final_Report_ch.md)。
 >
-> 细粒度、代码级 backlog 见仓库根 [`problem.md`](../../problem.md)（已完成项见 [`Improvement_Log.md`](../../Improvement_Log.md)）；本文保留里程碑级视图。
+> 本文是剩余工作的当前视图。开发期的代码级登记表已归档至 [`problem.md`](../archive/problem.md)，其 changelog 见 [`Improvement_Log.md`](../archive/Improvement_Log.md) —— 两者都停在 2026-07，属于历史记录而非当前状态。面向 agent 会话的操作说明见 [`CLAUDE.md`](../../CLAUDE.md)。
 >
 > 历史执行日志已归档到 [archive/执行路线.md](../archive/执行路线.md)。新的剩余工作只在本文维护。
 

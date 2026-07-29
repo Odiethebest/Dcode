@@ -1,5 +1,13 @@
 # Dcode 问题清单与改进路线（Problem Register）
 
+> ## 📁 已归档 — 开发期记录，非当前状态
+>
+> 这是开发过程中用的代码级问题登记表，**内容停在 2026-07-27**，此后发生的事（前端整体重写、真实模型 H1 运行、评估数字改为机械生成）都不在里面。其中若干条已经完成但未划掉，例如 P0-2（评估快照早于代码）和 P1-1（全 stub 模型导致 B2=B3=B4）都已解决。
+>
+> **当前状态请看**：[`docs/en/Outstanding_Work.md`](../en/Outstanding_Work.md)（剩余工作）、[`docs/en/Final_Report.md`](../en/Final_Report.md)（H1 结论与重开条件）、[`CLAUDE.md`](../../CLAUDE.md)（面向 agent 会话的操作状态）。
+>
+> 保留原因：P0–P3 的分级与诊断过程本身有参考价值，而删掉一份真实的历史记录不是这个项目的做法。
+
 > 目的：把当前实现与 Dcode 设计目标（尤其是 **H1 假设**）之间的差距，整理成一份可执行、可拆成 issue/PR 的问题登记表，用于全面提升项目质量。
 >
 > 生成日期：2026-07-26 ｜ 依据：对全仓库（`packages/shared` + 6 个服务 + 前端 + infra + docs）的通读。
@@ -9,7 +17,7 @@
 >
 > **拆分 2026-07-26**：已完成项（划线）的实现细节移至 [`Improvement_Log.md`](Improvement_Log.md)；本文件保留全量概览表 + **仅未完成项**的详情 + 改进路线。
 >
-> **更新 2026-07-27**：LLM 合成线落地——**P2-5**（token 流式）✅、**P1-4 的合成部分**✅（可选 OpenAI，带引用 + 逐 token 流式 + 引用白名单 grounded 1.0）；P1-4 仅剩 **LLM 规划**未做。真实 sidecar（Jina 768 + BGE）端到端跑通并记入 [`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)（P1-1 路径已验证，但完整评测刷新 P0-2 仍未做）。详见 [`Improvement_Log.md`](Improvement_Log.md)。
+> **更新 2026-07-27**：LLM 合成线落地——**P2-5**（token 流式）✅、**P1-4 的合成部分**✅（可选 OpenAI，带引用 + 逐 token 流式 + 引用白名单 grounded 1.0）；P1-4 仅剩 **LLM 规划**未做。真实 sidecar（Jina 768 + BGE）端到端跑通并记入 [`Sidecar_Smoke.md`](../en/Sidecar_Smoke.md)（P1-1 路径已验证，但完整评测刷新 P0-2 仍未做）。详见 [`Improvement_Log.md`](Improvement_Log.md)。
 
 ## 如何阅读
 

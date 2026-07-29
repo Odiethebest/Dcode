@@ -15,19 +15,29 @@ Related documents:
 
 ```text
 Dcode/
+├── README.md          entry point: hypothesis, architecture, recorded result, how to run
+├── CLAUDE.md          operational notes for agent sessions (tooling config, not project docs)
+├── Makefile           developer commands — `make help` lists them
 ├── packages/shared/   shared schemas, settings, DB models, SSE events, cache keys
 ├── apps/api/          public FastAPI gateway, repo indexing API, query SSE proxy
 ├── apps/worker/       RabbitMQ consumer and repository indexing pipeline
 ├── apps/agent/        LangGraph agent service with tools and groundedness checks
 ├── apps/eval/         offline evaluation harness and baseline runners
-├── apps/embedding/    optional self-hosted embedding sidecar
-├── apps/reranker/     optional self-hosted cross-encoder reranker sidecar
-├── apps/frontend/     React/Vite UI for indexing, querying, and comparison
+├── apps/embedding/    self-hosted embedding sidecar
+├── apps/reranker/     self-hosted cross-encoder reranker sidecar
+├── apps/frontend/     React/Vite SPA — landing, workbench, methodology
+├── design/            the two HTML prototypes the UI was built from (see design/README.md)
 ├── infra/             Dockerfiles, Alembic migrations, Postgres init
-├── scripts/           local helper scripts
-├── results/           recorded evaluation outputs
-└── docs/              project design, plan, status, and decision records
+├── scripts/           helper scripts, incl. sync_eval_artifacts.py
+├── results/           recorded evaluation runs (see results/README.md for which is current)
+└── docs/              project documentation; docs/archive/ holds development-era records
 ```
+
+Only three markdown files sit at the top level: `README.md` (the front door),
+`CLAUDE.md` (agent session notes), and this repository's `LICENSE`. Everything
+else documentation-shaped lives under `docs/`, with historical records —
+the development-era problem register, its changelog, and the executed frontend
+redesign brief — under `docs/archive/`.
 
 The public entry point is `apps/api`. The frontend uses only `/api/v1/*`; internal retrieval, graph, and agent routes are not public surfaces.
 
@@ -96,11 +106,29 @@ The current checked-in results are useful as a snapshot, but real sidecar mode s
 
 ## Frontend
 
-`apps/frontend` is a React/Vite application with three main surfaces:
+`apps/frontend` is a React 18 + TypeScript (strict) + Vite + Tailwind SPA, around
+2k lines, with four routes:
 
-- Index: submit and monitor repositories;
-- Query: ask repository questions and view citations;
-- Compare: review evaluation snapshots.
+| Route | Surface |
+|---|---|
+| `/workbench` | The product. Topbar repo switcher, a conversational thread driven by the live SSE stream, and a code + call-graph inspector. Clicking a citation opens the real indexed source at the cited line; call-graph neighbours are clickable, so exploration chains through the graph. |
+| `/` | Marketing landing. |
+| `/methodology` | The evaluation story for reviewers, read from the generated snapshot. |
+| `/preview` | Design-system gallery — every shared primitive in every state. |
+
+An earlier IA had one tab per endpoint (`Index` / `Query` / `Compare`); it was
+retired, because it exposed the API's shape rather than the user's task — nobody
+hand-copies a repository UUID between pages.
+
+| Path | Role |
+|---|---|
+| `src/api/client.ts` | The only module that talks to the gateway |
+| `src/api/types.ts` | Hand-mirrored copy of the `dcode_shared` schemas |
+| `src/components/ui/` | Six shared primitives, consuming design tokens only |
+| `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
+| `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-real/` — do not edit |
+| `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Infrastructure
 

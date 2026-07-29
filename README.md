@@ -25,11 +25,21 @@
 - [Deployment](#deployment)
 - [Evaluation Protocol](#evaluation-protocol)
 - [Key Design Decisions](#key-design-decisions)
-- [Technical Design](docs/en/Technical_Design.md)
-- [Project Plan](docs/en/Project_Plan.md)
-- [Outstanding Work (TODO)](docs/en/Outstanding_Work.md)
-- [Repository Structure](docs/en/Repository_Structure.md)
 - [Team](#team)
+
+**Reviewing this project?** [`docs/README.md`](docs/README.md) has a three-step
+path. The short version: this page, then
+[`docs/en/Final_Report.md`](docs/en/Final_Report.md) for the verdict, then run it
+and click a citation.
+
+| Document | What it answers |
+|---|---|
+| [Final Report](docs/en/Final_Report.md) | Does the claim hold? Numbers, the H1 decision, and what would re-open it |
+| [Honesty Constraints](docs/en/Honesty_Constraints.md) | What the UI is allowed to assert, and why — most rules are test-pinned |
+| [Technical Design](docs/en/Technical_Design.md) | Architecture, contracts, data model |
+| [Repository Structure](docs/en/Repository_Structure.md) | Where everything lives |
+| [Outstanding Work](docs/en/Outstanding_Work.md) | What is unfinished, including known regressions |
+| [results/](results/README.md) | Which recorded run is the current conclusion |
 
 ---
 

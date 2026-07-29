@@ -1,0 +1,215 @@
+# Honesty Constraints
+
+This document exists because the project's central claim is narrow and easy to
+fake: **every code reference in an answer is verified against the index before a
+user sees it.** A system can produce a convincing verified-citations interface
+without any verification behind it, and the difference is invisible from a
+screenshot. So the rules below are written down, and most are pinned by tests.
+
+Several of them look like things worth cleaning up. They are not. Each entry
+gives the rule and the reason, because the reason is what stops a later change
+from quietly undoing it.
+
+---
+
+## 1. A turn's state is derived from events, never from time
+
+The agent streams Server-Sent Events. A turn's rendering state is computed purely
+from which events have arrived — never from a timer, an optimistic guess, or a
+"probably done by now".
+
+| State | Condition | What renders |
+|---|---|---|
+| `streaming` | stream open, no terminal event | reasoning trace; answer text types in; **no citation chips, no verified marks, no groundedness score** |
+| `done` | `final_answer` arrived | chips bind, verified marks set from each event's real flag, pill resolves to `grounded X.XX · N tools` |
+| `interrupted` | stream ended **without** `final_answer` | demoted draft, explicitly labelled unverified |
+| `error` | `error` event arrived | error state |
+
+There are no verified marks during streaming for a simple reason: those events do
+not exist yet. Showing them early would mean inventing them. The trace pill reads
+a neutral `reasoning…`, not a premature `grounded 1.00`.
+
+`citation × M` and `final_answer` arrive **together at the end of a run** — the
+agent flushes citations after the graph completes. That is the real backend
+ordering, not a UI simplification, and the UI reflects it: the verified stamp
+appears exactly once, at the moment citations actually arrive. There is no
+token-level "verifying → verified" animation anywhere in the product.
+
+> The landing page's hero card *does* animate verifying → verified. That is
+> marketing motion on a static mock, explicitly not product state, and it is the
+> single exception.
+
+### `done` is gated on `final_answer` alone
+
+Not on "the stream closed". This was a real defect: `closed` was treated as
+settled, so a turn cut short — by pressing Stop, or by a dropped connection —
+rendered its unredacted draft in the authoritative answer voice, bound citation
+chips to it, and left the progress pill spinning forever.
+
+Because every downstream check reads `state === 'done'`, keeping `interrupted` a
+separate state is what keeps chips, sources, and groundedness off an interrupted
+turn without special-casing each one.
+
+## 2. `final_answer.answer` is the authoritative text
+
+Not the concatenation of the streamed `partial_answer` deltas. The groundedness
+guardrail may have **redacted** unverifiable references from the draft, so the
+settled text has to be the post-redaction version.
+
+This means the settled answer can legitimately differ from what you just watched
+stream in. That is the guardrail working, not a flicker bug. Do not "fix" it by
+preferring the streamed text.
+
+## 3. An interrupted turn is shown, but never as an answer
+
+The draft is kept — someone who pressed Stop usually did it to read what was
+there — and demoted so it cannot be mistaken for a result: muted prose, a neutral
+rule down the side, a `Draft · never verified` label, and a plain-language line
+saying it was never checked against the index.
+
+Three specifics matter:
+
+- **Every reference inside stays inert**, even when citation events had already
+  arrived before the abort. Citations flush just before `final_answer`, so that
+  window is real: those citations may each be individually verified while the
+  *text around them* was never redacted. Binding them would stamp a guarantee the
+  turn never earned.
+- **It never enters conversation history.** An unredacted draft fed back as
+  context could reintroduce references that failed verification.
+- **The progress indicator is static.** A pulsing indicator on a stopped stream
+  implies work still happening.
+
+Interrupting stays possible on purpose — real-model runs are slow and the agent
+sometimes goes down the wrong path — but only deliberately, via an explicit Stop
+button. Submitting a new question while one is streaming is blocked, because
+implicit abort-by-submitting is what produced the defect above.
+
+## 4. Three kinds of reference, kept distinct
+
+Matching is keyed on `symbol | file_path | line`.
+
+| Case | Renders as | Why |
+|---|---|---|
+| prose reference **with** a matching citation event | clickable chip, verified per the event, opens the inspector | it is a real verified citation |
+| prose reference with **no** event | **inert** code token — not clickable, no verified implication | with no event there is no "we checked and it failed" signal |
+| citation event with **no** prose match | listed in a per-turn **Sources** footer, clickable | never silently drop a verified citation |
+
+The middle row is the subtle one. It would be tidier to render it as an
+"unverified" chip, and that would be wrong: **unverified** means *checked, and it
+failed*. **No record** means *never checked*. Collapsing them would let the UI
+claim a verification attempt that never happened. Preserving the distinction is
+the point, not an oversight.
+
+Net guarantees: a reference can never look clickable and do nothing, and a
+verified citation can never vanish.
+
+## 5. Verified, unverified, and indexed are three different marks
+
+- **verified** (green, check) — this citation passed the groundedness check.
+- **unverified** (amber, hollow) — this citation was checked and failed. Rendered
+  honestly, never green-checked.
+- **indexed** (neutral grey, list glyph) — this symbol was reached by walking the
+  call graph. It came out of the index, but it never went through groundedness.
+
+The third exists because the inspector lets you walk from a citation to its
+callers and callees. Those nodes are real, but stamping them `verified` would
+claim a check that never ran, and leaving them blank reads as untrustworthy.
+`indexed` says exactly what is known and nothing more. It sits deliberately
+outside the good/warning colour language so it cannot be read as a verdict.
+
+Solid, filled emphasis is reserved for verified and active states. An earlier
+build shipped a filled unverified chip, which made an unverified reference read as
+*more* emphasised — and so more trustworthy — than a verified one. A test pins
+"unverified is never solid".
+
+## 6. Groundedness is deliberately measured before redaction
+
+The score is the fraction of the model's citations that passed verification **in
+the draft**, not in the delivered answer.
+
+The obvious change here is a trap, so it is worth being explicit. Unverifiable
+references are already stripped before the user sees the answer. If the score
+counted only what survived, it would be scoring a set that is verified *by
+construction*, groundedness would sit at ≈1.0 trivially, B4's composite would
+inflate, and the H1 verdict could flip for a purely cosmetic reason. That is
+p-hacking in the costume of a bug fix.
+
+Measured before redaction, the number answers a real question: **how clean was
+the model's draft?** A heavily-redacted answer scores low, which is correct — the
+user got safe output, but the model needed a lot of correcting to produce it.
+
+The consequence is that this guardrail can visibly fail. On the recorded run B4
+scores 0.916 against a pre-registered floor of 0.95, and that is reported as a
+failure rather than explained away. Tightening the synthesis prompt so the model
+cites only from the allowed list is the legitimate fix — it changes the system,
+not the metric — and it has to be reported as its own change.
+
+## 7. Markdown is rendered, never injected
+
+Answers render through a markdown-to-React-element pipeline with no
+`dangerouslySetInnerHTML` and no raw-HTML plugin. Embedded HTML in model output is
+ignored, not executed. XSS-safe by construction rather than by sanitising.
+
+## 8. Source and graph lookups degrade, never fabricate
+
+Clicking a citation fetches real indexed source and highlights the cited line.
+When the exact line is not inside an indexed chunk, resolution falls back in
+order: the chunk containing the line → the symbol's own chunk → a file outline →
+an honest "not indexed at this granularity". It never returns a 500 and never
+returns invented source.
+
+Both design prototypes in `design/` mock the stream, the groundedness score, the
+source, and the graph edges. The shipped UI is driven by real endpoints only.
+Where an endpoint was missing, a thin real one was added — the inspector's source
+and neighbours routes exist for exactly this reason.
+
+## 9. Cached state is not presented as current
+
+When a status request fails, the UI says so rather than falling back to the last
+value as though it were live. The repo switcher shows `status unavailable` when
+the gateway is unreachable, and labels repositories it is not actively polling as
+`last known · <status>`.
+
+Stale data displayed confidently is the same failure as an invented number, and
+harder to notice.
+
+## 10. An incomplete index says so
+
+The indexer skips files that are too large or fail to parse, which makes the
+index incomplete — and therefore makes answers built on it incomplete. The
+switcher shows the skipped count on its **closed** state, not only inside a
+dropdown, and leads with the consequence: *these aren't in the index, so no answer
+can cite them.* A silently partial index lets someone trust a confidently
+incomplete answer.
+
+The same applies to a failed index: show the reason, not just that it failed.
+
+## 11. Displayed numbers are generated, never transcribed
+
+Every evaluation figure in the UI and in the documentation is generated from
+`results/eval-real/` by `scripts/sync_eval_artifacts.py`, and `make check` fails
+if any of them drifts.
+
+This rule was earned. The same defect occurred three times: numbers hand-copied
+into a surface, then reality moved and the copy stayed. It hit the frontend's
+evaluation snapshot (figures from a run that was never archived), the landing
+page's baseline chart (decorative hardcoded bars showing the system winning while
+the methodology page reported the hypothesis unsupported), and the README plus
+this document set (stub-run numbers left in place after the real-model run).
+
+Prose is not generated, so it carries qualitative conclusions only — *H1
+unsupported*, *hybrid retrieval validated*, *the graph's contribution is
+unmeasured*. Any specific figure belongs inside a generated block.
+
+---
+
+## Where these are enforced
+
+Most of the above is pinned by tests in `apps/frontend/tests/` — an interrupted
+turn never renders as settled and never binds chips; an unverified chip is never
+solid; a walked graph node is marked indexed rather than verified; the landing
+chart's bars trace to the snapshot and none is full-width; the methodology page
+names the leading baseline from the data rather than from a hardcoded string.
+
+The intent is that breaking one of these rules breaks a test with a comment
+explaining why the rule exists.

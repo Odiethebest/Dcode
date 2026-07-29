@@ -4,7 +4,11 @@
 
 This document tracks remaining work after the implemented local vertical slice. It replaces the early skeleton task list and should be read with [Final_Report.md](Final_Report.md) and [Sidecar_Smoke.md](Sidecar_Smoke.md).
 
-> The granular, code-level backlog now lives in [`problem.md`](../../problem.md) (open issues; completed items in [`Improvement_Log.md`](../../Improvement_Log.md)). This document keeps the milestone-level view of remaining work.
+> This document is the current view of remaining work. The development-era
+> code-level register is archived at [`problem.md`](../archive/problem.md) with its
+> changelog [`Improvement_Log.md`](../archive/Improvement_Log.md) — both stopped in
+> July 2026 and are history, not status. Operational notes for agent sessions live
+> in [`CLAUDE.md`](../../CLAUDE.md).
 
 Completed:
 

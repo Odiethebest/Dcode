@@ -1,5 +1,19 @@
 # Claude Code brief (v2) — adopt the workbench + landing redesign
 
+> ## 📁 Archived — executed brief, not instruction
+>
+> This is the brief the frontend rebuild was implemented against. **All four
+> phases are complete**, including Phase 4's retirement of the old
+> Index/Query/Compare pages, so it is history: useful for *why the UI is shaped
+> this way*, not for what to do next.
+>
+> Where it and the shipped code disagree, the code won — several decisions were
+> revised during implementation, and the honesty rules in particular grew well
+> beyond what this document specifies. Current references:
+> [`docs/en/Honesty_Constraints.md`](../en/Honesty_Constraints.md),
+> [`design/README.md`](../../design/README.md) for the prototypes it points at,
+> and [`CLAUDE.md`](../../CLAUDE.md) §3 for the visual identity.
+
 > Supersedes v1. Updated after a full read of the codebase: the real architecture is folded in below so you don't re-explore from scratch, the code-inspector endpoints are now concrete, and the thread is a **real multi-turn conversation** (backend changes required).
 
 ## Context
