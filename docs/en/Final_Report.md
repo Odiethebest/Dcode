@@ -283,7 +283,7 @@ everything else is independent of it.
 - **Python only.** The worker parses no other language.
 - Richer graph edges beyond calls / imports / inherits / references — no type
   inference, and inherited `self.method()` calls do not resolve. See
-  [Sidecar_Smoke.md](Sidecar_Smoke.md) for the precise coverage limits.
+  [Operations.md](Operations.md) for the precise coverage limits.
 - Reconsider an LLM planner once retrieval quality is stable. Planning is
   currently keyword routing; answer synthesis is already optional LLM.
 
@@ -312,7 +312,7 @@ Read these as scope, not as defects.
 
 - The default local stack runs `EMBEDDING_MODEL=stub`; the recorded result used
   real host sidecars, which is a deliberate three-command setup
-  ([Sidecar_Smoke.md](Sidecar_Smoke.md)).
+  ([Operations.md](Operations.md)).
 - The graph is **best-effort static evidence**: name-based analysis, no type
   inference, no MRO resolution.
 - The agent planner is rule-based. Only answer synthesis is LLM-backed, and it is
@@ -333,4 +333,4 @@ headless screenshots do not work in the development sandbox, so the UI's
 rendering has only ever been confirmed by a human in a browser. There is no
 automated end-to-end test spanning the browser and a live backend.
 
-Reproducing the real-model path: [Sidecar_Smoke.md](Sidecar_Smoke.md).
+Reproducing the real-model path: [Operations.md](Operations.md).

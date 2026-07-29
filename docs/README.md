@@ -41,7 +41,7 @@ Then, depending on what you want to check:
   distinctive engineering content here.
 - **What is unfinished** → [`en/Final_Report.md`](en/Final_Report.md#outstanding-work),
   including known regressions.
-- **Reproducing the real-model path** → [`en/Sidecar_Smoke.md`](en/Sidecar_Smoke.md).
+- **Reproducing the real-model path** → [`en/Operations.md`](en/Operations.md).
 - **How it was developed** → [`en/Agentic_Workflow.md`](en/Agentic_Workflow.md).
 
 ## Folder Skeleton
@@ -56,7 +56,7 @@ docs/
 │   ├── Database.md               schema, Redis keys, write/read paths, SQL cookbook
 │   ├── Repository_Structure.md   repository layout and module responsibilities
 │   ├── Project_Plan.md           goals, milestones, ownership, risks
-│   ├── Sidecar_Smoke.md          reproducible real embedding/reranker path
+│   ├── Operations.md             running the stack, real-model path, eval harness, gotchas
 │   └── Agentic_Workflow.md       how Claude Code, Codex, and Cursor were cross checked
 ├── ch/                           Chinese counterparts (possibly stale)
 └── archive/                      historical records — not current guidance
@@ -77,7 +77,7 @@ docs/
 | [Database.md](en/Database.md) | [Database_ch.md](ch/Database_ch.md) | Schema, enums, indexes, Redis keyspace, SQL cookbook |
 | [Repository_Structure.md](en/Repository_Structure.md) | [Repository_Structure_ch.md](ch/Repository_Structure_ch.md) | Repository layout and service responsibilities |
 | [Project_Plan.md](en/Project_Plan.md) | [Project_Plan_ch.md](ch/Project_Plan_ch.md) | Execution plan, ownership, milestones, risks, decisions |
-| [Sidecar_Smoke.md](en/Sidecar_Smoke.md) | [Sidecar_Smoke_ch.md](ch/Sidecar_Smoke_ch.md) | Real embedding and reranker integration smoke |
+| [Operations.md](en/Operations.md) | [Sidecar_Smoke_ch.md](ch/Sidecar_Smoke_ch.md) | Real embedding and reranker integration smoke |
 | [Agentic_Workflow.md](en/Agentic_Workflow.md) | [Agentic_Workflow_ch.md](ch/Agentic_Workflow_ch.md) | How the team cross checked Claude Code, Codex, and Cursor |
 
 ## Elsewhere in the repository

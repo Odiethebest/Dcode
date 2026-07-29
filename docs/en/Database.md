@@ -221,7 +221,7 @@ Created in `001_initial_schema.py`.
   and the API's query-side embedder returns `None`, so **dense search is inert
   and hybrid degrades to sparse** (this is why the checked-in eval shows
   B2 = B3 = B4; see `Final_Report.md`). Real vectors require the embedding
-  sidecar (see [`Sidecar_Smoke.md`](Sidecar_Smoke.md)).
+  sidecar (see [`Operations.md`](Operations.md)).
 - **`tsv`** — declared with a GIN index, **but never populated**: the embed
   stage does not write `tsv`, and there is no trigger or generated column. The
   API's "sparse" search does **not** use `tsv` either — it runs
@@ -495,6 +495,6 @@ two newer edge types.
 ## Related documents
 
 - [`Technical_Design.md`](Technical_Design.md) — architecture, API contracts, NFRs
-- [`Sidecar_Smoke.md`](Sidecar_Smoke.md) — real embedding/reranker path + DB-dimension rebuild
+- [`Operations.md`](Operations.md) — real embedding/reranker path + DB-dimension rebuild
 - [`Final_Report.md`](Final_Report.md) — evaluation snapshot and the H1 decision
 - [`Final_Report.md`](Final_Report.md) — remaining work (incl. `tsv`/BM25, richer graph edges)

@@ -17,7 +17,7 @@
 >
 > **拆分 2026-07-26**：已完成项（划线）的实现细节移至 [`Improvement_Log.md`](Improvement_Log.md)；本文件保留全量概览表 + **仅未完成项**的详情 + 改进路线。
 >
-> **更新 2026-07-27**：LLM 合成线落地——**P2-5**（token 流式）✅、**P1-4 的合成部分**✅（可选 OpenAI，带引用 + 逐 token 流式 + 引用白名单 grounded 1.0）；P1-4 仅剩 **LLM 规划**未做。真实 sidecar（Jina 768 + BGE）端到端跑通并记入 [`Sidecar_Smoke.md`](../en/Sidecar_Smoke.md)（P1-1 路径已验证，但完整评测刷新 P0-2 仍未做）。详见 [`Improvement_Log.md`](Improvement_Log.md)。
+> **更新 2026-07-27**：LLM 合成线落地——**P2-5**（token 流式）✅、**P1-4 的合成部分**✅（可选 OpenAI，带引用 + 逐 token 流式 + 引用白名单 grounded 1.0）；P1-4 仅剩 **LLM 规划**未做。真实 sidecar（Jina 768 + BGE）端到端跑通并记入 [`Operations.md`](../en/Operations.md)（P1-1 路径已验证，但完整评测刷新 P0-2 仍未做）。详见 [`Improvement_Log.md`](Improvement_Log.md)。
 
 ## 如何阅读
 
@@ -85,7 +85,7 @@
 - **位置**：`.env.example`（`EMBEDDING_MODEL=stub`/`RERANKER_MODEL=stub`）、`packages/shared/.../settings.py:39-48`。
 - **问题**：stub embedding 返回全零向量 → dense 检索无结果 → hybrid 退化为 sparse；stub reranker = 恒等排序。因此 **B2(dense)=B3(hybrid)=B4** 检索指标完全相同（快照里 Recall@5 均为 0.198）。H1 想比较的正是 dense/hybrid/图谱带来的增量，stub 下这些增量结构性地为零。
 - **影响**：H1 记录为 unsupported 主要是 stub 的必然产物，而非假设本身被证伪。
-- **建议修复**：把"真实模型评测"制度化：按 `docs/en/Sidecar_Smoke.md` 起 embedding(768)+reranker sidecar，`down-all && migrate` 重建 768 维库，重索引 `requests`，再跑 B0–B4。产出对比"stub 基线"与"真实模型"两份结果。
+- **建议修复**：把"真实模型评测"制度化：按 `docs/en/Operations.md` 起 embedding(768)+reranker sidecar，`down-all && migrate` 重建 768 维库，重索引 `requests`，再跑 B0–B4。产出对比"stub 基线"与"真实模型"两份结果。
 - **在途/相关**：`origin/main`（PR #10）已加入加权 RRF（dense:sparse=2:1），但 **stub 下 dense 返回空、权重完全不生效**——只有真实模型才让 B2/B3/B4 分化。未合并分支 `feat/b0-github-search`（`fb86626`, 2026-07-12）已用真实 Jina embedding 刷新过 eval-suite（提交信息："B1/B2/B3/B4 now distinct"），可作为本项起点；但它早于加权 RRF（2026-07-21），合并后需重跑。
 - **工作量**：M。
 
@@ -182,5 +182,5 @@
 - 已完成项记录：[`Improvement_Log.md`](Improvement_Log.md)
 - 设计权威：`docs/en/Technical_Design.md`
 - 现状/遗留：`docs/en/Outstanding_Work.md`、`docs/en/Final_Report.md`（含 H1 结论）
-- 真实模型复现：`docs/en/Sidecar_Smoke.md`
+- 真实模型复现：`docs/en/Operations.md`
 - 仓库结构：`docs/en/Repository_Structure.md`

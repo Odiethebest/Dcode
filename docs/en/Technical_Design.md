@@ -149,7 +149,7 @@ Any failed stage moves the repository to `failed` with an error reason. The pipe
 5. Extract symbols and graph edges.
 6. Mark the repository ready for search and agent queries.
 
-The default local environment uses stub embeddings and an identity-compatible reranker. Real retrieval quality requires the embedding and reranker sidecars described in [Sidecar_Smoke.md](Sidecar_Smoke.md).
+The default local environment uses stub embeddings and an identity-compatible reranker. Real retrieval quality requires the embedding and reranker sidecars described in [Operations.md](Operations.md).
 
 ## Retrieval Design
 

@@ -465,7 +465,7 @@ The async pipeline combines a queue, worker, state machine, and Redis cached emb
 | **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)**                   | Outstanding work      | Now carries its own outstanding-work section: remaining gaps, known limits, deployment follow-ups |
 | **[`docs/en/Final_Report.md`](docs/en/Final_Report.md)** | Final report + H1 decision | Implemented system summary, evaluation snapshot, next steps, and the H1 judgment + re-open criteria |
 | **[`docs/en/Repository_Structure.md`](docs/en/Repository_Structure.md)** | Current repository structure | Current service inventory, implementation boundaries, cross service contracts, suggested ownership |
-| **[`docs/en/Sidecar_Smoke.md`](docs/en/Sidecar_Smoke.md)** | Integration smoke | Reproducible Jina v2, BGE reranker, 768-dim re-index, and agent smoke guide |
+| **[`docs/en/Operations.md`](docs/en/Operations.md)** | Operations | Running the stack, the real-model path, the eval harness, and operational gotchas |
 | **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | Development workflow | How Claude Code, Codex, and Cursor were cross checked during development |
 | **[`docs/archive/`](docs/archive)** | Historical notes | Original kickoff and execution roadmap retained for traceability only |
 

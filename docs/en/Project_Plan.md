@@ -127,4 +127,4 @@ As of the latest documented handoff:
 
 ## Handoff Notes
 
-Future work should begin from the current main branch, run the sidecar smoke in [Sidecar_Smoke.md](Sidecar_Smoke.md), and then refresh the evaluation suite with the same model configuration. Any H1 update should cite the exact result directory and question set version.
+Future work should begin from the current main branch, run the sidecar smoke in [Operations.md](Operations.md), and then refresh the evaluation suite with the same model configuration. Any H1 update should cite the exact result directory and question set version.

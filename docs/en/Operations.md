@@ -1,8 +1,84 @@
-# Real Sidecar Smoke Guide
+# Dcode Operations
 
-## Purpose
+Running the stack, reproducing the real-model path, running the evaluation
+harness, and the failure modes worth recognising before you hit them.
 
-This guide documents the reproducible local smoke flow for running Dcode with real embedding and reranker sidecars. It is intended for later evaluation refreshes, H1 reruns, and Compare page updates.
+## Bringing the stack up
+
+`.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at
+`host.docker.internal:8002`/`8003`, so the models run as **host** sidecars. That
+means three processes, not one:
+
+```bash
+make embedding-host   # :8002 — wait for "Embedding model ready"
+make reranker-host    # :8003 — wait for "Reranker model ready"
+make up               # core stack: postgres, redis, rabbitmq, api, agent, worker
+```
+
+The Docker `embedding` / `reranker` Compose profiles are the alternative and need
+roughly 6 GB of Docker RAM.
+
+```bash
+make ps / make logs / make smoke / make down / make down-all
+make migrate                            # Alembic upgrade head inside the api container
+make check                              # lint + typecheck + tests + eval-artifact drift check
+make frontend-build
+npm --prefix apps/frontend run dev      # → http://localhost:5173/
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+make eval-smoke                         # single-baseline harness smoke
+```
+
+Then in the workbench: index a repository via the switcher, watch
+`queued → … → ready`, select it, and ask. A first real index runs Jina embeddings
+on CPU, so a real repository takes several minutes and **plateaus visibly at the
+embedding stage — that is real work, not a hang.**
+
+### Two startup failure modes
+
+- **`make up` alone** gives a stack whose API reports healthy while every query
+  dies at the embedding step. The sidecars are not optional in this configuration.
+- **A wall of Vite `ECONNREFUSED` on `/api/v1/*`** in the dev-server log means the
+  backend is down, not that the frontend broke.
+
+## Operational gotchas
+
+These have each cost someone real time.
+
+1. **The embedding-dimension trap.** `chunks.embedding` is fixed to whatever
+   `EMBEDDING_DIM` was at migration time. A volume migrated at 768 will reject
+   1024-dim inserts and vice-versa. Match `EMBEDDING_DIM` to the volume, or
+   `make down-all` and re-migrate. This is the single most common way to lose an
+   afternoon here.
+2. **Telling stub vectors from real ones.** Stub embeddings are 1024-dim
+   all-zeros, and they are treated as a cache miss on re-read — so stub mode does
+   no effective caching and rewrites zeros every run. Real Jina v2 vectors are
+   768-dim non-zero floats. One query settles which you have:
+
+   ```sql
+   SELECT vector_dims(embedding), left(embedding::text, 20) FROM chunks LIMIT 1;
+   ```
+
+3. **`tsv` and its GIN index are idle.** The full-text column and index exist but
+   are unused; keyword search goes through `ILIKE`. Do not assume the GIN index is
+   being hit.
+4. **Graph coverage is name-based static analysis only.** No type inference, no
+   MRO resolution for inherited `self.method()` calls, no nested-function or
+   nested-class symbols, and decorators are excluded from chunk and symbol line
+   ranges. Treat the graph as best-effort static evidence.
+5. **In-progress job state has no TTL.** A crashed indexing job leaves a
+   TTL-less `job:{repo_id}` key in Redis until a re-run completes it.
+6. **There is a partial-failure window.** `chunks` (embed stage) and
+   `symbols`/`edges` (graph stage) commit in separate transactions. A failure
+   between them leaves the repo `failed` with new chunks but stale or missing
+   graph rows, until a successful re-index.
+7. **Skipped-file warnings are ephemeral.** They live only in the Redis job state
+   on a 7-day TTL, so an older index honestly reports none rather than a stale
+   count. The UI surfaces them while they exist.
+
+## Real-model smoke
+
+The reproducible local flow for running Dcode with real embedding and reranker
+sidecars — for evaluation refreshes and H1 re-runs.
 
 The smoke validates that:
 
@@ -230,15 +306,31 @@ Expected checkpoints:
 - `citation` events include verified references;
 - `final_answer.groundedness` is `1.0`.
 
-## Follow-Up Evaluation
+## Running the evaluation harness
 
-After the smoke passes, evaluation and frontend owners can:
+Once the smoke passes:
 
-1. rerun B1/B2/B3/B4 with the same real sidecar configuration;
-2. regenerate `results/eval-suite/`;
-3. verify baseline retrieval paths are independent;
-4. update frontend `evalSnapshot.ts`;
-5. reassess H1 from the refreshed results.
+1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
+   results directory. Do not overwrite `results/eval-real/` — see
+   [`results/README.md`](../../results/README.md).
+2. Regenerate every artifact that displays the numbers, then verify:
+
+   ```bash
+   python3 scripts/sync_eval_artifacts.py results/<new-run>
+   npx prettier --write apps/frontend/src/demo/evalSnapshot.ts
+   python3 scripts/sync_eval_artifacts.py --check
+   ```
+
+3. **Re-read the prose.** Tests and the drift check follow the data; the narrative
+   copy in the README, [`Final_Report.md`](Final_Report.md), and the
+   `/methodology` page does not. Correct any claim the new numbers no longer
+   support.
+4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
+   report whichever way it lands.
+
+Before any re-run, read the criteria-set-2 items in `Final_Report.md`. Two of them
+(scoring B4 on its verified evidence set, expanding L3) have to be implemented
+*first* — re-running without them reproduces the same unmeasurable comparison.
 
 ## Verified Run — 2026-07-27
 

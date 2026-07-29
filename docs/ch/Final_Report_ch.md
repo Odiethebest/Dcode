@@ -105,7 +105,7 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 - `find_references(symbol=send)` 返回真实调用方；
 - `/api/v1/query` 可走 agent query flow。
 
-复现流程见 [docs/en/Sidecar_Smoke.md](../en/Sidecar_Smoke.md)。
+复现流程见 [docs/en/Operations.md](../en/Operations.md)。
 
 ## 迭代历史
 
@@ -142,4 +142,4 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 - 两种结果都会公布。修正评分若过线，那是靠"度量了正确的东西"赢来的；若不过，本文就会写"即使把图的贡献算进去，B4 仍未过线"。
 - 目标是**真实的判定**，不是通过的判定。一个带着诊断原因和精确重开条件的诚实零结果，比一个调出来的通过更有说服力。
 
-复现见 [Sidecar_Smoke.md](../en/Sidecar_Smoke.md)。
+复现见 [Operations.md](../en/Operations.md)。
