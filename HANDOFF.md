@@ -248,12 +248,22 @@ npx --prefix apps/frontend vitest run   # 53 tests; most of §6 is pinned here
 python3 scripts/gen_eval_snapshot.py [results/eval-real]
 ```
 
+**`make up` alone is not enough.** `.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at `host.docker.internal:8002`/`8003`, so the models run as **host** sidecars (the Docker `embedding`/`reranker` profiles are the ~6GB-RAM alternative, not the configured path). All three are required, each `*-host` command holding a terminal:
+
+```bash
+make embedding-host   # :8002 — wait for "Embedding model ready"
+make reranker-host    # :8003 — wait for "Reranker model ready"
+make up               # core stack
+```
+
+Without the sidecars the API comes up healthy and the SPA loads, but every query dies at the embedding step. A stack that is entirely down shows up in the browser as nothing but Vite `ECONNREFUSED` on `/api/v1/*` — that log is a backend-is-down signal, not a frontend fault.
+
 Then in the workbench: index a repository via the switcher → watch `queued → … → ready` (a first real index runs Jina embeddings on CPU, so a real repo takes several minutes and **plateaus visibly at the embedding stage — that's real work, not a hang**) → select it → ask.
 
 **Known environment limitations (these are the sandbox's, not the app's):**
 
 - **Headless screenshots don't work** here — headless Chrome hangs on `http://` URLs. Visual verification has to be done by a human in a real browser; report what to look at instead of trying to capture it.
-- **The agent shell cannot reach Docker's published ports** (`localhost:8000` etc.) even with the sandbox off — it's network-isolated from port forwarding. Verify service wiring via Docker healthchecks and in-container cross-service probes instead. A human's browser reaches them normally.
+- ~~**The agent shell cannot reach Docker's published ports.**~~ Re-tested 2026-07-29: `curl localhost:8000/healthz` from the agent shell works, as does `localhost:8002`/`8003` for the host sidecars. The earlier note was probably sandbox-specific rather than a standing limitation — try it before assuming you have to probe from inside a container.
 - **The cyber safeguard false-flags credential-related source work** (§7). Route around it rather than retrying identically.
 
 **Reference data from the live index** (useful for verifying the inspector; recorded here so it doesn't have to be re-derived): the indexed `psf/requests` snapshot used for verification had **726 chunks / 724 symbols / 473 edges** at 768-dim, with ~720 distinct embedding prefixes across 726 vectors — i.e. real, varied embeddings, not stubs. Inspector line numbers and call-graph neighbors were manually verified against this index and matched exactly; nothing fabricated.
