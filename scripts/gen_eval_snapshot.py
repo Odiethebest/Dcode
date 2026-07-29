@@ -248,5 +248,8 @@ for level in ["L2", "L3"]:
         f"B4={c['B4_composite']:.4f} | vsB2={c['margin_vs_B2']:+.4f} "
         f"vsB3={c['margin_vs_B3']:+.4f} supported={c['supported']}"
     )
-print("\ngroundedness by level (B4):", {l: round(levels["B4"][l]["groundedness"], 4) for l in ["L1", "L2", "L3"]})
+print(
+    "\ngroundedness by level (B4):",
+    {lvl: round(levels["B4"][lvl]["groundedness"], 4) for lvl in ["L1", "L2", "L3"]},
+)
 print("demo cases:", DEMO_QUESTIONS)
