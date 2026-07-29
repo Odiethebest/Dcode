@@ -118,7 +118,11 @@ export function InspectorPane({ open, onClose, repoId, citation }: InspectorPane
               Real source and call-graph neighbors appear here when you open a citation.
             </p>
           </div>
-        ) : source.isPending || neighbors.isPending ? (
+        ) : /* `isLoading`, not `isPending`: a disabled query stays `pending`
+               forever, so gating on `isPending` left the pane stuck on
+               "loading source…" whenever the neighbors query was disabled
+               (a focus with no symbol) even though the source had arrived. */
+        source.isLoading || neighbors.isLoading ? (
           <p className="p-6 font-mono text-[11px] text-ink-3">loading source…</p>
         ) : source.isError ? (
           <p className="p-6 text-sm text-bad">Couldn’t load source for this reference.</p>

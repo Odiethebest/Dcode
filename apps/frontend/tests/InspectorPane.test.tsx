@@ -62,17 +62,20 @@ function neighborsFor(symbol: string): SymbolNeighbors {
   };
 }
 
-function renderInspector() {
+function renderInspector(citation: CitationPayload = prepareAuth) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <InspectorPane open onClose={() => {}} repoId="r1" citation={prepareAuth} />
+      <InspectorPane open onClose={() => {}} repoId="r1" citation={citation} />
     </QueryClientProvider>
   );
 }
 
 describe('InspectorPane', () => {
   beforeEach(() => {
+    // Call history is shared across tests in this file; clear it so per-test
+    // "was this endpoint hit?" assertions mean what they say.
+    vi.clearAllMocks();
     vi.mocked(client.getSource).mockImplementation(async (_repo, params) => sourceFor(params.symbol ?? ''));
     vi.mocked(client.getNeighbors).mockImplementation(async (_repo, symbol) => neighborsFor(symbol));
   });
@@ -114,5 +117,16 @@ describe('InspectorPane', () => {
     expect(await screen.findByText('indexed')).toBeInTheDocument();
     expect(screen.queryByText('verified')).toBeNull();
     expect(screen.queryByText('unverified')).toBeNull();
+  });
+
+  it('renders source even when the neighbors query is disabled', async () => {
+    // A citation with no symbol disables the neighbors query. TanStack keeps a
+    // disabled query in `pending` forever, so gating the pane on `isPending`
+    // hung it on "loading source…" with the source already in hand.
+    renderInspector({ ...prepareAuth, symbol: '' });
+
+    expect(await screen.findByText(/r = auth\(self\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/loading source/i)).toBeNull();
+    expect(vi.mocked(client.getNeighbors)).not.toHaveBeenCalled();
   });
 });

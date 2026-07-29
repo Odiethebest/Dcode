@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { buttonClasses } from '@/components/ui';
 import { h1Report, snapshotSource, suiteSummary, type BaselineName } from '@/demo/evalSnapshot';
 import { cx } from '@/lib/cx';
+import { GITHUB_URL } from '@/lib/links';
 
 const LADDER_LABELS: Record<BaselineName, string> = {
   B1: 'BM25 sparse',
@@ -381,7 +382,7 @@ export default function LandingPage() {
               <Link className={buttonClasses('primary', 'lg')} to="/workbench">
                 Open the demo <span className="font-mono text-xs opacity-70">↵</span>
               </Link>
-              <a className={buttonClasses('ghost', 'lg')} href="https://github.com" target="_blank" rel="noreferrer">
+              <a className={buttonClasses('ghost', 'lg')} href={GITHUB_URL} target="_blank" rel="noreferrer">
                 View on GitHub
               </a>
             </div>

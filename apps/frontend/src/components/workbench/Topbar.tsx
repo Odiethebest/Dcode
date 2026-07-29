@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { RepoSwitcher } from '@/components/workbench/RepoSwitcher';
 import { cx } from '@/lib/cx';
+import { GITHUB_URL } from '@/lib/links';
 
 const navLinkClass = 'rounded-lg px-2.5 py-[7px] text-[13.5px] text-ink-2 transition hover:bg-sunk hover:text-ink';
 
@@ -70,7 +71,7 @@ export function Topbar({ activeRepoId, onSelectRepo, onToggleRail, onToggleCode 
         <Link to="/methodology" className={navLinkClass}>
           Methodology
         </Link>
-        <a href="https://github.com" target="_blank" rel="noreferrer" className={navLinkClass}>
+        <a href={GITHUB_URL} target="_blank" rel="noreferrer" className={navLinkClass}>
           GitHub
         </a>
       </nav>

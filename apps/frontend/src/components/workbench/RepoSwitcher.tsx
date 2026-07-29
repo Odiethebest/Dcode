@@ -100,20 +100,31 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
     },
   });
   const liveStatus = statusQuery.data;
+  const liveRepoId = liveStatus?.repo_id;
+  const liveRepoStatus = liveStatus?.status;
+  const liveRepoUrl = liveStatus?.url;
 
   // Persist the active repo's live status back into the recents cache.
+  //
+  // Keyed on the primitive fields rather than the response object: polling hands
+  // back a new object every 1.5s, so depending on it rewrote localStorage on
+  // every tick of an index that can run for minutes. Reads from storage rather
+  // than from `recents` so the write stays out of a state updater (StrictMode
+  // double-invokes those) and doesn't need `recents` in the dependency list.
   useEffect(() => {
-    if (!liveStatus) return;
-    setRecents((current) => {
-      const existing = current.find((item) => item.repoId === liveStatus.repo_id);
-      return saveRecentRepo({
-        repoId: liveStatus.repo_id,
-        url: existing?.url ?? liveStatus.url,
-        status: liveStatus.status,
+    if (!liveRepoId || !liveRepoStatus) return;
+    const existing = loadRecentRepos().find((item) => item.repoId === liveRepoId);
+    if (existing?.status === liveRepoStatus) return;
+    setRecents(
+      saveRecentRepo({
+        repoId: liveRepoId,
+        // Prefer the URL the user actually typed over the server's normalised one.
+        url: existing?.url ?? liveRepoUrl ?? '',
+        status: liveRepoStatus,
         savedAt: existing?.savedAt ?? new Date().toISOString(),
-      });
-    });
-  }, [liveStatus]);
+      })
+    );
+  }, [liveRepoId, liveRepoStatus, liveRepoUrl]);
 
   const activeRepo = useMemo(
     () => recents.find((item) => item.repoId === activeRepoId) ?? null,
