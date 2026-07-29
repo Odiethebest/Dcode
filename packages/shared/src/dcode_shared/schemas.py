@@ -5,6 +5,7 @@ Services MUST import these types rather than redefining.
 """
 
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,10 +75,17 @@ class RepoCreateRequest(BaseModel):
 
 
 class RepoCreateResponse(BaseModel):
-    """POST /api/v1/repos response body (202 Accepted)."""
+    """POST /api/v1/repos response body (202 Accepted, or 200 OK when reused)."""
 
     repo_id: UUID
     status: RepoStatus
+    reused: bool = Field(
+        False,
+        description=(
+            "True when an existing repo with the same URL was returned instead of "
+            "cloning and indexing it again. Nothing was queued."
+        ),
+    )
 
 
 class StagesStatus(BaseModel):
@@ -106,11 +114,26 @@ class RepoStatusResponse(BaseModel):
 # ===========================================================================
 
 
+class QueryTurn(BaseModel):
+    """One prior conversation turn, sent by the client on a follow-up query.
+
+    History is client-supplied on every request (services stay stateless); the
+    gateway bounds it before it reaches the planner or the cache key.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class QueryRequest(BaseModel):
     """POST /api/v1/query request body."""
 
     repo_id: UUID
     query: str = Field(..., min_length=1)
+    history: list[QueryTurn] = Field(
+        default_factory=list,
+        description="Prior turns for multi-turn follow-ups (bounded by the gateway).",
+    )
 
 
 # ===========================================================================
@@ -148,3 +171,45 @@ class Location(BaseModel):
     file_path: str
     line: int
     chunk_id: UUID | None = None
+
+
+# ===========================================================================
+# Inspector API (read-only source + call graph — Phase 2 workbench)
+# ===========================================================================
+
+
+class SourceResponse(BaseModel):
+    """GET /api/v1/repos/{repo_id}/source response.
+
+    `granularity` records how the source was resolved so the UI renders an
+    honest state rather than a cold empty pane. Never 500s: an unresolved
+    citation returns found=false / granularity="none".
+    """
+
+    found: bool
+    granularity: Literal["chunk", "symbol_chunk", "file_outline", "none"]
+    file_path: str | None = None
+    symbol_name: str | None = None
+    chunk_type: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    cited_line: int | None = None
+    content: str | None = None
+    outline: list[Location] = Field(default_factory=list)
+    language: str = "python"
+
+
+class SymbolNeighbors(BaseModel):
+    """GET /api/v1/repos/{repo_id}/neighbors response — call-graph neighbors.
+
+    Each neighbor is a Location (carrying file:line + chunk_id), so the UI can
+    click through to its source and walk the graph.
+    """
+
+    found: bool
+    symbol: str | None = None
+    file_path: str | None = None
+    line: int | None = None
+    called_by: list[Location] = Field(default_factory=list)
+    calls: list[Location] = Field(default_factory=list)
+    references: list[Location] = Field(default_factory=list)

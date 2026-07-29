@@ -15,8 +15,13 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT_SECONDS = 120.0
-_DEFAULT_MAX_RETRIES = 12
+# Query-time rerank must stay interactive: a bounded read timeout (then fail
+# fast and let the caller degrade to fused order) and few retries. Retries cover
+# a still-warming model server (ConnectError), NOT slow inference (ReadTimeout) —
+# retrying a slow CPU rerank just piles duplicate work onto a single-threaded
+# model server and makes everything slower.
+_DEFAULT_TIMEOUT_SECONDS = 20.0
+_DEFAULT_MAX_RETRIES = 3
 
 
 class RerankerClient(ABC):
@@ -76,7 +81,6 @@ class HttpRerankerClient(RerankerClient):
                 except (
                     httpx.RemoteProtocolError,
                     httpx.ConnectError,
-                    httpx.ReadTimeout,
                     httpx.HTTPStatusError,
                 ) as exc:
                     if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code not in {

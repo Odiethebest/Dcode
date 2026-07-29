@@ -1,0 +1,10 @@
+{
+  "baseline": "B1",
+  "questions": 16,
+  "k": 5,
+  "recall_at_k": 0.21354166666666666,
+  "mrr": 0.22083333333333333,
+  "ndcg_at_k": 0.20391186865251767,
+  "groundedness": 1.0,
+  "pairwise_win_rate": null
+}

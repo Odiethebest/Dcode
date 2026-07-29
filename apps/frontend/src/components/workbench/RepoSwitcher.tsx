@@ -1,0 +1,368 @@
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { getRepoStatus, submitRepo } from '@/api/client';
+import type { RepoStatusResponse } from '@/api/types';
+import type { PillStatus } from '@/components/ui';
+import { cx } from '@/lib/cx';
+import { loadRecentRepos, saveRecentRepo, type RecentRepoRecord } from '@/lib/recentRepos';
+import { toKnownRepoStatus } from '@/lib/repoStatus';
+
+const TERMINAL = new Set(['ready', 'failed']);
+
+/** Collapse the 7 repo states onto the three StatusPill buckets. */
+function bucketOf(status: string): PillStatus {
+  const s = toKnownRepoStatus(status);
+  if (s === 'ready') return 'ready';
+  if (s === 'failed') return 'failed';
+  return 'indexing';
+}
+
+/**
+ * Human label for a repo's live status. The active repo is polled, so we show
+ * the moving stage (cloning → parsing → embedding → graphing) rather than a
+ * frozen coarse percentage — progress is set per-stage, so the bar sits still
+ * for the whole (slow, real-model) embedding stage and reads as "stuck". The
+ * stage name changing is the reassurance that it's working.
+ */
+export function repoStatusLabel(status: string): string {
+  const s = toKnownRepoStatus(status);
+  if (s === 'ready') return 'ready';
+  if (s === 'failed') return 'failed';
+  if (s === 'queued') return 'queued';
+  return `indexing · ${s}`;
+}
+
+/** owner/repo from a git URL, for a compact switcher label. */
+function repoSlug(url: string): string {
+  const cleaned = url.replace(/\.git$/, '').replace(/\/+$/, '');
+  const parts = cleaned.split('/').filter(Boolean);
+  return parts.slice(-2).join('/') || url;
+}
+
+const dotColor: Record<PillStatus, string> = {
+  ready: 'bg-good',
+  indexing: 'bg-warn',
+  failed: 'bg-bad',
+};
+
+// Poll fast while a repo is moving, but don't hammer a gateway that is down:
+// with the backend unreachable there is no terminal status to stop on, so a
+// fixed interval retries forever. Back off, and snap back on the next success.
+const POLL_MS = 1500;
+const POLL_MS_OFFLINE = 15000;
+
+export interface RepoSwitcherProps {
+  activeRepoId: string | null;
+  onSelect: (repoId: string) => void;
+}
+
+/**
+ * Topbar repo switcher (replaces the Index page). Lists the localStorage
+ * recents, polls the active repo's live status (GET /repos/{id}/status) so
+ * `indexing…` progress shows in place, and indexes a new repo (POST /repos)
+ * from the dropdown. Selecting a repo scopes the whole workbench to it.
+ */
+export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
+  const [open, setOpen] = useState(false);
+  const [recents, setRecents] = useState<RecentRepoRecord[]>(() => loadRecentRepos());
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const submit = useMutation({
+    mutationFn: submitRepo,
+    onSuccess: (response, variables) => {
+      setRecents(
+        saveRecentRepo({
+          repoId: response.repo_id,
+          url: variables.url,
+          status: response.status,
+          savedAt: new Date().toISOString(),
+        })
+      );
+      onSelect(response.repo_id);
+      setAdding(false);
+      setUrl('');
+      // Submitting an already-indexed repo now switches to it rather than
+      // re-cloning. Say so — silently jumping to `ready` would read as an
+      // implausibly fast index rather than as the no-op it is.
+      setNotice(response.reused ? 'Already indexed — switched to it.' : null);
+    },
+  });
+
+  const statusQuery = useQuery({
+    queryKey: ['repo-status', activeRepoId],
+    queryFn: () => getRepoStatus(activeRepoId as string),
+    enabled: Boolean(activeRepoId),
+    refetchInterval: (query) => {
+      const data = query.state.data as RepoStatusResponse | undefined;
+      if (data && TERMINAL.has(data.status)) return false;
+      return query.state.status === 'error' ? POLL_MS_OFFLINE : POLL_MS;
+    },
+  });
+  const liveStatus = statusQuery.data;
+  const liveRepoId = liveStatus?.repo_id;
+  const liveRepoStatus = liveStatus?.status;
+  const liveRepoUrl = liveStatus?.url;
+
+  // Persist the active repo's live status back into the recents cache.
+  //
+  // Keyed on the primitive fields rather than the response object: polling hands
+  // back a new object every 1.5s, so depending on it rewrote localStorage on
+  // every tick of an index that can run for minutes. Reads from storage rather
+  // than from `recents` so the write stays out of a state updater (StrictMode
+  // double-invokes those) and doesn't need `recents` in the dependency list.
+  useEffect(() => {
+    if (!liveRepoId || !liveRepoStatus) return;
+    const existing = loadRecentRepos().find((item) => item.repoId === liveRepoId);
+    if (existing?.status === liveRepoStatus) return;
+    setRecents(
+      saveRecentRepo({
+        repoId: liveRepoId,
+        // Prefer the URL the user actually typed over the server's normalised one.
+        url: existing?.url ?? liveRepoUrl ?? '',
+        status: liveRepoStatus,
+        savedAt: existing?.savedAt ?? new Date().toISOString(),
+      })
+    );
+  }, [liveRepoId, liveRepoStatus, liveRepoUrl]);
+
+  const activeRepo = useMemo(
+    () => recents.find((item) => item.repoId === activeRepoId) ?? null,
+    [recents, activeRepoId]
+  );
+
+  // We couldn't reach the gateway, so we don't know this repo's state. The
+  // stored status is the last thing we saw, not a fact about now — showing a
+  // confident green "ready" for a repo we can't reach claims something we
+  // can't check. Fall back to an explicit unknown instead.
+  const unreachable = Boolean(activeRepoId) && statusQuery.isError;
+
+  // Files the worker couldn't index, and why an index failed. Both come from
+  // the status poll; `error` is a durable DB column, `warnings` lives only in
+  // the Redis job state (7-day TTL), so an old index reports an empty list
+  // rather than a wrong one.
+  const skipped = liveStatus?.warnings ?? [];
+  const failure = liveStatus?.status === 'failed' ? liveStatus.error : null;
+  const activeBucket = liveStatus
+    ? bucketOf(liveStatus.status)
+    : unreachable || !activeRepo
+      ? null
+      : bucketOf(activeRepo.status);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex items-center gap-2.5 rounded-[10px] border border-line-2 bg-surface px-3 py-[7px] transition hover:border-brand hover:bg-brand-wash"
+      >
+        <span
+          className={cx('h-[7px] w-[7px] flex-none rounded-full', activeBucket ? dotColor[activeBucket] : 'bg-ink-3')}
+          aria-hidden="true"
+        />
+        <span className="max-w-[180px] truncate font-mono text-[13px] font-medium text-ink">
+          {activeRepo ? repoSlug(activeRepo.url) : 'select a repo'}
+        </span>
+        {activeBucket === 'indexing' && liveStatus && (
+          <span className="flex-none font-mono text-[11px] text-warn">· {liveStatus.status}</span>
+        )}
+        {unreachable && (
+          <span className="flex-none font-mono text-[11px] text-ink-3">· status unavailable</span>
+        )}
+        {/* An incomplete index changes what answers can possibly say, so it gets
+            a marker on the closed switcher rather than living behind a click. */}
+        {skipped.length > 0 && (
+          <span
+            className="flex-none rounded-full bg-warn-wash px-1.5 py-px font-mono text-[10px] font-medium text-warn"
+            title={`${skipped.length} file(s) were skipped when indexing this repo`}
+          >
+            {skipped.length} skipped
+          </span>
+        )}
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 14 14"
+          fill="none"
+          className={cx('flex-none text-ink-3 transition-transform', open && 'rotate-180')}
+          aria-hidden="true"
+        >
+          <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-40 min-w-[300px] rounded-xl border border-line bg-surface p-1.5 shadow-[0_24px_48px_-22px_rgba(27,24,38,0.4)]">
+          <div className="px-3 pb-1.5 pt-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
+            Indexed repositories
+          </div>
+
+          {recents.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-ink-3">None yet — index one below.</p>
+          ) : (
+            recents.map((repo) => {
+              const isActive = repo.repoId === activeRepoId;
+              const live = isActive ? liveStatus : undefined;
+              const unknown = isActive && unreachable;
+              // Only the active repo is polled. It shows its real moving stage;
+              // if the gateway is unreachable it shows nothing rather than a
+              // stale certainty, and the rest are labelled as last-known so a
+              // cached "ready" isn't read as a live one.
+              const bucket = live
+                ? bucketOf(live.status)
+                : unknown
+                  ? null
+                  : bucketOf(repo.status);
+              const progress = live && bucket === 'indexing' ? live.progress : null;
+              const meta = live
+                ? repoStatusLabel(live.status)
+                : unknown
+                  ? 'status unavailable'
+                  : `last known · ${bucketOf(repo.status)}`;
+              return (
+                <button
+                  key={repo.repoId}
+                  type="button"
+                  onClick={() => {
+                    onSelect(repo.repoId);
+                    setOpen(false);
+                  }}
+                  className={cx(
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-sunk',
+                    isActive && 'bg-brand-wash'
+                  )}
+                >
+                  <span
+                    className={cx(
+                      'h-[7px] w-[7px] flex-none rounded-full',
+                      bucket ? dotColor[bucket] : 'bg-ink-3'
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-[13px] text-ink">{repoSlug(repo.url)}</span>
+                    <span className="mt-0.5 block text-[11px] text-ink-3">{meta}</span>
+                  </span>
+                  {progress != null && (
+                    <span className="h-1 w-11 flex-none overflow-hidden rounded-full bg-sunk" aria-hidden="true">
+                      <span className="block h-full bg-warn" style={{ width: `${progress}%` }} />
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+
+          {failure && (
+            <div className="mt-1 border-t border-line bg-bad-wash px-3 py-2.5">
+              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-bad">
+                Indexing failed
+              </div>
+              <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-bad">
+                {failure}
+              </p>
+            </div>
+          )}
+
+          {skipped.length > 0 && (
+            <div className="mt-1 border-t border-line bg-warn-wash px-3 py-2.5">
+              <button
+                type="button"
+                onClick={() => setShowSkipped((value) => !value)}
+                aria-expanded={showSkipped}
+                className="flex w-full items-center justify-between gap-2 text-left font-mono text-[11px] font-medium text-warn"
+              >
+                {skipped.length} file{skipped.length === 1 ? '' : 's'} skipped while indexing
+                <span aria-hidden="true">{showSkipped ? '−' : '+'}</span>
+              </button>
+              {/* The point isn't the file list, it's what it implies about answers. */}
+              <p className="mt-1 text-[11px] leading-relaxed text-warn">
+                These aren&rsquo;t in the index, so no answer can cite them.
+              </p>
+              {showSkipped && (
+                <ul className="mt-2 space-y-1 border-t border-warn/25 pt-2">
+                  {skipped.map((warning) => (
+                    <li key={warning} className="break-all font-mono text-[10.5px] text-warn">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {adding ? (
+            <form
+              className="border-t border-line p-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const trimmed = url.trim();
+                if (trimmed) submit.mutate({ url: trimmed });
+              }}
+            >
+              <input
+                autoFocus
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="https://github.com/owner/repo.git"
+                className="w-full rounded-md border border-line-2 bg-paper px-2.5 py-2 font-mono text-[12px] text-ink outline-none transition focus:border-brand"
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={submit.isPending}
+                  className="flex-1 rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {submit.isPending ? 'Submitting…' : 'Index'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdding(false);
+                    setUrl('');
+                  }}
+                  className="rounded-md border border-line-2 px-3 py-1.5 text-sm text-ink-2 transition hover:bg-sunk"
+                >
+                  Cancel
+                </button>
+              </div>
+              {submit.isError && (
+                <p className="mt-2 text-[12px] text-bad">Couldn’t queue that repo — check the URL.</p>
+              )}
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setNotice(null);
+                setAdding(true);
+              }}
+              className="mt-1 flex w-full items-center gap-2 rounded-b-lg border-t border-line px-3 py-2.5 text-left text-[13px] font-semibold text-brand transition hover:bg-brand-wash"
+            >
+              + Index a new repository
+            </button>
+          )}
+
+          {notice && (
+            <p className="border-t border-line px-3 py-2.5 font-mono text-[11px] text-ink-2">
+              {notice}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

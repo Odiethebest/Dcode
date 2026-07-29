@@ -1,0 +1,359 @@
+# Dcode Operations
+
+Running the stack, reproducing the real-model path, running the evaluation
+harness, and the failure modes worth recognising before you hit them.
+
+## Bringing the stack up
+
+`.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at
+`host.docker.internal:8002`/`8003`, so the models run as **host** sidecars. That
+means three processes, not one:
+
+```bash
+make embedding-host   # :8002 — wait for "Embedding model ready"
+make reranker-host    # :8003 — wait for "Reranker model ready"
+make up               # core stack: postgres, redis, rabbitmq, api, agent, worker
+```
+
+The Docker `embedding` / `reranker` Compose profiles are the alternative and need
+roughly 6 GB of Docker RAM.
+
+```bash
+make ps / make logs / make smoke / make down / make down-all
+make migrate                            # Alembic upgrade head inside the api container
+make check                              # lint + typecheck + tests + eval-artifact drift check
+make frontend-build
+npm --prefix apps/frontend run dev      # → http://localhost:5173/
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+make eval-smoke                         # single-baseline harness smoke
+```
+
+Then in the workbench: index a repository via the switcher, watch
+`queued → … → ready`, select it, and ask. A first real index runs Jina embeddings
+on CPU, so a real repository takes several minutes and **plateaus visibly at the
+embedding stage — that is real work, not a hang.**
+
+### Two startup failure modes
+
+- **`make up` alone** gives a stack whose API reports healthy while every query
+  dies at the embedding step. The sidecars are not optional in this configuration.
+- **A wall of Vite `ECONNREFUSED` on `/api/v1/*`** in the dev-server log means the
+  backend is down, not that the frontend broke.
+
+## Operational gotchas
+
+These have each cost someone real time.
+
+1. **The embedding-dimension trap.** `chunks.embedding` is fixed to whatever
+   `EMBEDDING_DIM` was at migration time. A volume migrated at 768 will reject
+   1024-dim inserts and vice-versa. Match `EMBEDDING_DIM` to the volume, or
+   `make down-all` and re-migrate. This is the single most common way to lose an
+   afternoon here.
+2. **Telling stub vectors from real ones.** Stub embeddings are 1024-dim
+   all-zeros, and they are treated as a cache miss on re-read — so stub mode does
+   no effective caching and rewrites zeros every run. Real Jina v2 vectors are
+   768-dim non-zero floats. One query settles which you have:
+
+   ```sql
+   SELECT vector_dims(embedding), left(embedding::text, 20) FROM chunks LIMIT 1;
+   ```
+
+3. **`tsv` and its GIN index are idle.** The full-text column and index exist but
+   are unused; keyword search goes through `ILIKE`. Do not assume the GIN index is
+   being hit.
+4. **Graph coverage is name-based static analysis only.** No type inference, no
+   MRO resolution for inherited `self.method()` calls, no nested-function or
+   nested-class symbols, and decorators are excluded from chunk and symbol line
+   ranges. Treat the graph as best-effort static evidence.
+5. **In-progress job state has no TTL.** A crashed indexing job leaves a
+   TTL-less `job:{repo_id}` key in Redis until a re-run completes it.
+6. **There is a partial-failure window.** `chunks` (embed stage) and
+   `symbols`/`edges` (graph stage) commit in separate transactions. A failure
+   between them leaves the repo `failed` with new chunks but stale or missing
+   graph rows, until a successful re-index.
+7. **Skipped-file warnings are ephemeral.** They live only in the Redis job state
+   on a 7-day TTL, so an older index honestly reports none rather than a stale
+   count. The UI surfaces them while they exist.
+
+## Real-model smoke
+
+The reproducible local flow for running Dcode with real embedding and reranker
+sidecars — for evaluation refreshes and H1 re-runs.
+
+The smoke validates that:
+
+- the worker writes 768-dimensional Jina v2 embeddings;
+- the API returns real dense and rerank score components;
+- the worker graph stage writes real call edges;
+- the agent consumes the unchanged internal API contract;
+- `/api/v1/query` returns SSE answers with verified citations.
+
+This guide covers integration smoke. Full metrics should still come from the evaluation suite.
+
+## Recommended Configuration
+
+| Item | Value |
+|---|---|
+| Embedding model | `jinaai/jina-embeddings-v2-base-code` |
+| Embedding dimension | `768` |
+| Embedding endpoint | `http://host.docker.internal:8002` |
+| Reranker model | `BAAI/bge-reranker-v2-m3` |
+| Reranker endpoint | `http://host.docker.internal:8003` |
+| Target repository | `https://github.com/psf/requests.git` |
+
+## Prerequisites
+
+- Docker Desktop is running.
+- Python and `uv` are available.
+- Commands are run from the repository root.
+- `.env` contains local database, Redis, RabbitMQ, and internal API key settings.
+- The first model run can download weights from Hugging Face.
+- A machine with at least 16 GB RAM is recommended.
+
+Run the baseline checks first:
+
+```bash
+git status --short --branch
+git pull --ff-only
+make check
+```
+
+## Configure Environment
+
+Set the real sidecar values in `.env`:
+
+```dotenv
+EMBEDDING_MODEL=jinaai/jina-embeddings-v2-base-code
+EMBEDDING_DIM=768
+EMBEDDING_ENDPOINT=http://host.docker.internal:8002
+
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+RERANKER_ENDPOINT=http://host.docker.internal:8003
+```
+
+Do not commit `.env`.
+
+## Rebuild the Database Volume
+
+`chunks.embedding` has a fixed pgvector dimension after migration. If the database was initialized with `EMBEDDING_DIM=1024`, switching directly to Jina v2 768-dimensional vectors will fail.
+
+Check the current dimension:
+
+```bash
+docker compose up -d postgres
+docker compose exec -T postgres psql -U dcode -d dcode \
+  -c "select atttypmod from pg_attribute where attrelid='chunks'::regclass and attname='embedding';"
+```
+
+If the result is `1024`, rebuild the local volume:
+
+```bash
+docker compose down -v
+docker compose up -d postgres redis rabbitmq
+docker compose up -d api worker agent frontend
+make migrate
+```
+
+Confirm the dimension is now `768`:
+
+```bash
+docker compose exec -T postgres psql -U dcode -d dcode \
+  -c "select atttypmod from pg_attribute where attrelid='chunks'::regclass and attname='embedding';"
+```
+
+This deletes local database and worker volumes. Use it only for disposable local smoke environments.
+
+## Start Sidecars
+
+Start the embedding host in one terminal:
+
+```bash
+make embedding-host
+```
+
+Wait for:
+
+```text
+Embedding model ready. max_seq_length=1024
+```
+
+Start the reranker host in another terminal:
+
+```bash
+make reranker-host
+```
+
+Wait for:
+
+```text
+Reranker model ready
+```
+
+Health checks:
+
+```bash
+curl -fsS http://localhost:8002/healthz
+curl -fsS http://localhost:8003/healthz
+```
+
+## Rebuild Services
+
+```bash
+docker compose build api worker agent
+docker compose up -d api worker agent frontend postgres redis rabbitmq
+make migrate
+make smoke
+```
+
+Confirm the API container sees the real configuration:
+
+```bash
+docker compose exec -T api env | rg '^(EMBEDDING_MODEL|EMBEDDING_DIM|EMBEDDING_ENDPOINT|RERANKER_MODEL|RERANKER_ENDPOINT)='
+```
+
+## Re-Index `psf/requests`
+
+Submit the repository:
+
+```bash
+curl -fsS -X POST http://localhost:8000/api/v1/repos \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://github.com/psf/requests.git"}'
+```
+
+Record the returned `repo_id`, then poll:
+
+```bash
+curl -fsS "http://localhost:8000/api/v1/repos/<repo_id>/status" | python3 -m json.tool
+```
+
+The final status should be `ready` with all stages marked `done`.
+
+## Validate Database State
+
+Check chunks, symbols, and graph edges:
+
+```bash
+docker compose exec -T postgres psql -U dcode -d dcode \
+  -c "select r.id, r.status, r.progress, count(distinct c.id) as chunks, count(distinct s.id) as symbols from repos r left join chunks c on c.repo_id=r.id left join symbols s on s.repo_id=r.id where r.id='<repo_id>' group by r.id;"
+
+docker compose exec -T postgres psql -U dcode -d dcode \
+  -c "select vector_dims(embedding) as dims, count(*) from chunks where repo_id='<repo_id>' group by dims;"
+
+docker compose exec -T postgres psql -U dcode -d dcode \
+  -c "select edge_type, count(*) from edges where repo_id='<repo_id>' group by edge_type order by edge_type;"
+```
+
+Recent local smoke reference values:
+
+| Item | Value |
+|---|---:|
+| chunks | 726 |
+| symbols | 724 |
+| embedding dims | 768 |
+| calls | 303 |
+| imports | 65 |
+
+## Validate Internal API
+
+```bash
+export REPO_ID=<repo_id>
+export INTERNAL_API_KEY=dev-internal-key-change-me
+```
+
+Search should return real dense and rerank score components:
+
+```bash
+curl -fsS "http://localhost:8000/internal/search?repo_id=${REPO_ID}&query=HTTPBasicAuth%20Authorization%20header&k=5" \
+  -H "X-Dcode-Internal-Key: ${INTERNAL_API_KEY}" \
+  | python3 -m json.tool
+```
+
+Reference lookup should return real callers for `send`:
+
+```bash
+curl -fsS "http://localhost:8000/internal/find_references?repo_id=${REPO_ID}&symbol=send" \
+  -H "X-Dcode-Internal-Key: ${INTERNAL_API_KEY}" \
+  | python3 -m json.tool
+```
+
+Expected references include:
+
+- `src.requests.sessions.SessionRedirectMixin.resolve_redirects`
+- `src.requests.sessions.Session.request`
+
+## Validate Agent SSE
+
+Clear local Redis query cache:
+
+```bash
+docker compose exec -T redis redis-cli FLUSHDB
+```
+
+Run the public query flow:
+
+```bash
+curl -fsS -N -X POST http://localhost:8000/api/v1/query \
+  -H 'Content-Type: application/json' \
+  -d "{\"repo_id\":\"${REPO_ID}\",\"query\":\"Who calls send in requests?\"}"
+```
+
+Expected checkpoints:
+
+- `thought` routes to `find_references`;
+- `tool_call.args.symbol` is `send`;
+- `tool_result` includes at least two locations;
+- `citation` events include verified references;
+- `final_answer.groundedness` is `1.0`.
+
+## Running the evaluation harness
+
+Once the smoke passes:
+
+1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
+   results directory. Do not overwrite `results/eval-real/` — see
+   [`results/README.md`](../../results/README.md).
+2. Regenerate every artifact that displays the numbers, then verify:
+
+   ```bash
+   python3 scripts/sync_eval_artifacts.py results/<new-run>
+   npx prettier --write apps/frontend/src/demo/evalSnapshot.ts
+   python3 scripts/sync_eval_artifacts.py --check
+   ```
+
+3. **Re-read the prose.** Tests and the drift check follow the data; the narrative
+   copy in the README, [`Final_Report.md`](Final_Report.md), and the
+   `/methodology` page does not. Correct any claim the new numbers no longer
+   support.
+4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
+   report whichever way it lands.
+
+Before any re-run, read the criteria-set-2 items in `Final_Report.md`. Two of them
+(scoring B4 on its verified evidence set, expanding L3) have to be implemented
+*first* — re-running without them reproduces the same unmeasurable comparison.
+
+## Verified Run — 2026-07-27
+
+A local real-model run against the committed `psf/requests` index (768-dim
+Jina, `repo_id` `bfe447be…`) confirmed the full path end-to-end. Sidecars were
+launched on the host via `make embedding-host` / `make reranker-host` (both host
+scripts export `PYTHONPATH` so the workspace app is importable); the API ran in
+Docker with `EMBEDDING_MODEL` / `RERANKER_MODEL` pointed at the host sidecars.
+
+- **Semantic retrieval works with zero keyword overlap.** For the query
+  *"how does it attach the user credentials to prove identity to the server"*
+  (no `auth` / `Authorization` / `HTTPBasicAuth` tokens): `mode=sparse` returned
+  only unrelated `tests/` files, while `mode=dense` returned
+  `src/requests/auth.py` (the `HTTP*Auth` constructors, cosine ≈ 0.52) as the top
+  hits.
+- **The reranker improves precision.** For *"store and reuse cookies across
+  multiple requests"*, `mode=dense` returned five `tests/test_requests.py` hits;
+  the full `mode=hybrid` (BGE reranker) flipped all five to
+  `src/requests/{sessions,cookies}.py`.
+- **Agent SSE end-to-end.** `POST /api/v1/query` ran `plan → search_code`
+  (top hit `src/requests/auth.py`) `→ read_file → find_references →
+  get_file_outline → synthesize`, emitting 14 citations all `verified=True` with
+  `groundedness=1.0`.
+
+Caveat unchanged: the agent planner/synthesis are rule-based, so the final
+answer is a grounded, citation-backed trace rather than LLM prose.

@@ -4,7 +4,7 @@
 
 This document is the technical authority for Dcode. It describes the system architecture, service boundaries, data model, API contracts, non-functional requirements, technology choices, and implementation decisions that guide the codebase.
 
-For execution planning, ownership, milestones, and risks, see [Project_Plan.md](Project_Plan.md). For the project overview and setup instructions, see [README.md](../../README.md).
+For the project overview and the recorded evaluation result, see the [root README](../../README.md); for the H1 verdict and outstanding work, [Final_Report.md](Final_Report.md); for running the stack, [Operations.md](Operations.md).
 
 ## System Overview
 
@@ -14,6 +14,57 @@ Dcode is a structure-aware code understanding platform for repository onboarding
 - a static graph of symbols, imports, and best-effort call edges.
 
 An agent consumes those surfaces through internal APIs and streams grounded answers through the public API gateway. Every answer is expected to include code citations that can be checked against indexed repository evidence.
+
+## Repository Layout
+
+```text
+Dcode/
+├── README.md          entry point: hypothesis, architecture, recorded result, how to run
+├── CLAUDE.md          operational notes for agent sessions (tooling config, not project docs)
+├── Makefile           developer commands — `make help` lists them
+├── packages/shared/   shared schemas, settings, DB models, SSE events, cache keys
+├── apps/api/          public FastAPI gateway, repo indexing API, query SSE proxy
+├── apps/worker/       RabbitMQ consumer and repository indexing pipeline
+├── apps/agent/        LangGraph agent service with tools and groundedness checks
+├── apps/eval/         offline evaluation harness and baseline runners
+├── apps/embedding/    self-hosted embedding sidecar
+├── apps/reranker/     self-hosted cross-encoder reranker sidecar
+├── apps/frontend/     React/Vite SPA — landing, workbench, methodology
+├── design/            the two HTML prototypes the UI was built from (see design/README.md)
+├── infra/             Dockerfiles, Alembic migrations, Postgres init
+├── scripts/           helper scripts, incl. sync_eval_artifacts.py
+├── results/           recorded evaluation runs (see results/README.md for which is current)
+└── docs/              project documentation; docs/archive/ holds development-era records
+```
+
+`apps/api` is the only public entry point. The frontend calls `/api/v1/*`
+exclusively; internal retrieval, graph, and agent routes are not public surfaces.
+
+### Frontend surfaces
+
+`apps/frontend` is a React 18 + TypeScript (strict) + Vite + Tailwind SPA of
+roughly 2k lines, with four routes:
+
+| Route | Surface |
+|---|---|
+| `/workbench` | The product. Topbar repo switcher, a conversational thread driven by the live SSE stream, and a code + call-graph inspector. Clicking a citation opens the real indexed source at the cited line; call-graph neighbours are clickable, so exploration chains through the graph. |
+| `/` | Marketing landing. |
+| `/methodology` | The evaluation story for reviewers, read from the generated snapshot. |
+| `/preview` | Design-system gallery — every shared primitive in every state. |
+
+An earlier information architecture had one tab per endpoint (`Index` / `Query` /
+`Compare`). It was retired because it exposed the API's shape rather than the
+user's task — nobody hand-copies a repository UUID between pages.
+
+| Path | Role |
+|---|---|
+| `src/api/client.ts` | The only module that talks to the gateway |
+| `src/api/types.ts` | Hand-mirrored copy of the `dcode_shared` schemas |
+| `src/components/ui/` | Six shared primitives, consuming design tokens only |
+| `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
+| `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-real/` — do not edit |
+| `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Runtime Architecture
 
@@ -35,7 +86,31 @@ The API is the only public backend entry point. The frontend talks to `/api/v1/*
 
 ## Data Model
 
-The core database tables are:
+The authoritative schema is the Alembic migration under `infra/alembic/`; the
+SQLAlchemy models in `packages/shared/src/dcode_shared/db/models.py` mirror it.
+This section covers the shape and the reasoning, not the DDL.
+
+### Storage topology
+
+| Store | Role | Durable? |
+|---|---|---|
+| **PostgreSQL 15 + pgvector** | `repos`, `chunks`, `symbols`, `edges` — vectors *and* graph in one instance | Yes (`postgres_data` volume) |
+| **Redis 7** | Embedding cache, tool cache, query-SSE cache, live job-state snapshot | No — cache, TTL per key |
+| **RabbitMQ** | Durable indexing job queue (`dcode.index_jobs`) — transport, not storage | Message-durable |
+| **Repo workdir volume** | Cloned repository source on disk, read by the agent's filesystem tools | Yes (`repo_workdirs`) |
+
+**Why vectors and the graph share one PostgreSQL instance** rather than adding a
+dedicated vector service: one connection pool, one backup boundary, and one
+consistency model. A citation's chunk and its graph neighbours are read in the
+same transaction, so the inspector cannot show source from one snapshot and
+edges from another. The cost is that vector search is bounded by what pgvector
+does, which at this corpus size is not the constraint.
+
+Redis holds only derived state. Losing it costs cache warmth and the live
+per-stage progress snapshot; nothing authoritative. That is why indexing status
+merges a durable Postgres row with an optional Redis overlay.
+
+### Tables
 
 | Table | Purpose |
 |---|---|
@@ -43,6 +118,12 @@ The core database tables are:
 | `chunks` | Code and documentation chunks, sparse `tsv`, and dense embedding vectors |
 | `symbols` | Module, class, function, and method definitions extracted from Python AST |
 | `edges` | Static relationships such as imports, calls, inheritance, and references |
+
+`chunks` carries both retrieval surfaces on the same row — an HNSW index on
+`embedding` for dense search and a GIN index on `tsv` for full-text — so hybrid
+retrieval fuses two rankings over one table rather than joining two stores.
+`edges` is indexed in both directions (`source_id` and `target_id`), which is what
+makes reverse lookups such as *who calls this?* a single indexed query.
 
 Important constraints:
 
@@ -68,7 +149,7 @@ Any failed stage moves the repository to `failed` with an error reason. The pipe
 5. Extract symbols and graph edges.
 6. Mark the repository ready for search and agent queries.
 
-The default local environment uses stub embeddings and an identity-compatible reranker. Real retrieval quality requires the embedding and reranker sidecars described in [Sidecar_Smoke.md](Sidecar_Smoke.md).
+The default local environment uses stub embeddings and an identity-compatible reranker. Real retrieval quality requires the embedding and reranker sidecars described in [Operations.md](Operations.md).
 
 ## Retrieval Design
 

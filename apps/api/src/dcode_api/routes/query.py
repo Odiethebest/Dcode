@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 import httpx
 from dcode_shared.cache import query_cache_key
 from dcode_shared.events import ErrorEvent, ThoughtEvent, sse_encode
-from dcode_shared.schemas import QueryRequest
+from dcode_shared.schemas import QueryRequest, QueryTurn
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
@@ -51,7 +51,14 @@ async def _stream_query(
     redis: Redis,
     body: QueryRequest,
 ) -> AsyncIterator[bytes]:
-    cache_key = query_cache_key(str(body.repo_id), body.query)
+    # Bound history once so the planner, the proxied agent body, and the cache
+    # key all see the same trimmed turns.
+    body.history = _bounded_history(body.history)
+    cache_key = query_cache_key(
+        str(body.repo_id),
+        body.query,
+        history=[turn.model_dump() for turn in body.history],
+    )
     cached = await _query_cache_get(redis, cache_key)
     if cached is not None:
         yield cached.encode("utf-8")
@@ -100,6 +107,39 @@ async def _proxy_to_agent(
             "error",
             ErrorEvent(code="AGENT_UNAVAILABLE", message=str(exc)),
         )
+
+
+def _bounded_history(history: list[QueryTurn]) -> list[QueryTurn]:
+    """Trim conversation history to the gateway's turn / char budget.
+
+    Bounds protect the planner context, the LLM token budget, and the cache
+    key. The most recent turns are kept (oldest dropped first) and each turn's
+    content is clipped; the newest turn is clipped to the remaining budget
+    rather than dropped, so a follow-up never loses its immediate context.
+    """
+    if not history:
+        return []
+    max_turns = api_settings.query_history_max_turns
+    max_total = api_settings.query_history_max_chars
+    max_turn = api_settings.query_history_max_turn_chars
+
+    recent = history[-max_turns:] if max_turns > 0 else list(history)
+    bounded: list[QueryTurn] = []
+    total = 0
+    for turn in reversed(recent):  # newest first, so the freshest context wins
+        if max_total > 0 and total >= max_total:
+            break
+        content = turn.content
+        if max_turn > 0:
+            content = content[:max_turn]
+        if max_total > 0:
+            content = content[: max_total - total]
+        if not content:
+            continue
+        total += len(content)
+        bounded.append(QueryTurn(role=turn.role, content=content))
+    bounded.reverse()
+    return bounded
 
 
 async def _query_cache_get(redis: Redis, key: str) -> str | None:

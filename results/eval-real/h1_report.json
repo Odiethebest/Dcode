@@ -1,0 +1,27 @@
+{
+  "decision": "unsupported",
+  "threshold": 0.05,
+  "compared_taxonomies": [
+    "L2",
+    "L3"
+  ],
+  "comparisons": {
+    "L2": {
+      "B2_composite": 0.44836832986802616,
+      "B3_composite": 0.5859857761715682,
+      "B4_composite": 0.5615066095049016,
+      "margin_vs_B2": 0.11313827963687545,
+      "margin_vs_B3": -0.024479166666666607,
+      "supported": false
+    },
+    "L3": {
+      "B2_composite": 0.3148769465274487,
+      "B3_composite": 0.3705542412167085,
+      "B4_composite": 0.3235845442470115,
+      "margin_vs_B2": 0.00870759771956281,
+      "margin_vs_B3": -0.046969696969696995,
+      "supported": false
+    }
+  },
+  "note": "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 composite points on both L2 and L3."
+}

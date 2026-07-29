@@ -319,6 +319,30 @@ async def test_rerank_candidates_applies_cross_encoder_scores(
     assert reranked[1].rerank_score == 0.42
 
 
+async def test_rerank_candidates_degrades_to_fused_order_when_reranker_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow/unavailable reranker must degrade to fused (RRF) order, not blow up
+    the whole search (the bug that produced 'No observations were produced')."""
+
+    class BoomReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            raise RuntimeError("reranker too slow (ReadTimeout)")
+
+    monkeypatch.setattr(internal, "_get_query_reranker_client", lambda: BoomReranker())
+    hi = _chunk_row("sessions.py", "SessionRedirectMixin", 109)
+    lo = _chunk_row("auth.py", "HTTPBasicAuth", 85)
+    candidates = [
+        internal.SearchCandidate(row=hi, fused_score=0.9),
+        internal.SearchCandidate(row=lo, fused_score=0.1),
+    ]
+
+    result = await internal._rerank_candidates("auth", candidates)
+
+    assert [candidate.row.id for candidate in result] == [hi.id, lo.id]
+    assert result[0].rerank_score == result[0].fused_score
+
+
 async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dcode — ask a codebase, read the receipts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== tokens: same system as the Dcode landing + app ===== */
+:root{
+  --paper:#EEEDF2; --surface:#FBFBFD; --sunk:#E7E6EE; --sunk-2:#EDECF1;
+  --ink:#1B1826; --ink-2:#575369; --ink-3:#8B8799;
+  --line:#DDDBE6; --line-2:#CBC8D8;
+  --brand:#3A2FA0; --brand-hover:#2C2380; --brand-wash:#E7E4F7;
+  --good:#1F7A46; --good-wash:#DEEFE3;
+  --bad:#C23A2B; --warn:#9A6A15; --warn-wash:#F0E6D0;
+  --font-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --font-sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden}
+:focus-visible{outline:2.5px solid var(--brand);outline-offset:2px;border-radius:4px}
+button{font-family:inherit;cursor:pointer;border:0;background:none}
+.mono{font-family:var(--font-mono)}
+.eyebrow{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+
+/* ===== app shell ===== */
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+
+/* topbar */
+.topbar{display:flex;align-items:center;gap:16px;height:58px;padding:0 20px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(8px);flex:none;z-index:30}
+.brand{font-family:var(--font-display);font-weight:600;font-size:21px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:8px}
+.brand .dot{width:6px;height:6px;border-radius:50%;background:var(--brand);transform:translateY(-2px)}
+.brand-sep{width:1px;height:22px;background:var(--line-2)}
+
+/* repo switcher */
+.repo-switch{position:relative}
+.repo-btn{display:flex;align-items:center;gap:10px;padding:7px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--surface);transition:border-color .14s,background .14s}
+.repo-btn:hover{border-color:var(--brand);background:var(--brand-wash)}
+.repo-btn .rdot{width:7px;height:7px;border-radius:50%;background:var(--good);flex:none}
+.repo-btn .rname{font-family:var(--font-mono);font-size:13px;color:var(--ink);font-weight:500}
+.repo-btn .chev{color:var(--ink-3);transition:transform .18s}
+.repo-switch.open .chev{transform:rotate(180deg)}
+.repo-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:290px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 48px -22px rgba(27,24,38,.4);padding:6px;opacity:0;visibility:hidden;transform:translateY(-6px);transition:.18s;z-index:40}
+.repo-switch.open .repo-menu{opacity:1;visibility:visible;transform:none}
+.repo-menu .mlabel{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:10px 12px 6px}
+.repo-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;cursor:pointer;transition:background .12s}
+.repo-item:hover{background:var(--sunk)}
+.repo-item .rdot{width:7px;height:7px;border-radius:50%;flex:none}
+.repo-item .rdot.ready{background:var(--good)} .repo-item .rdot.idx{background:var(--warn)}
+.repo-item .who{flex:1;min-width:0}
+.repo-item .slug{font-family:var(--font-mono);font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.repo-item .meta{font-size:11px;color:var(--ink-3);margin-top:1px}
+.repo-item .prog{width:44px;height:4px;border-radius:100px;background:var(--sunk);overflow:hidden;flex:none}
+.repo-item .prog>i{display:block;height:100%;background:var(--warn)}
+.repo-add{display:flex;align-items:center;gap:9px;padding:11px 12px;border-top:1px solid var(--line);margin-top:4px;color:var(--brand);font-size:13px;font-weight:600;width:100%;text-align:left;border-radius:0 0 9px 9px}
+.repo-add:hover{background:var(--brand-wash)}
+
+.top-spacer{flex:1}
+.top-links{display:flex;gap:4px}
+.top-links a{font-size:13.5px;color:var(--ink-2);padding:7px 11px;border-radius:8px;text-decoration:none;transition:.14s}
+.top-links a:hover{color:var(--ink);background:var(--sunk)}
+.icon-btn{width:36px;height:36px;border-radius:9px;display:none;align-items:center;justify-content:center;color:var(--ink-2)}
+.icon-btn:hover{background:var(--sunk)}
+
+/* ===== body: three panes ===== */
+.body{flex:1;display:grid;grid-template-columns:262px 1fr 384px;min-height:0}
+
+/* left rail */
+.rail{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:color-mix(in srgb,var(--paper) 60%,var(--surface))}
+.rail-top{padding:16px 16px 12px}
+.new-q{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--brand);color:#fff;font-weight:600;font-size:14px;padding:11px;border-radius:10px;box-shadow:0 1px 0 rgba(27,24,38,.18);transition:background .15s}
+.new-q:hover{background:var(--brand-hover)}
+.rail-scroll{flex:1;overflow-y:auto;padding:6px 10px 16px}
+.rail-group{margin-top:14px}
+.rail-group>.eyebrow{padding:0 8px 8px}
+.thread-item{display:block;width:100%;text-align:left;padding:10px 10px;border-radius:9px;cursor:pointer;transition:background .12s;border-left:2px solid transparent}
+.thread-item:hover{background:var(--sunk)}
+.thread-item.active{background:var(--brand-wash);border-left-color:var(--brand)}
+.thread-item .qt{font-family:var(--font-display);font-size:14.5px;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.thread-item.active .qt{color:var(--brand)}
+.thread-item .qm{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);margin-top:4px}
+
+/* ===== center: conversation ===== */
+.thread{display:flex;flex-direction:column;min-height:0;position:relative}
+.thread-scroll{flex:1;overflow-y:auto;padding:8px 0 24px}
+.thread-inner{max-width:720px;margin:0 auto;padding:0 40px}
+
+.turn{padding:34px 0;border-bottom:1px solid var(--line)}
+.turn:last-child{border-bottom:0}
+.q-block{display:flex;gap:13px;margin-bottom:22px}
+.q-mark{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding-top:8px;flex:none;width:34px}
+.q-text{font-family:var(--font-display);font-size:24px;line-height:1.28;letter-spacing:-.01em;color:var(--ink);font-weight:500}
+
+/* answer */
+.a-block{padding-left:47px}
+.trace{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-mono);font-size:11.5px;color:var(--good);background:var(--good-wash);padding:5px 12px;border-radius:100px;margin-bottom:18px;cursor:pointer;transition:background .14s}
+.trace:hover{background:#d3ead9}
+.trace .tick{display:inline-flex}.trace .tick svg{width:12px;height:12px}
+.trace .steps{color:var(--ink-2);border-left:1px solid var(--line-2);padding-left:10px}
+.trace .chev{transition:transform .18s;color:var(--ink-2)}
+.turn.trace-open .trace .chev{transform:rotate(90deg)}
+.trace-body{display:none;margin:-6px 0 20px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.turn.trace-open .trace-body{display:block}
+.ev{position:relative;padding:0 0 14px 26px}
+.ev:last-child{padding-bottom:0}
+.ev::before{content:"";position:absolute;left:5px;top:15px;bottom:-2px;width:1.5px;background:var(--line)}
+.ev:last-child::before{display:none}
+.ev .knob{position:absolute;left:0;top:5px;width:11px;height:11px;border-radius:50%;background:var(--surface);border:2px solid var(--line-2)}
+.ev[data-k=thought] .knob{border-color:var(--brand)}
+.ev[data-k=tool] .knob{background:var(--ink-2);border-color:var(--ink-2)}
+.ev[data-k=graph] .knob{background:var(--good);border-color:var(--good)}
+.ev .kind{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.ev .body{font-size:13px;color:var(--ink);margin-top:2px}
+.ev .body .mono{font-size:11.5px;color:var(--ink-2)}
+
+.answer{font-family:var(--font-display);font-size:18px;line-height:1.62;color:var(--ink)}
+.answer p{margin:0 0 14px}.answer p:last-child{margin-bottom:0}
+.answer strong{font-weight:600}
+.answer code{font-family:var(--font-mono);font-size:.8em;background:var(--sunk);padding:1.5px 6px;border-radius:6px;white-space:nowrap}
+.cite{font-family:var(--font-mono);font-size:.76em;color:var(--brand);background:var(--brand-wash);padding:2px 7px;border-radius:6px;white-space:nowrap;cursor:pointer;border:1px solid transparent;transition:.12s;vertical-align:1px}
+.cite:hover{border-color:var(--brand)}
+.cite.active{background:var(--brand);color:#fff}
+.cite::before{content:"⟦";opacity:.5;margin-right:1px}.cite::after{content:"⟧";opacity:.5;margin-left:1px}
+
+/* reveal for streamed items */
+.stream{opacity:0;transform:translateY(8px)}
+.stream.in{opacity:1;transform:none;transition:opacity .45s ease,transform .45s ease}
+
+/* composer */
+.composer-wrap{flex:none;border-top:1px solid var(--line);background:color-mix(in srgb,var(--paper) 80%,transparent);backdrop-filter:blur(8px);padding:14px 0 18px}
+.composer-inner{max-width:720px;margin:0 auto;padding:0 40px}
+.suggest{display:flex;gap:8px;margin-bottom:11px;flex-wrap:wrap}
+.chip{font-family:var(--font-sans);font-size:12.5px;color:var(--ink-2);border:1px solid var(--line-2);background:var(--surface);padding:7px 12px;border-radius:100px;transition:.14s}
+.chip:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-wash)}
+.composer{display:flex;align-items:flex-end;gap:10px;border:1px solid var(--line-2);border-radius:14px;background:var(--surface);padding:8px 8px 8px 16px;transition:border-color .15s,box-shadow .15s}
+.composer:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-wash)}
+.composer textarea{flex:1;border:0;outline:0;resize:none;background:none;font-family:var(--font-sans);font-size:15px;color:var(--ink);line-height:1.5;padding:8px 0;max-height:120px}
+.send{width:40px;height:40px;border-radius:10px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;transition:background .15s}
+.send:hover{background:var(--brand-hover)}
+.composer-note{text-align:center;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);margin-top:10px}
+
+/* ===== right: code + graph inspector ===== */
+.inspector{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--surface)}
+.insp-head{flex:none;padding:16px 18px;border-bottom:1px solid var(--line)}
+.insp-head .file{font-family:var(--font-mono);font-size:12.5px;color:var(--ink);word-break:break-all;font-weight:500}
+.insp-head .sym{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.insp-head .sym .s{font-family:var(--font-mono);font-size:11px;color:var(--ink-2)}
+.insp-head .verified{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:9.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--good);background:var(--good-wash);padding:3px 8px;border-radius:100px}
+.insp-head .verified svg{width:10px;height:10px}
+.insp-close{display:none;position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:8px;color:var(--ink-2)}
+.insp-close:hover{background:var(--sunk)}
+.insp-scroll{flex:1;overflow-y:auto}
+
+.codeblock{font-family:var(--font-mono);font-size:12.5px;line-height:1.62;padding:14px 0;overflow-x:auto;background:var(--sunk-2)}
+.cl{display:flex;padding:0 16px;white-space:pre}
+.cl .ln{color:var(--ink-3);width:34px;flex:none;text-align:right;padding-right:16px;user-select:none;opacity:.75}
+.cl .code{color:var(--ink)}
+.cl.cited{background:var(--brand-wash);box-shadow:inset 3px 0 0 var(--brand)}
+.cl.cited .ln{color:var(--brand);opacity:1}
+.tok-kw{color:var(--brand)}
+.tok-str{color:var(--good)}
+.tok-com{color:var(--ink-3);font-style:italic}
+.tok-def{color:var(--ink);font-weight:600}
+
+.graph{padding:18px}
+.graph h4{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px;font-weight:500}
+.ggroup{margin-bottom:20px}
+.ggroup:last-child{margin-bottom:0}
+.glabel{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:var(--ink-2);margin-bottom:9px}
+.glabel .gi{width:15px;height:15px;flex:none;color:var(--ink-3)}
+.gnode{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;transition:.14s;width:100%;text-align:left}
+.gnode:last-child{margin-bottom:0}
+.gnode.nav{cursor:pointer}
+.gnode.nav:hover{border-color:var(--brand);background:var(--brand-wash);transform:translateX(2px)}
+.gnode .gs{font-family:var(--font-mono);font-size:12px;color:var(--ink)}
+.gnode .gs .sym{color:var(--brand)}
+.gnode .gloc{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);flex:none}
+.gnode .arrow{color:var(--ink-3);flex:none}
+.gnode.static{opacity:.85}
+
+/* scrim for mobile drawers */
+.scrim{position:fixed;inset:0;background:rgba(20,17,30,.4);opacity:0;visibility:hidden;transition:.2s;z-index:45}
+.scrim.on{opacity:1;visibility:visible}
+
+/* scrollbars */
+.rail-scroll::-webkit-scrollbar,.thread-scroll::-webkit-scrollbar,.insp-scroll::-webkit-scrollbar,.codeblock::-webkit-scrollbar{width:9px;height:9px}
+.rail-scroll::-webkit-scrollbar-thumb,.thread-scroll::-webkit-scrollbar-thumb,.insp-scroll::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:100px;border:2px solid transparent;background-clip:padding-box}
+
+/* ===== responsive ===== */
+@media (max-width:1180px){
+  .body{grid-template-columns:240px 1fr}
+  .inspector{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:88vw;z-index:50;border-left:1px solid var(--line);box-shadow:-20px 0 50px -30px rgba(27,24,38,.5);transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.7,.2,1)}
+  .app.show-code .inspector{transform:none}
+  .insp-close{display:flex}
+}
+@media (max-width:760px){
+  .body{grid-template-columns:1fr}
+  .rail{position:fixed;top:0;bottom:0;left:0;width:280px;max-width:84vw;z-index:50;transform:translateX(-100%);transition:transform .26s cubic-bezier(.2,.7,.2,1)}
+  .app.show-rail .rail{transform:none}
+  .icon-btn{display:flex}
+  .top-links{display:none}
+  .thread-inner,.composer-inner{padding:0 22px}
+  .q-text{font-size:21px}
+  .answer{font-size:16.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition-duration:.001ms !important;animation-duration:.001ms !important}
+  .stream{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===== topbar ===== -->
+  <header class="topbar">
+    <button class="icon-btn" id="railToggle" aria-label="History">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    </button>
+    <div class="brand">Dcode<span class="dot"></span></div>
+    <div class="brand-sep"></div>
+
+    <div class="repo-switch" id="repoSwitch">
+      <button class="repo-btn" id="repoBtn">
+        <span class="rdot"></span>
+        <span class="rname" id="repoName">encode/httpx</span>
+        <svg class="chev" width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="repo-menu">
+        <div class="mlabel">Indexed repositories</div>
+        <div class="repo-item" data-repo="encode/httpx"><span class="rdot ready"></span><span class="who"><span class="slug">encode/httpx</span><span class="meta">ready · 1,204 symbols</span></span></div>
+        <div class="repo-item" data-repo="psf/requests"><span class="rdot ready"></span><span class="who"><span class="slug">psf/requests</span><span class="meta">ready · 892 symbols</span></span></div>
+        <div class="repo-item" data-repo="your-org/payments-svc"><span class="rdot idx"></span><span class="who"><span class="slug">your-org/payments-svc</span><span class="meta">indexing · embedding</span></span><span class="prog"><i style="width:62%"></i></span></div>
+        <button class="repo-add">+ Index a new repository</button>
+      </div>
+    </div>
+
+    <div class="top-spacer"></div>
+    <nav class="top-links">
+      <a href="#">About</a>
+      <a href="#">Methodology</a>
+      <a href="#">GitHub</a>
+    </nav>
+    <button class="icon-btn" id="codeToggle" aria-label="Code">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7 5l-4 5 4 5M13 5l4 5-4 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+
+  <div class="body">
+
+    <!-- ===== left rail: history ===== -->
+    <aside class="rail">
+      <div class="rail-top"><button class="new-q" id="newQ">+ New question</button></div>
+      <div class="rail-scroll" id="railScroll">
+        <div class="rail-group">
+          <div class="eyebrow">Today · encode/httpx</div>
+          <button class="thread-item active" data-goto="t1"><span class="qt">How is authentication wired end to end?</span><span class="qm">3 citations · grounded 1.00</span></button>
+          <button class="thread-item" data-goto="t2"><span class="qt">Basic vs Digest auth — what's the difference?</span><span class="qm">2 citations · grounded 1.00</span></button>
+        </div>
+        <div class="rail-group">
+          <div class="eyebrow">Earlier</div>
+          <button class="thread-item" data-goto=""><span class="qt">Where does retry / backoff live?</span><span class="qm">4 citations</span></button>
+          <button class="thread-item" data-goto=""><span class="qt">How does connection pooling work?</span><span class="qm">5 citations</span></button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===== center: conversation ===== -->
+    <main class="thread">
+      <div class="thread-scroll" id="threadScroll">
+        <div class="thread-inner" id="threadInner">
+
+          <!-- turn 1 -->
+          <section class="turn trace-open-none" id="t1">
+            <div class="q-block"><div class="q-mark">Asked</div><h2 class="q-text">How is authentication wired end to end?</h2></div>
+            <div class="a-block">
+              <button class="trace" data-trace><span class="tick"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.3 4.8-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>grounded 1.00 <span class="steps">3 tools · 4 steps</span><svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2.5l3.5 3.5L4 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <div class="trace-body">
+                <div class="ev" data-k="thought"><span class="knob"></span><div class="kind">Thought</div><div class="body">Auth spans a callable + the prepared-request lifecycle. Retrieve, then trace the graph.</div></div>
+                <div class="ev" data-k="tool"><span class="knob"></span><div class="kind">search_code</div><div class="body mono">"authentication flow", k=6 → 6 chunks</div></div>
+                <div class="ev" data-k="graph"><span class="knob"></span><div class="kind">get_dependencies</div><div class="body">HTTPBasicAuth → resolved callers &amp; callees</div></div>
+                <div class="ev" data-k="thought"><span class="knob"></span><div class="kind">Thought</div><div class="body">Compose a grounded answer; verify every citation against the symbol table.</div></div>
+              </div>
+              <div class="answer">
+                <p>Credentials ride the <strong>prepared-request lifecycle</strong>, not the socket. When you pass <code>auth=(user, pass)</code>, the request builds a <code>PreparedRequest</code> and calls <code>prepare_auth</code> <span class="cite" data-cite="models471">models.py:471</span>, which resolves the auth object and invokes it on the request.</p>
+                <p>For basic auth that object is <strong>HTTPBasicAuth</strong>: its <code>__call__</code> sets the <code>Authorization</code> header <span class="cite" data-cite="auth85">auth.py:85</span>, delegating the actual encoding to <code>_basic_auth_str</code> <span class="cite" data-cite="auth34">auth.py:34</span>. Nothing touches the connection until the header is already attached.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- turn 2 -->
+          <section class="turn" id="t2">
+            <div class="q-block"><div class="q-mark">Asked</div><h2 class="q-text">Basic vs Digest auth — what's the difference?</h2></div>
+            <div class="a-block">
+              <button class="trace" data-trace><span class="tick"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.3 4.8-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>grounded 1.00 <span class="steps">1 tool · 2 steps</span><svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2.5l3.5 3.5L4 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <div class="trace-body">
+                <div class="ev" data-k="tool"><span class="knob"></span><div class="kind">search_code</div><div class="body mono">"HTTPDigestAuth", k=4 → 4 chunks</div></div>
+                <div class="ev" data-k="thought"><span class="knob"></span><div class="kind">Thought</div><div class="body">Contrast the two AuthBase subclasses from their definitions.</div></div>
+              </div>
+              <div class="answer">
+                <p><strong>HTTPBasicAuth</strong> is stateless — one <code>__call__</code> attaches a base64 header every time <span class="cite" data-cite="auth85">auth.py:85</span>. <strong>HTTPDigestAuth</strong> is a handshake: it hooks the response, reads the server's nonce, and re-sends with a computed digest <span class="cite" data-cite="auth124">auth.py:124</span> — so it carries per-request state that basic auth never needs.</p>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div class="composer-wrap">
+        <div class="composer-inner">
+          <div class="suggest" id="suggest">
+            <button class="chip" data-ask>Who calls HTTPBasicAuth?</button>
+            <button class="chip" data-ask>What breaks if I change prepare_auth?</button>
+          </div>
+          <div class="composer">
+            <textarea id="input" rows="1" placeholder="Ask a follow-up about encode/httpx…" spellcheck="false"></textarea>
+            <button class="send" id="send" aria-label="Send">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 16V4M5 9l5-5 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="composer-note">answers stay in this thread · every citation is verified before it appears</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ===== right: inspector ===== -->
+    <aside class="inspector" id="inspector">
+      <div class="insp-head" style="position:relative">
+        <button class="insp-close" id="inspClose" aria-label="Close"><svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+        <div class="file" id="inspFile">src/requests/auth.py</div>
+        <div class="sym"><span class="s" id="inspSym">HTTPBasicAuth.__call__ · line 85</span><span class="verified"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.3 4.8-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>verified</span></div>
+      </div>
+      <div class="insp-scroll">
+        <div class="codeblock" id="codeblock"></div>
+        <div class="graph" id="graph"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  var app = document.getElementById('app');
+
+  /* ---------------- code + graph data ---------------- */
+  var L = function(n,t,cited){ return {n:n,t:t,cited:!!cited}; };
+  var SNIPPETS = {
+    auth85:{ file:'src/requests/auth.py', sym:'HTTPBasicAuth.__call__ · line 85',
+      lines:[
+        L(83,'class HTTPBasicAuth(AuthBase):'),
+        L(84,'    """Attaches HTTP Basic Authentication to the given request."""'),
+        L(85,'    def __call__(self, r):', true),
+        L(86,"        r.headers['Authorization'] = _basic_auth_str("),
+        L(87,'            self.username, self.password'),
+        L(88,'        )'),
+        L(89,'        return r'),
+      ],
+      calledBy:[{s:'PreparedRequest.prepare_auth', loc:'models.py:471', to:'models471'}],
+      calls:[{s:'_basic_auth_str', loc:'auth.py:34', to:'auth34'}],
+      refs:[{s:'test_set_basicauth', loc:'test_requests.py:563'}]
+    },
+    models471:{ file:'src/requests/models.py', sym:'PreparedRequest.prepare_auth · line 471',
+      lines:[
+        L(469,'    def prepare_auth(self, auth, url=""):'),
+        L(470,'        """Prepares the given HTTP auth data."""'),
+        L(471,'        if auth is None:', true),
+        L(472,'            url_auth = get_auth_from_url(self.url)'),
+        L(473,'            auth = url_auth if any(url_auth) else None'),
+        L(474,'        if auth:'),
+        L(475,'            if isinstance(auth, tuple) and len(auth) == 2:'),
+        L(476,'                auth = HTTPBasicAuth(*auth)'),
+        L(477,'            r = auth(self)   # apply the auth callable'),
+        L(478,'            self.__dict__.update(r.__dict__)'),
+      ],
+      calledBy:[{s:'PreparedRequest.prepare', loc:'models.py:376', to:null}],
+      calls:[{s:'HTTPBasicAuth', loc:'auth.py:83', to:'auth85'}],
+      refs:[{s:'get_auth_from_url', loc:'utils.py:1042'}]
+    },
+    auth34:{ file:'src/requests/auth.py', sym:'_basic_auth_str · line 34',
+      lines:[
+        L(34,'def _basic_auth_str(username, password):', true),
+        L(35,'    """Returns a Basic Auth string."""'),
+        L(36,'    if isinstance(username, str):'),
+        L(37,"        username = username.encode('latin1')"),
+        L(38,'    authstr = "Basic " + to_native_string('),
+        L(39,"        b64encode(b':'.join((username, password))).strip()"),
+        L(40,'    )'),
+        L(41,'    return authstr'),
+      ],
+      calledBy:[{s:'HTTPBasicAuth.__call__', loc:'auth.py:85', to:'auth85'},{s:'HTTPProxyAuth.__call__', loc:'auth.py:116', to:null}],
+      calls:[{s:'b64encode', loc:'base64 (stdlib)'}],
+      refs:[]
+    },
+    auth124:{ file:'src/requests/auth.py', sym:'HTTPDigestAuth · line 124',
+      lines:[
+        L(124,'class HTTPDigestAuth(AuthBase):', true),
+        L(125,'    """Attaches HTTP Digest Authentication to the given request."""'),
+        L(126,'    def __init__(self, username, password):'),
+        L(127,'        self.username = username'),
+        L(128,'        self.password = password'),
+        L(129,'        self._thread_local = threading.local()'),
+        L(130,''),
+        L(131,'    def __call__(self, r):'),
+        L(132,'        # hook the response to handle the 401 challenge'),
+        L(133,'        r.register_hook("response", self.handle_401)'),
+      ],
+      calledBy:[{s:'PreparedRequest.prepare_auth', loc:'models.py:471', to:'models471'}],
+      calls:[{s:'handle_401', loc:'auth.py:158', to:null}],
+      refs:[{s:'test_digest_auth', loc:'test_auth.py:427'}]
+    }
+  };
+
+  /* ---- tiny python highlighter (curated snippets, no tricky cases) ---- */
+  var KW = /\b(def|class|return|if|elif|else|is|None|True|False|import|from|for|in|not|and|or|isinstance|len|self)\b/g;
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function hl(line){
+    var s = esc(line);
+    // comment (whole-line-ish: from # to end, when not obviously inside a string)
+    var ci = s.indexOf('#');
+    var comment = '';
+    if(ci > -1 && (s.slice(0,ci).match(/'/g)||[]).length % 2 === 0){
+      comment = '<span class="tok-com">'+s.slice(ci)+'</span>'; s = s.slice(0,ci);
+    }
+    // strings
+    s = s.replace(/(&quot;[^&]*?&quot;|&#39;[^&#]*?&#39;|'[^']*?'|"[^"]*?")/g, '<span class="tok-str">$1</span>');
+    // keywords (skip inside already-marked spans by a rough guard)
+    s = s.replace(KW, function(m,p1,off,full){
+      var before = full.slice(0,off);
+      if((before.match(/<span/g)||[]).length > (before.match(/<\/span/g)||[]).length) return m; // inside a span
+      return '<span class="tok-kw">'+m+'</span>';
+    });
+    // def / class names
+    s = s.replace(/(<span class="tok-kw">(?:def|class)<\/span> )([A-Za-z_][\w]*)/g, '$1<span class="tok-def">$2</span>');
+    return s + comment;
+  }
+
+  var elCode = document.getElementById('codeblock');
+  var elGraph = document.getElementById('graph');
+  var elFile = document.getElementById('inspFile');
+  var elSym  = document.getElementById('inspSym');
+
+  var GI_CALLED = '<svg class="gi" viewBox="0 0 16 16" fill="none"><path d="M11 3L5 8l6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var GI_CALLS  = '<svg class="gi" viewBox="0 0 16 16" fill="none"><path d="M5 3l6 5-6 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var GI_REF    = '<svg class="gi" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M9 9l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  var ARROW = '<svg class="arrow" width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function nodeRow(n){
+    var navable = !!n.to;
+    return '<button class="gnode '+(navable?'nav':'static')+'"'+(navable?' data-nav="'+n.to+'"':' disabled')+'>'+
+      '<span class="gs"><span class="sym">'+n.s+'</span></span>'+
+      '<span class="gloc">'+n.loc+'</span>'+(navable?ARROW:'')+'</button>';
+  }
+  function group(label, icon, arr){
+    if(!arr || !arr.length) return '';
+    return '<div class="ggroup"><div class="glabel">'+icon+label+'</div>'+arr.map(nodeRow).join('')+'</div>';
+  }
+
+  function loadSnippet(id){
+    var s = SNIPPETS[id]; if(!s) return;
+    elFile.textContent = s.file;
+    elSym.textContent = s.sym;
+    elCode.innerHTML = s.lines.map(function(ln){
+      return '<div class="cl'+(ln.cited?' cited':'')+'"><span class="ln">'+ln.n+'</span><span class="code">'+hl(ln.t)+'</span></div>';
+    }).join('');
+    elGraph.innerHTML =
+      '<h4>In the call graph</h4>'+
+      group('Called by', GI_CALLED, s.calledBy)+
+      group('Calls', GI_CALLS, s.calls)+
+      group('References', GI_REF, s.refs);
+    // wire nav buttons (chain the exploration through the graph)
+    elGraph.querySelectorAll('[data-nav]').forEach(function(b){
+      b.addEventListener('click', function(){ setActiveCite(b.getAttribute('data-nav')); loadSnippet(b.getAttribute('data-nav')); });
+    });
+    // scroll cited line into view within the code block
+    var cited = elCode.querySelector('.cl.cited');
+    if(cited) cited.scrollIntoView({block:'nearest'});
+  }
+
+  /* ---------------- citations ---------------- */
+  function setActiveCite(id){
+    document.querySelectorAll('.cite').forEach(function(c){ c.classList.toggle('active', c.getAttribute('data-cite')===id); });
+  }
+  function openInspector(){ app.classList.add('show-code'); if(window.innerWidth<=1180){ scrim(true); } }
+  function bindCites(scope){
+    (scope||document).querySelectorAll('.cite').forEach(function(c){
+      if(c._bound) return; c._bound = true;
+      c.addEventListener('click', function(){
+        var id = c.getAttribute('data-cite');
+        setActiveCite(id); loadSnippet(id); openInspector();
+      });
+    });
+  }
+
+  /* ---------------- trace toggles ---------------- */
+  function bindTraces(scope){
+    (scope||document).querySelectorAll('[data-trace]').forEach(function(t){
+      if(t._bound) return; t._bound = true;
+      t.addEventListener('click', function(){ t.closest('.turn').classList.toggle('trace-open'); });
+    });
+  }
+
+  /* ---------------- repo switcher ---------------- */
+  var rs = document.getElementById('repoSwitch');
+  document.getElementById('repoBtn').addEventListener('click', function(e){ e.stopPropagation(); rs.classList.toggle('open'); });
+  document.addEventListener('click', function(){ rs.classList.remove('open'); });
+  rs.querySelectorAll('.repo-item').forEach(function(it){
+    it.addEventListener('click', function(){ document.getElementById('repoName').textContent = it.getAttribute('data-repo'); rs.classList.remove('open'); });
+  });
+
+  /* ---------------- rail: goto turn ---------------- */
+  document.querySelectorAll('.thread-item').forEach(function(it){
+    it.addEventListener('click', function(){
+      document.querySelectorAll('.thread-item').forEach(function(x){ x.classList.remove('active'); });
+      it.classList.add('active');
+      var id = it.getAttribute('data-goto');
+      var el = id && document.getElementById(id);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+      if(window.innerWidth<=760){ app.classList.remove('show-rail'); scrim(false); }
+    });
+  });
+
+  /* ---------------- mobile drawers ---------------- */
+  var scrimEl = document.getElementById('scrim');
+  function scrim(on){ scrimEl.classList.toggle('on', on); }
+  document.getElementById('railToggle').addEventListener('click', function(){ app.classList.add('show-rail'); scrim(true); });
+  document.getElementById('codeToggle').addEventListener('click', function(){ app.classList.add('show-code'); scrim(true); });
+  document.getElementById('inspClose').addEventListener('click', function(){ app.classList.remove('show-code'); scrim(false); });
+  scrimEl.addEventListener('click', function(){ app.classList.remove('show-rail'); app.classList.remove('show-code'); scrim(false); });
+
+  /* ---------------- composer: append a follow-up turn ---------------- */
+  var input = document.getElementById('input');
+  var threadInner = document.getElementById('threadInner');
+  var threadScroll = document.getElementById('threadScroll');
+  var followAdded = false;
+
+  input.addEventListener('input', function(){ input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,120)+'px'; });
+  input.addEventListener('keydown', function(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); ask(); } });
+  document.getElementById('send').addEventListener('click', ask);
+  document.querySelectorAll('[data-ask]').forEach(function(b){ b.addEventListener('click', function(){ input.value=b.textContent; ask(); }); });
+
+  function ask(){
+    var q = (input.value||'').trim() || 'Who calls HTTPBasicAuth?';
+    input.value=''; input.style.height='auto';
+    if(followAdded){ // one canned follow-up wired; just re-scroll to it
+      var ex=document.getElementById('tf'); if(ex) ex.scrollIntoView({behavior:'smooth',block:'start'}); return;
+    }
+    followAdded = true;
+
+    var turn = document.createElement('section');
+    turn.className='turn'; turn.id='tf';
+    turn.innerHTML =
+      '<div class="q-block"><div class="q-mark">Asked</div><h2 class="q-text stream">'+escapeText(q)+'</h2></div>'+
+      '<div class="a-block">'+
+        '<button class="trace stream" data-trace><span class="tick"><svg viewBox="0 0 12 12" fill="none"><path d="M2.5 6.2l2.2 2.3 4.8-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>grounded 1.00 <span class="steps">find_references · 3 steps</span><svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 2.5l3.5 3.5L4 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>'+
+        '<div class="trace-body">'+
+          '<div class="ev" data-k="thought"><span class="knob"></span><div class="kind">Thought</div><div class="body">This is a reverse-dependency question — similarity can\'t answer it. Query the call graph.</div></div>'+
+          '<div class="ev" data-k="graph"><span class="knob"></span><div class="kind">find_references</div><div class="body mono">symbol=HTTPBasicAuth → 2 references</div></div>'+
+          '<div class="ev" data-k="thought"><span class="knob"></span><div class="kind">Thought</div><div class="body">Summarize the callers and cite each.</div></div>'+
+        '</div>'+
+        '<div class="answer stream">'+
+          '<p><strong>HTTPBasicAuth</strong> is instantiated in exactly one place in the library path: <code>prepare_auth</code> wraps a <code>(user, pass)</code> tuple into it before applying <span class="cite" data-cite="models471">models.py:471</span>. The only other reference is the test that asserts the header it produces <span class="cite" data-cite="auth85">auth.py:85</span> — so if you change its <code>__call__</code>, that\'s the blast radius.</p>'+
+        '</div>'+
+      '</div>';
+    threadInner.appendChild(turn);
+
+    // add to rail history
+    var rg = document.querySelector('.rail-group .thread-item.active');
+    if(rg){ rg.classList.remove('active'); }
+    var railFirst = document.querySelector('.rail-group');
+    if(railFirst){
+      var item=document.createElement('button'); item.className='thread-item active';
+      item.innerHTML='<span class="qt">'+escapeText(q)+'</span><span class="qm">2 citations · grounded 1.00</span>';
+      railFirst.appendChild(item);
+    }
+
+    bindCites(turn); bindTraces(turn);
+    turn.scrollIntoView({behavior:'smooth', block:'start'});
+
+    // stream reveal + verify
+    var items = turn.querySelectorAll('.stream');
+    if(reduce){ items.forEach(function(x){ x.classList.add('in'); }); }
+    else { items.forEach(function(x,i){ setTimeout(function(){ x.classList.add('in'); }, 260 + i*300); }); }
+  }
+  function escapeText(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  /* ---------------- init ---------------- */
+  bindCites(document); bindTraces(document);
+  loadSnippet('auth85'); setActiveCite('auth85'); // pre-load so the pane is alive on open
+})();
+</script>
+</body>
+</html>

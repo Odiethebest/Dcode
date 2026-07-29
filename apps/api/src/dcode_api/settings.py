@@ -10,6 +10,12 @@ class APISettings(SharedSettings):
     agent_url: str = "http://localhost:8001"
     index_queue_name: str = "dcode.index_jobs"
 
+    # Multi-turn history bounds — enforced on the /query path before the turns
+    # reach the planner, the proxied agent body, or the cache key.
+    query_history_max_turns: int = 6
+    query_history_max_chars: int = 2000
+    query_history_max_turn_chars: int = 4000
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Comma-separated CORS_ORIGINS env var → list."""

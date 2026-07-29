@@ -27,6 +27,11 @@ export interface RepoCreateRequest {
 export interface RepoCreateResponse {
   repo_id: UUID;
   status: RepoStatus;
+  /**
+   * An existing repo with the same URL was returned instead of cloning it
+   * again — nothing was queued. Response is 200, not 202.
+   */
+  reused: boolean;
 }
 
 export interface StagesStatus {
@@ -38,6 +43,7 @@ export interface StagesStatus {
 
 export interface RepoStatusResponse {
   repo_id: UUID;
+  url: string;
   status: RepoStatus;
   progress: number;
   stages: StagesStatus;
@@ -47,9 +53,16 @@ export interface RepoStatusResponse {
 
 // --- Query API (DESIGN.md §4.3) ---
 
+export interface QueryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface QueryRequest {
   repo_id: UUID;
   query: string;
+  /** Prior turns for multi-turn follow-ups (bounded by the gateway). */
+  history?: QueryTurn[];
 }
 
 export type SSEEventName =
@@ -102,3 +115,38 @@ export type QueryStreamEvent =
   | { event: 'partial_answer'; data: PartialAnswerPayload }
   | { event: 'final_answer'; data: FinalAnswerPayload }
   | { event: 'error'; data: ErrorPayload };
+
+// --- Inspector API (read-only source + call graph — mirror of dcode_shared) ---
+
+export interface Location {
+  symbol: string;
+  file_path: string;
+  line: number;
+  chunk_id: string | null;
+}
+
+export type SourceGranularity = 'chunk' | 'symbol_chunk' | 'file_outline' | 'none';
+
+export interface SourceResponse {
+  found: boolean;
+  granularity: SourceGranularity;
+  file_path: string | null;
+  symbol_name: string | null;
+  chunk_type: string | null;
+  start_line: number | null;
+  end_line: number | null;
+  cited_line: number | null;
+  content: string | null;
+  outline: Location[];
+  language: string;
+}
+
+export interface SymbolNeighbors {
+  found: boolean;
+  symbol: string | null;
+  file_path: string | null;
+  line: number | null;
+  called_by: Location[];
+  calls: Location[];
+  references: Location[];
+}

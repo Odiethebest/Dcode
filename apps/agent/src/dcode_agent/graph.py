@@ -22,6 +22,40 @@ logger = logging.getLogger("dcode.agent.graph")
 # ---------------------------------------------------------------------------
 
 
+async def contextualize_node(state: AgentState) -> AgentState:
+    """Rewrite a follow-up into a standalone query using prior turns.
+
+    Runs only for multi-turn requests when an LLM is available; otherwise a
+    no-op (the raw query flows through unchanged, preserving single-turn
+    behavior). The rewrite feeds retrieval + planning only — the groundedness
+    guardrail is untouched, so history can never introduce an unverifiable
+    citation.
+    """
+    if not state.history:
+        return state
+    llm = state.runtime.get("llm")
+    contextualize = getattr(llm, "contextualize", None)
+    if contextualize is None:
+        return state
+    try:
+        rewritten = await contextualize(question=state.query, history=state.history)
+    except Exception as exc:  # noqa: BLE001 — a rewrite failure degrades to the raw query
+        log_event(
+            logger,
+            "contextualize_error",
+            repo_id=state.repo_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return state
+    resolved = (rewritten or "").strip()
+    if not resolved or resolved == state.query:
+        return state
+    state.raw_query = state.query
+    state.query = resolved
+    await _emit_thought(state, f"Resolved the follow-up into a standalone question: {resolved}")
+    return state
+
+
 async def plan_node(state: AgentState) -> AgentState:
     """Rule-based planner for the next ReAct tool step."""
     if state.step_count >= agent_settings.max_steps:
@@ -359,12 +393,14 @@ def build_graph() -> Any:
     TODO(M2): wire checkpointer + observability hooks per DESIGN.md NFR-5.
     """
     g = StateGraph(AgentState)
+    g.add_node("contextualize", contextualize_node)
     g.add_node("plan", plan_node)
     g.add_node("tool_call", tool_call_node)
     g.add_node("synthesize", synthesize_node)
     g.add_node("groundedness_check", groundedness_node)
 
-    g.add_edge(START, "plan")
+    g.add_edge(START, "contextualize")
+    g.add_edge("contextualize", "plan")
     g.add_conditional_edges(
         "plan",
         decide_after_plan,
@@ -664,7 +700,10 @@ def _summarize_observation(observation: dict[str, Any]) -> str:
         top = locations[0]
         return cached_prefix + f"{len(locations)} locations; top {top['file_path']}:{top['line']}"
     if "content" in result:
-        return cached_prefix + f"read {result['path']} lines {result['line_range'][0]}-{result['line_range'][1]}"
+        return (
+            cached_prefix
+            + f"read {result['path']} lines {result['line_range'][0]}-{result['line_range'][1]}"
+        )
     if "entries" in result:
         return cached_prefix + f"{len(result['entries'])} directory entries"
     return cached_prefix + "tool completed"
@@ -728,7 +767,9 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
                     "line": location["line"],
                 }
             )
-            lines.append(f"- `{location['symbol']}` at `{location['file_path']}:{location['line']}`")
+            lines.append(
+                f"- `{location['symbol']}` at `{location['file_path']}:{location['line']}`"
+            )
         return ("\n".join(lines), citations)
 
     if tool_name == "read_file":

@@ -1,33 +1,24 @@
-import { Link, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
-import ComparePage from '@/pages/ComparePage';
-import IndexPage from '@/pages/IndexPage';
-import QueryPage from '@/pages/QueryPage';
+import LandingPage from '@/pages/LandingPage';
+import MethodologyPage from '@/pages/MethodologyPage';
+import PrimitivesGallery from '@/pages/PrimitivesGallery';
+import WorkbenchPage from '@/pages/WorkbenchPage';
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-stone-50 text-stone-800">
-      <header className="border-b border-stone-200 px-6 py-4 flex items-center gap-6">
-        <span className="font-semibold tracking-tight">Dcode</span>
-        <nav className="flex gap-4 text-sm">
-          <Link to="/" className="hover:underline">
-            Index
-          </Link>
-          <Link to="/query" className="hover:underline">
-            Query
-          </Link>
-          <Link to="/compare" className="hover:underline">
-            Compare
-          </Link>
-        </nav>
-      </header>
-      <main className="flex-1 px-6 py-8">
-        <Routes>
-          <Route path="/" element={<IndexPage />} />
-          <Route path="/query" element={<QueryPage />} />
-          <Route path="/compare" element={<ComparePage />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      {/* Marketing landing (Phase 3). CTAs route into the workbench. */}
+      <Route path="/" element={<LandingPage />} />
+      {/* The product (Phase 2). */}
+      <Route path="/workbench" element={<WorkbenchPage />} />
+      {/* Evaluation / H1 story, moved out of the product (Phase 3 slice 3b). */}
+      <Route path="/methodology" element={<MethodologyPage />} />
+      {/* Design-system gallery (Phase 1). */}
+      <Route path="/preview" element={<PrimitivesGallery />} />
+      {/* The pre-rebuild Index/Query/Compare tab IA was retired in Phase 4 —
+          deleted rather than redirected: nothing linked to it, and the pages
+          were still on the pre-token palette. */}
+    </Routes>
   );
 }

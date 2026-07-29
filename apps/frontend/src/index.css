@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /*
+   * Design tokens — lifted verbatim from the redesign prototypes' :root.
+   * Single source of truth; tailwind.config.ts points its color names at these
+   * vars. Intentional cool-paper + indigo identity — do NOT drift to defaults.
+   */
+  :root {
+    /* Surfaces — cool pale paper, NOT warm cream */
+    --paper: #eeedf2;
+    --surface: #fbfbfd;
+    --sunk: #e7e6ee;
+    --sunk-2: #edecf1;
+    /* Ink — near-black, faint violet undertone */
+    --ink: #1b1826;
+    --ink-2: #575369;
+    --ink-3: #8b8799;
+    /* Hairlines */
+    --line: #dddbe6;
+    --line-2: #cbc8d8;
+    /* Brand — deep indigo */
+    --brand: #3a2fa0;
+    --brand-hover: #2c2380;
+    --brand-wash: #e7e4f7;
+    /* Status — clear of the brand hue */
+    --good: #1f7a46;
+    --good-wash: #deefe3;
+    --bad: #c23a2b;
+    /* No prototype hex — derived on-hue, kept light (12%) so it reads cool on
+     * the paper and matches the finish of good-wash / warn-wash rather than
+     * going warm/muddy. */
+    --bad-wash: color-mix(in srgb, var(--bad) 12%, var(--paper));
+    --warn: #9a6a15;
+    --warn-wash: #f0e6d0;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+
+  /* Prototype focus ring */
+  :focus-visible {
+    outline: 2.5px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}

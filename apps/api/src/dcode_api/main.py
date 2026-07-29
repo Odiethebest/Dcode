@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from dcode_api import deps
-from dcode_api.routes import internal, query, repos
+from dcode_api.routes import inspector, internal, query, repos
 from dcode_api.settings import api_settings
 
 
@@ -44,6 +44,7 @@ app.add_middleware(
 
 app.include_router(repos.router, prefix="/api/v1")
 app.include_router(query.router, prefix="/api/v1")
+app.include_router(inspector.router, prefix="/api/v1")
 app.include_router(internal.router, prefix="/internal")
 
 

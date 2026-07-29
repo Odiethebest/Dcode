@@ -4,7 +4,13 @@ import logging
 from typing import Any, ClassVar
 from uuid import uuid4
 
-from dcode_agent.graph import build_graph, plan_node, synthesize_node, tool_call_node
+from dcode_agent.graph import (
+    build_graph,
+    contextualize_node,
+    plan_node,
+    synthesize_node,
+    tool_call_node,
+)
 from dcode_agent.state import AgentState
 from dcode_agent.tools.base import Tool, ToolRegistry
 from dcode_shared.db.models import Chunk, Symbol
@@ -481,3 +487,58 @@ async def test_tool_failure_degrades_to_synthesis_without_raising() -> None:
     assert result["tool_calls"][0].get("error")  # failure recorded on the tool call
     assert emitter.tool_calls  # tool_call emitted before execution
     assert "error:" in emitter.tool_results[-1][2]  # failure surfaced as a tool_result
+
+
+class _RewriteLLM:
+    """Duck-typed LLM that only implements contextualize (query rewrite)."""
+
+    def __init__(self, rewritten: str) -> None:
+        self.rewritten = rewritten
+        self.calls: list[tuple[str, list[dict[str, str]]]] = []
+
+    async def contextualize(self, *, question: str, history: list[dict[str, str]]) -> str | None:
+        self.calls.append((question, history))
+        return self.rewritten
+
+
+async def test_contextualize_node_rewrites_followup_with_history() -> None:
+    emitter = FakeEmitter()
+    llm = _RewriteLLM("Who calls HTTPBasicAuth?")
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="who calls it?",
+        history=[{"role": "user", "content": "explain HTTPBasicAuth"}],
+        runtime={"llm": llm, "emitter": emitter},
+    )
+
+    updated = await contextualize_node(state)
+
+    assert updated.query == "Who calls HTTPBasicAuth?"  # rewritten drives retrieval
+    assert updated.raw_query == "who calls it?"  # original preserved for display
+    assert llm.calls[0][0] == "who calls it?"
+    assert emitter.thoughts  # the rewrite is surfaced in the trace
+
+
+async def test_contextualize_node_is_noop_without_history() -> None:
+    llm = _RewriteLLM("should not be used")
+    state = AgentState(repo_id=str(uuid4()), query="where is X?", runtime={"llm": llm})
+
+    updated = await contextualize_node(state)
+
+    assert updated.query == "where is X?"
+    assert updated.raw_query is None
+    assert llm.calls == []  # a single-turn request never calls the LLM
+
+
+async def test_contextualize_node_is_noop_without_llm() -> None:
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="who calls it?",
+        history=[{"role": "user", "content": "explain X"}],
+        runtime={},  # no LLM (stub synthesis) → the raw query flows through
+    )
+
+    updated = await contextualize_node(state)
+
+    assert updated.query == "who calls it?"
+    assert updated.raw_query is None

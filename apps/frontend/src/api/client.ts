@@ -13,6 +13,8 @@ import type {
   RepoCreateRequest,
   RepoCreateResponse,
   RepoStatusResponse,
+  SourceResponse,
+  SymbolNeighbors,
   SSEEventName,
   ThoughtPayload,
   ToolCallPayload,
@@ -41,6 +43,32 @@ export async function getRepoStatus(repoId: UUID): Promise<RepoStatusResponse> {
     throw new Error(`GET /api/v1/repos/${repoId}/status failed: ${response.status}`);
   }
   return (await response.json()) as RepoStatusResponse;
+}
+
+/** Inspector: resolve the source behind a cited file:line (with graceful fallback). */
+export async function getSource(
+  repoId: UUID,
+  params: { file_path?: string; line?: number; symbol?: string }
+): Promise<SourceResponse> {
+  const qs = new URLSearchParams();
+  if (params.file_path) qs.set('file_path', params.file_path);
+  if (params.line != null) qs.set('line', String(params.line));
+  if (params.symbol) qs.set('symbol', params.symbol);
+  const response = await fetch(`${BASE_URL}/api/v1/repos/${repoId}/source?${qs.toString()}`);
+  if (!response.ok) {
+    throw new Error(`GET /api/v1/repos/${repoId}/source failed: ${response.status}`);
+  }
+  return (await response.json()) as SourceResponse;
+}
+
+/** Inspector: call-graph neighbors (called-by / calls / references) for a symbol. */
+export async function getNeighbors(repoId: UUID, symbol: string): Promise<SymbolNeighbors> {
+  const qs = new URLSearchParams({ symbol });
+  const response = await fetch(`${BASE_URL}/api/v1/repos/${repoId}/neighbors?${qs.toString()}`);
+  if (!response.ok) {
+    throw new Error(`GET /api/v1/repos/${repoId}/neighbors failed: ${response.status}`);
+  }
+  return (await response.json()) as SymbolNeighbors;
 }
 
 /**

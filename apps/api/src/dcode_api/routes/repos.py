@@ -17,9 +17,10 @@ from dcode_shared.schemas import (
     StagesStatus,
     StageState,
 )
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcode_api.deps import get_db, get_index_job_publisher, get_redis
@@ -37,12 +38,15 @@ _ALLOWED_URL_SCHEMES = {"https", "http", "ssh", "git"}
 )
 async def submit_repo(
     body: RepoCreateRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     publish_job: Callable[[UUID, str], Awaitable[None]] = Depends(get_index_job_publisher),
 ) -> RepoCreateResponse:
     """Submit a repository for indexing.
 
-    Persists a queued Repo row, commits it so the worker can read it, then
+    Idempotent on the repository URL: if the same repo is already indexed or
+    still indexing, that one is returned instead of cloning it again. Otherwise
+    persists a queued Repo row, commits it so the worker can read it, then
     publishes the indexing job to RabbitMQ. If publishing fails after the row
     is durable, the repo is marked failed rather than left queued forever.
     """
@@ -54,6 +58,16 @@ async def submit_repo(
                 "code": "INVALID_REPO_URL",
                 "message": "Expected an http(s), ssh, git, or git@host:path Git URL.",
             },
+        )
+
+    existing = await _find_reusable_repo(db, repo_url)
+    if existing is not None:
+        # Nothing was accepted for processing, so 202 would be a lie.
+        response.status_code = status.HTTP_200_OK
+        return RepoCreateResponse(
+            repo_id=existing.id,
+            status=RepoStatus(existing.status),
+            reused=True,
         )
 
     repo = Repo(url=repo_url, status=RepoStatus.queued.value, progress=0)
@@ -75,7 +89,66 @@ async def submit_repo(
             },
         ) from exc
 
-    return RepoCreateResponse(repo_id=repo.id, status=RepoStatus(repo.status))
+    return RepoCreateResponse(repo_id=repo.id, status=RepoStatus(repo.status), reused=False)
+
+
+# Statuses that mean "this repo is already indexed, or on its way there" —
+# resubmitting should join them, not start a second clone of the same code.
+_REUSABLE_STATUSES = (
+    RepoStatus.ready,
+    RepoStatus.graphing,
+    RepoStatus.embedding,
+    RepoStatus.parsing,
+    RepoStatus.cloning,
+    RepoStatus.queued,
+)
+
+
+def _url_variants(url: str) -> list[str]:
+    """Spellings of the same remote that should collide.
+
+    Deliberately narrow: trailing slashes, the `.git` suffix, and the case of
+    scheme/host — the ways one person retyping one URL differs from themselves.
+    Path case is preserved, since not every host treats it as insensitive, and
+    merging two genuinely different repos is a worse failure than one duplicate.
+    """
+    trimmed = url.strip().rstrip("/")
+    parsed = urlparse(trimmed)
+    if parsed.scheme and parsed.hostname:
+        host = parsed.hostname.lower()
+        netloc = f"{host}:{parsed.port}" if parsed.port else host
+        trimmed = parsed._replace(scheme=parsed.scheme.lower(), netloc=netloc).geturl()
+
+    base = trimmed[: -len(".git")] if trimmed.endswith(".git") else trimmed
+    return list({url, trimmed, base, f"{base}.git", f"{base}/"})
+
+
+async def _find_reusable_repo(db: AsyncSession, url: str) -> Repo | None:
+    """The repo to hand back instead of re-cloning, if there is one.
+
+    Prefers `ready`, then anything still indexing, and ignores `failed` rows
+    entirely — a previous failure is exactly when the user does want a retry.
+
+    Two simultaneous submits of the same URL can still both miss this check and
+    create two rows; closing that needs a uniqueness constraint on a normalised
+    URL column, i.e. a migration. The bug this fixes is one person clicking
+    Index twice, which is sequential.
+    """
+    result = await db.execute(
+        select(Repo)
+        .where(Repo.url.in_(_url_variants(url)))
+        .where(Repo.status.in_([s.value for s in _REUSABLE_STATUSES]))
+        .order_by(Repo.created_at.desc())
+    )
+    candidates = list(result.scalars().all())
+    if not candidates:
+        return None
+
+    by_status = {status_.value: status_ for status_ in _REUSABLE_STATUSES}
+    return min(
+        candidates,
+        key=lambda repo: _REUSABLE_STATUSES.index(by_status[repo.status]),
+    )
 
 
 @router.get(

@@ -6,6 +6,7 @@ inline; that diverges from spec and breaks cache lookups across services.
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -20,9 +21,34 @@ def tool_cache_key(tool_name: str, repo_id: str, args: dict[str, Any]) -> str:
     return f"tool:{tool_name}:{repo_id}:{_hash_args(args)}"
 
 
-def query_cache_key(repo_id: str, query: str) -> str:
-    """`query:{repo_id}:{query_hash}` — TTL: 1h."""
-    digest = hashlib.sha256(query.encode("utf-8")).hexdigest()[:32]
+def query_cache_key(
+    repo_id: str,
+    query: str,
+    history: Sequence[Mapping[str, Any]] | None = None,
+) -> str:
+    """`query:{repo_id}:{query_hash}` — TTL: 1h.
+
+    ``history`` (prior conversation turns) is folded into the digest so a
+    context-dependent follow-up ("who calls *it*?") never collides with the
+    same query string asked single-turn. Turn order is preserved (chronological)
+    while each turn's keys are sorted for stability.
+
+    Guardrail: with no history the digest is byte-for-byte identical to the old
+    single-turn key, so existing cached answers are never orphaned.
+    """
+    if not history:
+        digest = hashlib.sha256(query.encode("utf-8")).hexdigest()[:32]
+    else:
+        canonical_history = json.dumps(
+            [dict(turn) for turn in history],
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        # \x1f (unit separator) can't appear in the JSON, so the history/query
+        # boundary is unambiguous.
+        material = f"{canonical_history}\x1f{query}"
+        digest = hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
     return f"query:{repo_id}:{digest}"
 
 
