@@ -37,7 +37,7 @@ token-level "verifying → verified" animation anywhere in the product.
 
 > The landing page's hero card *does* animate verifying → verified. That is
 > marketing motion on a static mock, explicitly not product state, and it is the
-> single exception.
+> single exception. The exemption covers the *motion*, not the mock — §12.
 
 ### `done` is gated on `final_answer` alone
 
@@ -228,6 +228,34 @@ not whether it was typed by hand: a finished run's date will never move again,
 so pinning it is safe by construction, while a model name that a future run will
 choose differently is not. Keeping it out of `run_config.json` is what stops a
 hand-reconstructed value from reading as something the harness observed.
+
+## 12. A mock must be identifiable as a mock
+
+The exemption in §1 licenses the *motion*, not the mock. It establishes that the
+hero's verifying → verified sequence is theatre. It says nothing about whether
+the card that theatre plays on can be recognised as one.
+
+So: any surface showing a metric-shaped figure is either driven by a real source
+or identifiable as an illustration. **An artefact indistinguishable from a
+measurement is an over-claim, even when every individual statement on it is
+true.**
+
+The hero card is the case that produced this rule, and it produced it by being
+clean. The citation coordinates on it are real locations in the indexed corpus.
+The mock answer is plausible. `1.00` was the arithmetically correct score for its
+own two verified mock citations. Nothing was fabricated and no number was
+transcribed — so rule 11 had nothing to say, and neither did *never fabricate
+data*. And yet the card was indistinguishable from a screenshot of a real answer,
+and the first groundedness figure a visitor met on that page was a perfect one,
+two screens above the recorded value, which is under the bar.
+
+Every other rule here governs whether the interface says something false. This
+one governs whether it lets someone believe they are looking at a measurement.
+That is a different failure and it needs its own rule.
+
+The label is also subject to the pattern this document keeps recording: it may
+not be the smallest or faintest thing on the surface it qualifies. A disclosure
+demoted to fine print is the same defect as no disclosure, arrived at politely.
 
 ---
 

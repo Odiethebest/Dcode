@@ -54,6 +54,21 @@ describe('LandingPage', () => {
     expect(screen.getAllByText(/^verified$/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/verifying/i)).not.toBeInTheDocument();
   });
+
+  /**
+   * The card mimics the product on four axes — real file:line coordinates, a
+   * plausible answer, the same stamps, the same seal — so unlabelled it is
+   * indistinguishable from a screenshot of a real answer. Nothing on it was
+   * false, which is why the "generated numbers" and "never fabricate" rules both
+   * had nothing to say about it. See Honesty_Constraints §12.
+   */
+  it('identifies the proof card as an illustration and shows no metric-shaped figure', () => {
+    renderLanding();
+    expect(screen.getByText(/not a live answer/i)).toBeInTheDocument();
+    // 1.00 was arithmetically right for its own mock citations and still the
+    // most flattering figure on a page arguing that it reports its misses.
+    expect(screen.queryByText('1.00')).not.toBeInTheDocument();
+  });
 });
 
 /**

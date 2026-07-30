@@ -87,9 +87,10 @@ const STAMPS: Stamp[] = [
   { file: 'src/requests/models.py', loc: 'line 670 · PreparedRequest.prepare_auth' },
 ];
 
-/** The hero proof card: stamps animate verifying → verified, seal resolves to
- *  1.00. This is a marketing proof (not the product's live path) — the brief
- *  keeps it; reduced motion jumps straight to the verified end state. */
+/** The hero proof card: stamps animate verifying → verified, seal resolves to a
+ *  verified state. This is a marketing illustration (not the product's live
+ *  path) — the brief keeps it, and it labels itself as one; reduced motion jumps
+ *  straight to the verified end state. */
 function ProofCard() {
   const [verified, setVerified] = useState<boolean[]>([false, false]);
   const [grounded, setGrounded] = useState(false);
@@ -110,13 +111,29 @@ function ProofCard() {
 
   return (
     <Reveal className="rounded-[18px] border border-line bg-surface p-6 shadow-[0_30px_60px_-34px_rgba(27,24,38,0.34)]">
+      {/* This card mimics the product on four axes at once — real file:line
+          coordinates from the indexed corpus, a plausible answer, the same
+          verified stamps, the same seal — which left it indistinguishable from a
+          screenshot of a real answer. Nothing on it was false; that is precisely
+          why neither "numbers are generated" nor "never fabricate" caught it.
+          The marker is deliberately the only filled element in the card's
+          chrome: a label demoted to fine print would be this project's sixth
+          instance of burying the honest version, inside the commit that exists
+          to stop doing that. */}
+      <div className="mb-4 inline-flex items-center rounded-md bg-sunk px-2.5 py-1.5 font-mono text-[11.5px] font-medium uppercase tracking-[0.12em] text-ink-2">
+        Example — not a live answer
+      </div>
       <div className="mb-[18px] flex items-center justify-between border-b border-line pb-4">
         <div className="flex items-center gap-2.5 font-mono text-[11px] uppercase tracking-[0.1em] text-good">
           <span className="h-2 w-2 rounded-full bg-good motion-reduce:animate-none" style={{ animation: 'dcode-ping 1.6s ease-out infinite' }} />
           agent · grounded
         </div>
+        {/* The seal resolves to a word, not a figure. `1.00` was metric-shaped
+            with no run behind it, and it was the first groundedness value a
+            visitor met — two screens above the recorded one, which is under the
+            bar. The verifying → verified beat survives without it. */}
         <div className="font-mono text-[12px] text-ink-2">
-          groundedness <b className="font-semibold text-ink">{grounded ? '1.00' : '—'}</b>
+          groundedness <b className="font-semibold text-ink">{grounded ? 'verified' : '—'}</b>
         </div>
       </div>
       <p className="mb-5 font-display text-[19px] italic leading-snug text-ink">
