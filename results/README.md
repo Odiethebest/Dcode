@@ -1,6 +1,6 @@
 # Evaluation results
 
-Six directories live here and only one is the current conclusion. This file
+Seven directories live here and only one is the current conclusion. This file
 says which, so nobody has to guess from timestamps.
 
 | Directory | Status | What it is |
@@ -9,15 +9,17 @@ says which, so nobody has to guess from timestamps.
 | `eval-real-b0/` | partial | Config only. `B0` (external code search) needs an API token this environment did not have, so B0 is **not measured** — not scored zero. It has no bearing on the H1 verdict, which rests on B2/B3/B4. |
 | `eval-suite/` | superseded | An **early stub-model run**, kept deliberately. Not the current conclusion — see below. |
 | `eval-smoke/` | not a result | Output of `make eval-smoke`, a single-baseline harness smoke test. Proves the harness runs; measures nothing. |
-| `eval-real-b4-control-prefix/` | not a verdict | B4 only, **unchanged** code, re-run to measure what a repeat costs. One half of a paired experiment. |
-| `eval-real-b4-citation-fix/` | not a verdict | B4 only, after `da2b6bc`. The other half. |
+| `eval-real-b4-control-prefix/` | not a verdict | B4 only, **unchanged** code — run 1 of the pre-fix arm. |
+| `eval-real-b4-citation-fix/` | not a verdict | B4 only, after `da2b6bc` — run 1 of the post-fix arm. |
+| `b4-variance/` | not a verdict | Runs 2 and 3 of each arm (`prefix-2/3`, `fix-2/3`), taking the paired experiment to n=3 a side. |
 
-The last two are a **paired measurement, not a result to cite** — single-baseline
-runs carry no H1 verdict, and they exist to bound the run-to-run variance of
-groundedness rather than to report a score. Read
-[`b4-citation-fix-experiment.md`](b4-citation-fix-experiment.md) before either
-number is quoted anywhere; it records the design, what the two runs establish, and
-the one finding that bears on the figure `eval-real/` displays.
+The last three hold one **paired measurement, not a result to cite** — six
+single-baseline B4 runs, three per arm, which carry no H1 verdict and exist to bound
+the run-to-run variance of groundedness rather than to report a score. Read
+[`b4-citation-fix-experiment.md`](b4-citation-fix-experiment.md) before any of those
+numbers is quoted anywhere: it records the design, what the runs establish about the
+H1 margin's noise, and the two findings that bear on the figure `eval-real/`
+displays.
 
 ## Why `eval-suite/` is still here
 

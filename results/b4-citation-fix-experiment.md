@@ -99,6 +99,83 @@ Not corrected here: doing so means changing a displayed number, which means chan
 the run it is generated from. This file records the finding; acting on it is its own
 decision.
 
+## Three runs per arm — appended 2026-07-30
+
+The two runs above could not separate the change from noise, so each arm was taken to
+n=3 in the same session. Criteria were fixed before the numbers were seen: effect
+judged against the pooled standard deviation, and the H1 gap judged in units of the
+margin's own standard deviation.
+
+| Arm | groundedness (3 runs) | mean | s | L2 margin vs B3 | s | L3 margin vs B3 | s |
+|---|---|---:|---:|---:|---:|---:|---:|
+| pre-fix | 0.8863 · 0.8376 · 0.8776 | 0.8672 | 0.0260 | −0.0365 | 0.0122 | −0.0798 | 0.0067 |
+| post-fix | 0.8946 · 0.8914 · 0.8827 | 0.8896 | **0.0061** | −0.0280 | 0.0036 | −0.0726 | 0.0178 |
+
+Recall@5, MRR and nDCG@5 were byte-identical in all six runs, and B3's groundedness is
+1.000 on every question, so B3's composite is deterministic and the whole margin
+distribution comes from B4's synthesis.
+
+### The margin's noise is exactly a quarter of its level's groundedness noise
+
+Predicted from the structure — three of four composite components are deterministic —
+and confirmed to four decimals in all four cases:
+
+| | s of that level's groundedness | ÷ 4 | measured margin s |
+|---|---:|---:|---:|
+| post-fix L2 | 0.0145 | 0.0036 | 0.0036 |
+| post-fix L3 | 0.0713 | 0.0178 | 0.0178 |
+| pre-fix L2 | 0.0489 | 0.0122 | 0.0122 |
+| pre-fix L3 | 0.0267 | 0.0067 | 0.0067 |
+
+The first prediction of this used the *whole-suite* s (0.0061) and came out 2.4× too
+low. The mechanism was right and the input was wrong: the margin is computed per level,
+so it is that level's groundedness that enters it. **L3's groundedness s is 0.0713
+because L3 holds three questions** — the n=3 fragility already recorded in
+`Final_Report.md` reappears here as variance rather than as a mean.
+
+### The H1 verdict is not a noise artifact
+
+| Level | mean margin vs B3 | distance to the +0.05 bar | in units of that margin's s |
+|---|---:|---:|---:|
+| L2 | −0.0280 | 0.0780 | **21.6×** |
+| L3 | −0.0726 | 0.1226 | **6.9×** |
+
+Nothing in synthesis variability reaches a gap of 7 to 22 standard deviations.
+`unsupported` survives the noise it had never been tested against. For reference, B4
+does clear +0.05 against B2 on L2 (+0.1096) and does not on L3 (−0.0169).
+
+### The fix: variance, not mean
+
+The mean moved +0.0224 at a pooled s of 0.0189 — a ratio of 1.19, which on n=3 per arm
+is **suggestive and not established**, and the pre-declared threshold for
+"indistinguishable" was 1.0. It is not being reported as an improvement in score.
+
+What did move robustly is **spread: s 0.0260 → 0.0061, a 4× reduction**, range 0.0487 →
+0.0119. That matches the mechanism exactly — the pre-fix allowed list offered symbol
+tokens that always fail verification, and how many the model happened to cite varied
+per run, so removing them removed a source of variance rather than a constant penalty.
+On n=3 a variance ratio carries little statistical power; the mechanism is what makes it
+credible, and it is stated as such.
+
+Caveat kept in view: three samples give a standard deviation with roughly ±40%
+uncertainty. These figures separate "the gap is 20× the noise" from "the gap is inside
+the noise", which is the resolution the decision needed. They do not support quoting
+any of them to three decimals.
+
+### What this does not measure
+
+Under Correction A (criteria set 2, item 1) B4's retrieval metrics would be computed
+from its verified citation set, which is LLM output — so all four composite components
+become stochastic and the ÷4 relationship above no longer holds. **These runs bound the
+margin's noise under the current scoring only, and that bound is a floor, not an
+estimate, for what Correction A would produce.**
+
+Deliberately not computed here: what Correction A *would score*. The citation sets are
+in these files and the arithmetic is available, but choosing whether to run a
+pre-registered correction after seeing what it produces is the contamination the
+pre-registration exists to prevent. The decision below is argued from the size of the
+gap and from L3's question count, never from a preview of the result.
+
 ## Separate finding, independent of all of the above
 
 `apps/agent/src/dcode_agent/groundedness.py:61-62` returns `score=1.0` when an answer
