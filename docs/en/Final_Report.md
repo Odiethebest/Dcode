@@ -118,6 +118,22 @@ Recall by question level — the ladder that did hold up:
 questions and against nothing else. The threshold, the question set, and the
 metric definitions were fixed before the run and have not been touched since.
 
+**The verdict survives run-to-run noise, which it had never been tested against.**
+Answer synthesis is stochastic, and every figure above comes from a single run. Six
+further B4 runs — three on this exact synthesis code, three with a changed citation
+prompt, all in one session against this index — bound what a repeat costs. Recall@5,
+MRR and nDCG@5 came back byte-identical in all six, and B3's groundedness is 1.000 on
+every question, so the entire margin distribution comes from B4's synthesis and works
+out to exactly a quarter of its level's groundedness spread. Measured that way, the
+distance from the +0.05 bar is **at least 6.9 standard deviations at the least
+favourable of the four arm-and-level combinations, and 21.6 at the most.** Nothing in
+synthesis variability reaches that, so `unsupported` is not an artefact of having
+measured once. Design, criteria fixed before the numbers were seen, and every per-run
+figure: [`results/b4-citation-fix-experiment.md`](../../results/b4-citation-fix-experiment.md).
+Those runs are outside `results/eval-real/`, so the two ratios quoted here are the one
+place in this document carrying a figure the artifact drift check does not cover — that
+file is their authority.
+
 **Hybrid retrieval is validated.** Sparse → dense → hybrid+rerank is a clean,
 monotonic ladder on the single-hop and cross-file levels. That result is
 independent of the H1 verdict, and real models made it markedly stronger than
@@ -132,6 +148,17 @@ reads stays verified; the *score* deliberately counts the draft **before**
 redaction, so a heavily-redacted answer still scores low. That is the honest
 measure of how clean the draft was, and the dip is a real failure against a
 pre-registered guardrail.
+
+One qualification on that number, not on the finding. Four runs of this same synthesis
+code — the archived suite run plus three repeats — all came in under the bar, and the
+recorded figure is the **highest** of the four; their mean sits further below the
+guardrail than the value this report displays. The direction is therefore solid, and if
+anything understated. The magnitude is not: the shortfall the recorded figure implies is
+about the same size as the spread between repeats. **No sentence here quantifies how far
+under the bar the system sits**, because one 16-question run cannot support it. The
+landing page is a separate and worse case — it still asserts that the guardrail *holds*
+— and is listed under Outstanding Work rather than softened into a precision caveat
+here.
 
 **L3 is statistically fragile.** With n=3, one question moves the average and
 significance is not computable. Sparse `B1` posts the *highest* L3 recall of any
@@ -274,9 +301,28 @@ everything else is independent of it.
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
 - **B0 is not measured** — it needs an API token. Either produce it or keep
   reporting it as unmeasured; it has no bearing on the H1 verdict.
-- **Investigate B4's groundedness dip at the source** — the agent emitting
-  citations that fail verification. Do **not** address it by changing how the
-  score is computed (see criteria set 2, item 3).
+- **B4's groundedness dip is diagnosed and partly addressed.** The agent was offering
+  the model qualified names in its allowed-citation list that the guardrail rejects by
+  exact match, so it was instructing the model to emit references it would then redact
+  (`da2b6bc`). Removing them cut redaction events and cut run-to-run variance fourfold;
+  it did **not** measurably move the mean, and is not reported as a score improvement.
+  Paired measurement: `results/b4-citation-fix-experiment.md`. Still open: whatever
+  produces the remaining unverifiable `file:line` references. Do **not** address any of
+  it by changing how the score is computed (criteria set 2, item 3).
+- **An answer with no citations scores groundedness `1.000`**
+  (`apps/agent/src/dcode_agent/groundedness.py:61-62`). The metric rewards not citing,
+  so an agent emitting no references would report a perfect score — which matters more
+  to the guardrail than anything the fix above touched. Left alone deliberately: it
+  changes how the score is computed, so it needs its own decision and its own
+  before/after.
+- **The API and the guardrail resolve a symbol by different rules** — suffix match in
+  `apps/api/src/dcode_api/routes/internal.py`, exact match in `groundedness.py`. The
+  deeper defect behind the dip, and left alone for the same reason: aligning them
+  converts failing citations into passing ones.
+- **A margin from one run should not be quoted to three decimals.** Repeat spread on
+  unchanged synthesis code is roughly the size of the guardrail shortfall itself. Any
+  future run reporting a margin should state how many repeats it averages, and how many
+  repeats is itself a pre-registration decision.
 - **A second corpus.** One repository, 16 questions. Nothing here generalises,
   and no wording in this document should imply otherwise.
 
@@ -291,6 +337,14 @@ everything else is independent of it.
 
 ### Frontend
 
+- **The landing page asserts a guardrail the system misses.** `LandingPage.tsx` says
+  "the guardrail holds it at `≥ 95%`" and tags a principle `groundedness ≥ 95%`, while
+  every recorded B4 run — the archived one and all six repeats — came in below that bar.
+  The hero proof card also resolves to a metric-shaped `1.00` with no run behind it, two
+  screens above the real figure. The accurate version is already on the same page: the
+  baseline ladder shows the dip. That pairing — flattering summary promoted to the
+  headline, honest one below the fold — is the shape this project keeps having to
+  correct, and this is the most prominent surviving instance.
 - **Accessibility live regions are missing** — a regression against a previously
   closed item. A screen-reader user hears nothing as an answer streams. The
   unresolved design question is recorded in [`CLAUDE.md`](../../CLAUDE.md), since
