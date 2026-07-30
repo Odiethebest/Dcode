@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { buttonClasses } from '@/components/ui';
 import {
+  baselineLabels,
   demoCases,
   h1Report,
   levelSummary,
@@ -18,13 +19,6 @@ import { cx } from '@/lib/cx';
 const BASELINE_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
 const TAXONOMY_ORDER: Taxonomy[] = ['L2', 'L3'];
 const LEVEL_ORDER: Level[] = ['L1', 'L2', 'L3'];
-
-const BASELINE_LABELS: Record<BaselineName, string> = {
-  B1: 'BM25 sparse',
-  B2: 'Dense RAG',
-  B3: 'Hybrid + rerank',
-  B4: 'Dcode + graph + agent',
-};
 
 const LEVEL_LABELS: Record<Level, string> = {
   L1: 'single-hop',
@@ -222,7 +216,7 @@ export default function MethodologyPage() {
                   <tr key={b} className={cx('border-b border-line last:border-0', top && 'bg-brand-wash')}>
                     <td className="px-5 py-4">
                       <div className={cx('font-mono text-[13px] font-semibold', top ? 'text-brand' : 'text-ink-2')}>{b}</div>
-                      <div className="font-display text-[15px] text-ink">{BASELINE_LABELS[b]}</div>
+                      <div className="font-display text-[15px] text-ink">{baselineLabels[b]}</div>
                     </td>
                     <td className="px-4 py-4 text-right font-mono text-[14px] tabular-nums text-ink">{s.recallAtK.toFixed(3)}</td>
                     <td className="px-4 py-4 text-right font-mono text-[14px] tabular-nums text-ink">{s.mrr.toFixed(3)}</td>
@@ -251,15 +245,16 @@ export default function MethodologyPage() {
           redaction, which is the point of measuring it that way. It is a real dip and it is reported as one.
         </p>
 
-        {/* the per-level ladder — the finding that DID land */}
+        {/* the per-level ladder — historical evidence awaiting a corrected rerun */}
         <div className="mt-10">
           <h3 className="font-display text-[22px] font-medium tracking-[-0.01em]">
-            The part that held up: <em className="italic text-brand">hybrid retrieval works.</em>
+            The observed ladder — <em className="italic text-brand">and why it needs a rerun.</em>
           </h3>
           <p className="mt-2 max-w-[68ch] text-[14.5px] leading-relaxed text-ink-2">
-            H1 is a claim about the call graph, and that claim didn&rsquo;t clear the bar. But the rung below it did:
-            sparse → dense → hybrid+rerank is a clean, monotonic ladder on the single-hop and cross-file levels. That
-            result is independent of the H1 verdict and it replicated under real models.
+            The archived run shows legacy lexical → dense → hybrid+rerank as a monotonic ordering on the single-hop
+            and cross-file levels. Its B1 was an <Mono>ILIKE</Mono> candidate filter plus fixed substring bonuses,
+            however, not BM25; B3 and B4 reused that sparse arm. The corrected BM25 implementation therefore needs a
+            full B1–B4 rerun before this can be called a valid BM25 hybrid ablation.
           </p>
           <div className="mt-5 overflow-x-auto rounded-card border border-line bg-surface">
             <table className="w-full min-w-[560px] border-collapse text-left">
@@ -292,7 +287,7 @@ export default function MethodologyPage() {
           <p className="mt-4 max-w-[74ch] font-mono text-[11.5px] leading-relaxed text-ink-3">
             Note the L3 row contradicts itself: sparse <Mono>B1</Mono> posts the{' '}
             <em>highest</em> L3 recall of any rung. On three questions that is almost certainly one lucky lexical hit,
-            not evidence that BM25 understands architecture. It is left in because deleting inconvenient rows is how
+            not evidence that the legacy heuristic understands architecture. It is left in because deleting inconvenient rows is how
             scoreboards start lying.
           </p>
         </div>
@@ -451,7 +446,7 @@ export default function MethodologyPage() {
                     <div key={b} className="rounded-card border border-line bg-surface p-5">
                       <div className="flex items-center justify-between gap-3">
                         <span className="font-display text-[16px] font-medium text-ink">
-                          {b} <span className="font-mono text-[12px] text-ink-3">· {BASELINE_LABELS[b]}</span>
+                          {b} <span className="font-mono text-[12px] text-ink-3">· {baselineLabels[b]}</span>
                         </span>
                         <span
                           className={cx(

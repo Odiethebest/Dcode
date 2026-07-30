@@ -2,17 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { buttonClasses } from '@/components/ui';
-import { h1Report, snapshotSource, suiteSummary, type BaselineName } from '@/demo/evalSnapshot';
+import {
+  baselineLabels,
+  h1Report,
+  snapshotSource,
+  suiteSummary,
+  type BaselineName,
+} from '@/demo/evalSnapshot';
 import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import { cx } from '@/lib/cx';
 import { GITHUB_URL } from '@/lib/links';
 
-const LADDER_LABELS: Record<BaselineName, string> = {
-  B1: 'BM25 sparse',
-  B2: 'Dense RAG',
-  B3: 'Hybrid + rerank',
-  B4: 'Dcode + graph + agent',
-};
 const LADDER_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
 /** Highest nDCG wins; ties keep the earlier rung, so B3 leads over a tied B4. */
 const LADDER_LEADER = LADDER_ORDER.reduce((best, b) =>
@@ -381,7 +381,7 @@ export default function LandingPage() {
                     </span>
                   </span>
                   <span className={cx('w-[130px] flex-none font-display text-[15px]', top ? 'font-medium text-ink' : 'text-ink-2')}>
-                    {LADDER_LABELS[b]}
+                    {baselineLabels[b]}
                   </span>
                 </div>
               );

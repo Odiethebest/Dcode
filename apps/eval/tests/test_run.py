@@ -4,8 +4,9 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
 from dcode_eval.baselines.base import AnswerResult, Baseline
-from dcode_eval.run import run_eval, run_suite
+from dcode_eval.run import _run_cli, run_eval, run_suite
 from dcode_shared.schemas import Chunk, ScoreComponents
 
 
@@ -74,6 +75,14 @@ async def test_run_eval_writes_expected_artifacts(tmp_path: Path, monkeypatch, c
     run_config = json.loads((out_dir / "run_config.json").read_text(encoding="utf-8"))
     assert metrics["baseline"] == "B9"
     assert run_config["baseline"] == "B9"
+    assert run_config["corpus_revision"] is None
+    assert run_config["sparse_retrieval"]["implementation"] == "okapi_bm25_v1"
+    assert run_config["sparse_retrieval"]["document_fields"] == [
+        "symbol_name",
+        "file_path",
+        "signature",
+        "content",
+    ]
     assert metrics["recall_at_k"] == 1.0
     assert metrics["groundedness"] == 1.0
     assert result["taxonomy_breakdown"]["L1"]["questions"] == 1
@@ -148,12 +157,15 @@ async def test_run_eval_uses_resolved_repo_override(tmp_path: Path, monkeypatch)
         output_dir=str(tmp_path / "out"),
         k=5,
         repo_id_override=override_repo_id,
+        corpus_revision=42,
     )
 
     row = result["per_question"][0]
+    run_config = json.loads((tmp_path / "out" / "run_config.json").read_text(encoding="utf-8"))
     assert row["repo_id"] == override_repo_id
     assert row["gt_chunk_ids"] == [resolved_chunk_id]
     assert row["recall_at_k"] == 1.0
+    assert run_config["corpus_revision"] == 42
 
 
 async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -> None:
@@ -230,5 +242,32 @@ async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -
     assert (tmp_path / "suite" / "suite_summary.json").exists()
     assert (tmp_path / "suite" / "h1_report.json").exists()
     assert (tmp_path / "suite" / "run_config.json").exists()
+    suite_config = json.loads((tmp_path / "suite" / "run_config.json").read_text(encoding="utf-8"))
+    assert suite_config["corpus_revision"] is None
+    assert suite_config["sparse_retrieval"]["tokenizer"] == "dcode_source_code_v1"
     assert result["h1_report"]["decision"] == "supported"
     assert any('"event": "eval_suite_start"' in record.message for record in caplog.records)
+
+
+async def test_cli_rejects_a_corpus_that_changes_during_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revisions = iter([7, 8])
+
+    async def fake_revision(_: str | None) -> int:
+        return next(revisions)
+
+    async def fake_run_eval(**_: object) -> dict[str, object]:
+        return {"metrics": {}}
+
+    monkeypatch.setattr("dcode_eval.run._read_corpus_revision", fake_revision)
+    monkeypatch.setattr("dcode_eval.run.run_eval", fake_run_eval)
+
+    with pytest.raises(RuntimeError, match="started at revision 7, ended at 8"):
+        await _run_cli(
+            baselines=["B1"],
+            questions_path="unused.jsonl",
+            output_dir="unused",
+            k=5,
+            repo_id_override="11111111-1111-1111-1111-111111111111",
+        )

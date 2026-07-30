@@ -5,7 +5,7 @@ says which, so nobody has to guess from timestamps.
 
 | Directory | Status | What it is |
 |---|---|---|
-| **`eval-real/`** | ✅ **current** | The full real-model run — Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini, `k=5`, the checked-in 16-question suite. **This is the recorded H1 verdict.** Everything the UI and the docs display is generated from here. |
+| **`eval-real/`** | ✅ **current** | The full real-model run — Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini, `k=5`, the checked-in 16-question suite. **This is the recorded H1 verdict.** Its sparse arm was the legacy lexical heuristic, not BM25; generated surfaces label it accordingly. |
 | `eval-real-b0/` | partial | Config only. `B0` (external code search) needs an API token this environment did not have, so B0 is **not measured** — not scored zero. It has no bearing on the H1 verdict, which rests on B2/B3/B4. |
 | `eval-suite/` | superseded | An **early stub-model run**, kept deliberately. Not the current conclusion — see below. |
 | `eval-smoke/` | not a result | Output of `make eval-smoke`, a single-baseline harness smoke test. Proves the harness runs; measures nothing. |
@@ -61,7 +61,7 @@ follow the data, but the sentences around them do not.
 eval-real/
 ├── h1_report.json          the verdict: decision, threshold, per-level composites and margins
 ├── suite_summary.json      whole-suite metrics per baseline
-├── run_config.json         baselines, question set path, k, repo_id
+├── run_config.json         baselines, question set path, k, repo_id; new runs also record BM25 config and corpus revision
 ├── provenance.json         NOT harness output — hand-recovered metadata (see below)
 └── B1..B4/
     ├── metrics.json            that baseline's suite-level metrics
@@ -72,9 +72,11 @@ eval-real/
 `h1_report.json` is the file to read first, and it is reported verbatim.
 
 `provenance.json` is the one file here the harness did not write. The harness
-records no timestamp, so the date the artifacts display was reconstructed by
-hand; it is kept out of `run_config.json` precisely so it cannot be mistaken for
-something the run observed, and every field in it says **recovered**, not
-**recorded**. The generator reads the date from there rather than from a file
-mtime, which git does not preserve. See
+recorded neither a timestamp nor, for this archived run, the sparse
+implementation. Both facts were reconstructed and are kept out of
+`run_config.json` precisely so they cannot be mistaken for observations made by
+the run; every recovered field says so. Future runs write the BM25 formula,
+tokenizer, fields, parameters, and `corpus_revision` directly into
+`run_config.json`. The generator reads recovered metadata from committed bytes,
+never from a file mtime, which git does not preserve. See
 [`docs/en/Honesty_Constraints.md`](../docs/en/Honesty_Constraints.md) §11.

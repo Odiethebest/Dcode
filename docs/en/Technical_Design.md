@@ -114,14 +114,17 @@ merges a durable Postgres row with an optional Redis overlay.
 
 | Table | Purpose |
 |---|---|
-| `repos` | Repository metadata, indexing status, progress, and failure state |
-| `chunks` | Code and documentation chunks, sparse `tsv`, and dense embedding vectors |
+| `repos` | Repository metadata, indexing status, progress, failure state, and `index_revision` |
+| `chunks` | Code and documentation chunks plus dense embedding vectors |
 | `symbols` | Module, class, function, and method definitions extracted from Python AST |
 | `edges` | Static relationships such as imports, calls, inheritance, and references |
 
-`chunks` carries both retrieval surfaces on the same row — an HNSW index on
-`embedding` for dense search and a GIN index on `tsv` for full-text — so hybrid
-retrieval fuses two rankings over one table rather than joining two stores.
+Dense retrieval uses the HNSW index on `chunks.embedding`. Sparse retrieval
+builds an application-side Okapi BM25 corpus from each chunk's symbol, path,
+signature, and content. That immutable corpus is cached by
+`(repo_id, index_revision)`; replacing a repository's chunks increments the
+revision in the same transaction, so an API process cannot silently reuse the
+previous generation. The older `tsv` column and GIN index remain dormant.
 `edges` is indexed in both directions (`source_id` and `target_id`), which is what
 makes reverse lookups such as *who calls this?* a single indexed query.
 
@@ -145,7 +148,8 @@ Any failed stage moves the repository to `failed` with an error reason. The pipe
 1. Clone the target repository with a shallow git checkout.
 2. Discover Python files and parse them with the standard library `ast` module.
 3. Build chunks at module, class, function, and method boundaries.
-4. Write sparse text vectors and dense embeddings.
+4. Replace the repository's chunks and dense embeddings, incrementing its
+   retrieval-corpus revision.
 5. Extract symbols and graph edges.
 6. Mark the repository ready for search and agent queries.
 
@@ -155,11 +159,18 @@ The default local environment uses stub embeddings and an identity-compatible re
 
 The internal search API combines sparse and dense retrieval:
 
-- sparse retrieval uses PostgreSQL full-text search;
+- sparse retrieval uses standard Okapi BM25 with corpus-wide IDF, term-frequency
+  saturation, length normalization, and a versioned source-code tokenizer;
 - dense retrieval uses pgvector similarity search when real embeddings are available;
 - hybrid ranking combines sparse and dense candidates;
 - reranking can call the BGE reranker sidecar;
 - `score_components` exposes sparse, dense, and rerank components when those paths are active.
+
+BM25 treats `symbol_name`, `file_path`, `signature`, and `content` as one
+unweighted document. Its tokenizer keeps the compact identifier and also splits
+snake_case and camelCase, so exact names and their component words share one
+ranking model. The fixed methodology parameters are `k1=1.2` and `b=0.75`;
+evaluation artifacts record those values and the tokenizer version.
 
 The route contract is intentionally stable so the agent and evaluation harness can consume the same internal API in stub and real-model modes.
 

@@ -198,8 +198,9 @@ the methodology page reported the hypothesis unsupported), and the README plus
 this document set (stub-run numbers left in place after the real-model run).
 
 Prose is not generated, so it carries qualitative conclusions only — *H1
-unsupported*, *hybrid retrieval validated*, *the graph's contribution is
-unmeasured*. Any specific figure belongs inside a generated block.
+unsupported*, *the archived sparse baseline was not BM25*, *the graph's
+contribution is unmeasured*. Any specific figure belongs inside a generated
+block.
 
 ### The generator is a pure function of committed bytes
 

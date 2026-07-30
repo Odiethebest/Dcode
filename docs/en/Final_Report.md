@@ -74,7 +74,7 @@ Aggregate metrics:
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` BM25 sparse | 0.214 | 0.221 | 0.204 | 1.000 |
+| `B1` legacy lexical heuristic | 0.214 | 0.221 | 0.204 | 1.000 |
 | `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
 | `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
 | `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
@@ -134,10 +134,11 @@ Those runs are outside `results/eval-real/`, so the two ratios quoted here are t
 place in this document carrying a figure the artifact drift check does not cover — that
 file is their authority.
 
-**Hybrid retrieval is validated.** Sparse → dense → hybrid+rerank is a clean,
-monotonic ladder on the single-hop and cross-file levels. That result is
-independent of the H1 verdict, and real models made it markedly stronger than
-the earlier stub run. B3 is the retrieval winner today.
+**The archived ladder is not a BM25 validation.** It shows a monotonic
+legacy-lexical → dense → hybrid+rerank ordering on the single-hop and cross-file
+levels, but its B1 was the old `ILIKE` plus fixed substring bonuses rather than
+BM25. Because B3 and B4 used that same sparse component, the corrected BM25 path
+must be run across B1–B4 before making the stronger hybrid-ablation claim.
 
 **B4's groundedness sits below the 0.95 guardrail.** This is the one number in
 this report that an earlier version stated too favourably — it was written as
@@ -164,7 +165,7 @@ takes away.
 **L3 is statistically fragile.** With n=3, one question moves the average and
 significance is not computable. Sparse `B1` posts the *highest* L3 recall of any
 rung, which on three questions is almost certainly one lucky lexical hit rather
-than evidence that BM25 understands architecture. L3 should not be read in
+than evidence that the legacy heuristic understands architecture. L3 should not be read in
 either direction. Expanding it is a precondition of the next run.
 
 ### Why B4 cannot currently beat B3

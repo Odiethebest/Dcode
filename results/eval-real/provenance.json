@@ -4,5 +4,11 @@
   "verdict_written_at_status": "recovered, not recorded",
   "verdict_written_at_source": "The eval harness writes no timestamp anywhere in its output, which is why this file exists rather than a run_config.json field. The value is the mtime of h1_report.json as the generator read it at commit 9d4cd5b, while mtimes in this tree were still the ones the run left behind; a later checkout overwrote every mtime under results/eval-real/ with the checkout time.",
   "verdict_written_at_means": "The moment h1_report.json was written to disk. That is not the same claim as 'the date of the run': a run spanning midnight would make the two differ, and nothing available here can tell them apart.",
-  "what_is_not_here": "The models, EMBEDDING_DIM, and the groundedness threshold in force for this run are also unrecorded. They are still restated from constants in scripts/sync_eval_artifacts.py and are not recovered here."
+  "what_is_not_here": "The models, EMBEDDING_DIM, and the groundedness threshold in force for this run are also unrecorded. They are still restated from constants in scripts/sync_eval_artifacts.py and are not recovered here.",
+  "sparse_retrieval": {
+    "implementation": "legacy_ilike_weighted_substring",
+    "status": "recovered, not recorded",
+    "basis": "The archived harness config did not record a sparse implementation. This run predates okapi_bm25_v1, and its B1/B3/B4 sparse route was the repository's ILIKE candidate filter plus fixed _chunk_rank substring bonuses.",
+    "not_bm25": "It did not compute corpus document frequency, IDF, term-frequency saturation, or document-length normalization."
+  }
 }

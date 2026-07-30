@@ -58,9 +58,10 @@ These have each cost someone real time.
    SELECT vector_dims(embedding), left(embedding::text, 20) FROM chunks LIMIT 1;
    ```
 
-3. **`tsv` and its GIN index are idle.** The full-text column and index exist but
-   are unused; keyword search goes through `ILIKE`. Do not assume the GIN index is
-   being hit.
+3. **`tsv` and its GIN index are idle.** The retained full-text column is not the
+   sparse path. Sparse search builds a code-tokenized Okapi BM25 corpus in the
+   API and caches it by `repo_id + index_revision`; the worker increments that
+   revision whenever it atomically replaces the chunks.
 4. **Graph coverage is name-based static analysis only.** No type inference, no
    MRO resolution for inherited `self.method()` calls, no nested-function or
    nested-class symbols, and decorators are excluded from chunk and symbol line
@@ -313,6 +314,11 @@ Once the smoke passes:
 1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
    results directory. Do not overwrite `results/eval-real/` — see
    [`results/README.md`](../../results/README.md).
+   Pass `--repo-id`; the harness then records the database's exact
+   `corpus_revision` together with the BM25 formula, tokenizer, document fields,
+   `k1`, and `b` in both suite and per-baseline `run_config.json` files. It reads
+   the revision again after the run and rejects the result if the repository was
+   re-indexed in between.
 2. Regenerate every artifact that displays the numbers, then verify:
 
    ```bash

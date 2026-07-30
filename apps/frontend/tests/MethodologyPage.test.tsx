@@ -50,13 +50,14 @@ describe('MethodologyPage', () => {
     expect(screen.getByText(/diagnosed limitation of the measurement design/i)).toBeInTheDocument();
   });
 
-  it('features the validated hybrid-retrieval ladder', () => {
-    // B1 < B2 < B3 on cross-file questions — the finding that did land.
+  it('shows the archived ladder but requires a corrected rerun', () => {
+    // The ordering is historical data; the page must not call legacy B1 BM25.
     const l2 = levelSummary.L2;
     expect(l2.B1.recallAtK).toBeLessThan(l2.B2.recallAtK);
     expect(l2.B2.recallAtK).toBeLessThan(l2.B3.recallAtK);
     renderMethodology();
-    expect(screen.getByText(/hybrid retrieval works/i)).toBeInTheDocument();
+    expect(screen.getByText(/why it needs a rerun/i)).toBeInTheDocument();
+    expect(screen.getByText(/not BM25/i)).toBeInTheDocument();
   });
 
   it('does not claim the page matches an unarchived run', () => {

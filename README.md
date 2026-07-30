@@ -105,7 +105,8 @@ The project's engineering investment serves this **falsifiable** hypothesis. If 
 
 **Infrastructure**
 
-- **Database**: PostgreSQL 15 with the pgvector extension (HNSW on `embedding`, GIN on `tsv`)
+- **Database**: PostgreSQL 15 with pgvector (HNSW on `embedding`); sparse retrieval
+  is an application-side Okapi BM25 index cached per repository generation
 - **ORM / Migrations**: SQLAlchemy 2.0 async + Alembic
 - **Queue**: RabbitMQ with `aio-pika` client
 - **Python workspace**: `uv` workspaces (7 members) + Hatch backend
@@ -132,13 +133,12 @@ repos (1) ──── (N) chunks
 
 ### Schema Highlights
 
-`chunks` is one AST-boundary slice per row, carrying **both retrieval surfaces
-together** — `embedding VECTOR(N)` under an HNSW index for dense search, `tsv
-TSVECTOR` under a GIN index for full-text — alongside `file_path`, `chunk_type`
-(function / method / class / module_doc), `symbol_name`, `signature`, and the line
-range. `N` comes from `EMBEDDING_DIM` and is **fixed at migration time**. Hybrid
-retrieval therefore fuses two rankings over one table rather than joining two
-stores.
+`chunks` is one AST-boundary slice per row. Dense retrieval uses `embedding
+VECTOR(N)` under an HNSW index; sparse retrieval builds a code-tokenized Okapi
+BM25 corpus from `symbol_name`, `file_path`, `signature`, and `content`. The
+process-local BM25 corpus is keyed by `repos.index_revision`, which the worker
+increments atomically whenever it replaces a repository's chunks. `N` comes from
+`EMBEDDING_DIM` and is **fixed at migration time**.
 
 `symbols` + `edges` form the call graph. `edges` carries `edge_type` (calls /
 imports / inherits / references) and is indexed in **both** directions, on
@@ -349,7 +349,7 @@ results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` BM25 sparse | 0.214 | 0.221 | 0.204 | 1.000 |
+| `B1` legacy lexical heuristic | 0.214 | 0.221 | 0.204 | 1.000 |
 | `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
 | `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
 | `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
@@ -378,8 +378,11 @@ Three things a reader should take from that table, stated plainly:
 1. **H1 is unsupported.** B4 clears the bar against dense RAG on cross-file
    questions and against nothing else. The threshold was fixed before the run
    and has not moved.
-2. **Hybrid retrieval is validated.** `B1 < B2 < B3` is a clean ladder — this
-   result is independent of the H1 verdict and it is the finding that held up.
+2. **The archived run does not validate a BM25 ladder.** Its `B1` was the legacy
+   substring heuristic now identified in the generated label. The observed
+   `B1 < B2 < B3` ordering remains historical data, but B1 and the sparse arm of
+   B3/B4 must be rerun with the new BM25 implementation before that comparison
+   can be claimed again.
 3. **B4's groundedness falls below the 0.95 guardrail.** The agent sometimes
    emits a citation that fails verification. Unverifiable references are
    stripped from the delivered answer, but the score deliberately counts the
@@ -408,7 +411,11 @@ Dcode chunks code at function, method, class, and module docstring boundaries vi
 `pgvector` stores embeddings with HNSW and GIN indexes; ordinary relational tables store symbols and edges. One connection pool, one backup boundary, one consistency model — and a citation's chunk and its graph neighbours are read in the same transaction, so the inspector cannot show source from one snapshot and edges from another. The tradeoff is custom hybrid-retrieval logic.
 
 **Hybrid retrieval is required**
-Code search needs exact symbol matching *and* semantic intent. Sparse and dense retrieval run in parallel, fuse by Reciprocal Rank Fusion (`k=60`), then rerank through a cross encoder (`D-2.2.1`). This is also the finding that survived evaluation: `B1 < B2 < B3` is a clean ladder.
+Code search needs exact symbol matching *and* semantic intent. Code-tokenized
+Okapi BM25 and dense retrieval run in parallel, fuse by Reciprocal Rank Fusion
+(`k=60`), then rerank through a cross encoder (`D-2.2.1`). The checked-in
+real-model run predates the BM25 implementation, so its ladder is retained as
+historical evidence and is not presented as validation of the corrected path.
 
 **Groundedness as a hard guardrail**
 Inventing a symbol that does not exist is the critical failure mode for code answers. The check (`D-2.3.1`) extracts every citation from a final answer, verifies it against the indexed symbol table, and strips what it cannot verify. It is deliberately scored on the draft **before** redaction, which is why the guardrail can visibly fail — and does, at 0.916. Counting only surviving citations would make the number meaningless: [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md).

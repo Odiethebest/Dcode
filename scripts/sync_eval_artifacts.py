@@ -16,8 +16,9 @@ state what we can prove" cannot restate its own numbers by hand.
 
 So every figure lives in exactly one place — the results directory — and
 everything that displays it is generated from there. Prose carries qualitative
-conclusions only ("H1 unsupported", "hybrid retrieval validated", "the graph's
-contribution is unmeasured"); specific numbers belong inside a generated block.
+conclusions only ("H1 unsupported", "the archived sparse baseline was not
+BM25", "the graph's contribution is unmeasured"); specific numbers belong
+inside a generated block.
 
 That claim only holds while this script is a pure function of the bytes under
 the run directory. Taking a value from an mtime, the wall clock, or a constant
@@ -68,6 +69,11 @@ MODELS = {
     "embedding": "Jina v2-base-code (768-dim)",
     "reranker": "BGE reranker v2-m3",
     "synthesis": "gpt-4o-mini",
+}
+TS_BASELINE_LABELS = {
+    "B2": "Dense RAG",
+    "B3": "Hybrid + rerank",
+    "B4": "Dcode + graph + agent",
 }
 
 LABELS = {
@@ -181,6 +187,7 @@ def load_run(run: pathlib.Path) -> dict:
         "suite": read("suite_summary.json"),
         "h1": read("h1_report.json"),
         "config": read("run_config.json"),
+        "provenance": provenance,
         "levels": {b: read(f"{b}/taxonomy_breakdown.json") for b in BASELINES},
         "rows": rows,
         "path": f"{run.relative_to(ROOT).as_posix()}/",
@@ -188,6 +195,32 @@ def load_run(run: pathlib.Path) -> dict:
         # the harness — the surfaces that display it have to say so.
         "verdict_written": provenance["verdict_written_at"],
     }
+
+
+def sparse_retrieval(run: dict) -> dict:
+    """Return recorded config first, then explicitly recovered legacy metadata."""
+
+    recorded = run["config"].get("sparse_retrieval")
+    if isinstance(recorded, dict):
+        return recorded
+    recovered = run["provenance"].get("sparse_retrieval")
+    if isinstance(recovered, dict):
+        return recovered
+    return {"implementation": "unrecorded"}
+
+
+def baseline_label(run: dict, lang: str, baseline: str) -> str:
+    if baseline != "B1":
+        return str(LABELS[lang][baseline])
+
+    implementation = sparse_retrieval(run).get("implementation")
+    if implementation == "okapi_bm25_v1":
+        return "BM25 sparse" if lang == "en" else "BM25 稀疏检索"
+    if implementation == "legacy_ilike_weighted_substring":
+        return "legacy lexical heuristic" if lang == "en" else "旧版词法启发式检索"
+    return (
+        "sparse retrieval (implementation unrecorded)" if lang == "en" else "稀疏检索（实现未记录）"
+    )
 
 
 def m3(value: object) -> str:
@@ -229,7 +262,8 @@ def block_suite_metrics(run: dict, lang: str) -> str:
         if row["groundedness"] < GUARDRAIL:
             grounded = f"**{grounded}** ⚠️ {t['below']}"
         lines.append(
-            f"| `{baseline}` {t[baseline]} | {m3(row['recall_at_k'])} | "
+            f"| `{baseline}` {baseline_label(run, lang, baseline)} | "
+            f"{m3(row['recall_at_k'])} | "
             f"{m3(row['mrr'])} | {m3(row['ndcg_at_k'])} | {grounded} |"
         )
     lines += ["", block_provenance(run, lang)]
@@ -335,6 +369,16 @@ def render_ts(run: dict) -> str:
     w("export type Level = 'L1' | 'L2' | 'L3';")
     w("/** The levels H1 is actually evaluated on — L1 is single-hop and out of scope. */")
     w("export type Taxonomy = 'L2' | 'L3';\n")
+    w("/** Labels describe this archived run, not the current implementation. */")
+    w("export const baselineLabels: Record<BaselineName, string> = {")
+    for baseline in BASELINES:
+        label = (
+            baseline_label(run, "en", baseline)
+            if baseline == "B1"
+            else TS_BASELINE_LABELS[baseline]
+        )
+        w(f"  {baseline}: {s(label)},")
+    w("};\n")
 
     w("""export interface BaselineSummary {
   baseline: BaselineName;
@@ -386,6 +430,7 @@ export interface DemoQuestionCase {
     w(f"  corpus: '{CORPUS}',")
     w(f"  repoId: {s(config['repo_id_override'])},")
     w(f"  k: {config['k']},")
+    w(f"  sparseRetrieval: {json.dumps(sparse_retrieval(run), ensure_ascii=False)} as const,")
     for key, value in MODELS.items():
         w(f"  {key}: '{value}',")
     w("} as const;\n")

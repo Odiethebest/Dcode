@@ -17,6 +17,14 @@ export type Level = 'L1' | 'L2' | 'L3';
 /** The levels H1 is actually evaluated on — L1 is single-hop and out of scope. */
 export type Taxonomy = 'L2' | 'L3';
 
+/** Labels describe this archived run, not the current implementation. */
+export const baselineLabels: Record<BaselineName, string> = {
+  B1: "legacy lexical heuristic",
+  B2: "Dense RAG",
+  B3: "Hybrid + rerank",
+  B4: "Dcode + graph + agent",
+};
+
 export interface BaselineSummary {
   baseline: BaselineName;
   questions: number;
@@ -66,6 +74,7 @@ export const snapshotSource = {
   corpus: 'psf/requests',
   repoId: "2543893e-0965-4be7-ac45-5a8e38600bc0",
   k: 5,
+  sparseRetrieval: {"implementation": "legacy_ilike_weighted_substring", "status": "recovered, not recorded", "basis": "The archived harness config did not record a sparse implementation. This run predates okapi_bm25_v1, and its B1/B3/B4 sparse route was the repository's ILIKE candidate filter plus fixed _chunk_rank substring bonuses.", "not_bm25": "It did not compute corpus document frequency, IDF, term-frequency saturation, or document-length normalization."} as const,
   embedding: 'Jina v2-base-code (768-dim)',
   reranker: 'BGE reranker v2-m3',
   synthesis: 'gpt-4o-mini',

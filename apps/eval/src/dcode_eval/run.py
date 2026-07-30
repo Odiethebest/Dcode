@@ -8,7 +8,11 @@ import sys
 from pathlib import Path
 from statistics import mean
 from typing import Any
+from uuid import UUID
 
+from dcode_shared.bm25 import bm25_run_config
+from dcode_shared.db.models import Repo
+from dcode_shared.db.session import SessionLocal
 from dcode_shared.observability import log_event
 
 from dcode_eval.baselines import build_baseline
@@ -26,6 +30,7 @@ async def run_eval(
     output_dir: str,
     k: int,
     repo_id_override: str | None = None,
+    corpus_revision: int | None = None,
 ) -> dict[str, Any]:
     baseline = build_baseline(baseline_id)
     questions = await resolve_questions(
@@ -40,6 +45,8 @@ async def run_eval(
         "output_dir": output_dir,
         "k": k,
         "repo_id_override": repo_id_override,
+        "corpus_revision": corpus_revision,
+        "sparse_retrieval": bm25_run_config(),
     }
     _write_json(out_dir / "run_config.json", run_config)
     log_event(logger, "eval_run_start", **run_config)
@@ -106,6 +113,7 @@ async def run_suite(
     output_dir: str,
     k: int,
     repo_id_override: str | None = None,
+    corpus_revision: int | None = None,
 ) -> dict[str, Any]:
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -116,6 +124,8 @@ async def run_suite(
         "output_dir": output_dir,
         "k": k,
         "repo_id_override": repo_id_override,
+        "corpus_revision": corpus_revision,
+        "sparse_retrieval": bm25_run_config(),
     }
     _write_json(out_dir / "run_config.json", run_config)
     log_event(logger, "eval_suite_start", **run_config)
@@ -127,6 +137,7 @@ async def run_suite(
             output_dir=str(out_dir / baseline_id),
             k=k,
             repo_id_override=repo_id_override,
+            corpus_revision=corpus_revision,
         )
 
     summary = {baseline_id: result["metrics"] for baseline_id, result in suite_results.items()}
@@ -185,6 +196,23 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+async def _read_corpus_revision(repo_id: str | None) -> int | None:
+    """Read the exact indexed generation recorded by a CLI evaluation run."""
+
+    if repo_id is None:
+        return None
+    try:
+        repo_uuid = UUID(repo_id)
+    except ValueError as exc:
+        raise ValueError("--repo-id must be a UUID when recording corpus revision") from exc
+
+    async with SessionLocal() as db:
+        repo = await db.get(Repo, repo_uuid)
+    if repo is None:
+        raise ValueError(f"cannot record corpus revision for unknown repo_id: {repo_id}")
+    return repo.index_revision
+
+
 def _h1_report(suite_results: dict[str, Any]) -> dict[str, Any]:
     threshold = 0.05
     compared_taxonomies = ("L2", "L3")
@@ -234,6 +262,45 @@ def _composite_score(metrics: dict[str, Any]) -> float:
     )
 
 
+async def _run_cli(
+    *,
+    baselines: list[str],
+    questions_path: str,
+    output_dir: str,
+    k: int,
+    repo_id_override: str | None,
+) -> dict[str, Any]:
+    """Record and use one corpus generation inside one event loop."""
+
+    corpus_revision = await _read_corpus_revision(repo_id_override)
+    if len(baselines) == 1:
+        result = await run_eval(
+            baseline_id=baselines[0],
+            questions_path=questions_path,
+            output_dir=output_dir,
+            k=k,
+            repo_id_override=repo_id_override,
+            corpus_revision=corpus_revision,
+        )
+    else:
+        result = await run_suite(
+            baseline_ids=baselines,
+            questions_path=questions_path,
+            output_dir=output_dir,
+            k=k,
+            repo_id_override=repo_id_override,
+            corpus_revision=corpus_revision,
+        )
+
+    ending_revision = await _read_corpus_revision(repo_id_override)
+    if ending_revision != corpus_revision:
+        raise RuntimeError(
+            "repository corpus changed during evaluation: "
+            f"started at revision {corpus_revision}, ended at {ending_revision}"
+        )
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="dcode-eval", description="Dcode evaluation harness")
     parser.add_argument(
@@ -268,17 +335,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    baselines = args.baseline
-    if len(baselines) == 1:
-        result = asyncio.run(
-            run_eval(
-                baseline_id=baselines[0],
-                questions_path=args.questions,
-                output_dir=args.output,
-                k=args.k,
-                repo_id_override=args.repo_id,
-            )
+    baselines: list[str] = args.baseline
+    result = asyncio.run(
+        _run_cli(
+            baselines=baselines,
+            questions_path=args.questions,
+            output_dir=args.output,
+            k=args.k,
+            repo_id_override=args.repo_id,
         )
+    )
+    if len(baselines) == 1:
         metrics = result["metrics"]
         print(
             json.dumps(
@@ -296,15 +363,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    result = asyncio.run(
-        run_suite(
-            baseline_ids=baselines,
-            questions_path=args.questions,
-            output_dir=args.output,
-            k=args.k,
-            repo_id_override=args.repo_id,
-        )
-    )
     print(json.dumps(result["summary"], ensure_ascii=False))
     if result["h1_report"] is not None:
         print(json.dumps(result["h1_report"], ensure_ascii=False))
