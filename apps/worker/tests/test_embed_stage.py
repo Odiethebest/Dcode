@@ -4,6 +4,7 @@ import json
 from collections.abc import Sequence
 from contextlib import AbstractAsyncContextManager
 from types import TracebackType
+from typing import Any
 from uuid import uuid4
 
 from dcode_shared.cache import embedding_cache_key
@@ -45,6 +46,8 @@ async def test_embed_stage_uses_cache_and_persists_chunks() -> None:
         {embedding_cache_key("stub-test", second.content): json.dumps([3.0, 4.0])}
     ]
     assert session_factory.session.commits == 1
+    assert session_factory.session.executed == 2
+    assert "index_revision" in str(session_factory.session.statements[1].compile())
     assert len(session_factory.session.rows) == 2
     assert session_factory.session.rows[0].repo_id == repo_id
     assert session_factory.session.rows[0].symbol_name == "one"
@@ -143,6 +146,7 @@ class FakeSession(AbstractAsyncContextManager[AsyncSession]):
         self.rows: list[object] = []
         self.commits = 0
         self.executed = 0
+        self.statements: list[Any] = []
 
     async def __aenter__(self) -> AsyncSession:
         return self  # type: ignore[return-value]
@@ -157,6 +161,7 @@ class FakeSession(AbstractAsyncContextManager[AsyncSession]):
 
     async def execute(self, statement: object) -> None:
         self.executed += 1
+        self.statements.append(statement)
 
     def add_all(self, rows: list[object]) -> None:
         self.rows.extend(rows)

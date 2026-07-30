@@ -55,15 +55,31 @@ def _internal_headers() -> dict[str, str]:
 
 def test_internal_search_route_returns_chunk_schema(monkeypatch: pytest.MonkeyPatch) -> None:
     repo_id = uuid.uuid4()
-    override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
+    override_db(
+        FakeSession(
+            Repo(
+                id=repo_id,
+                url="https://example.com/repo.git",
+                status="ready",
+                index_revision=7,
+            )
+        )
+    )
 
     async def fake_search(
-        _: FakeSession, passed_repo_id: uuid.UUID, query: str, k: int, *, mode: str
+        _: FakeSession,
+        passed_repo_id: uuid.UUID,
+        query: str,
+        k: int,
+        *,
+        mode: str,
+        index_revision: int,
     ) -> list[Chunk]:
         assert passed_repo_id == repo_id
         assert query == "auth"
         assert k == 3
         assert mode == "hybrid"
+        assert index_revision == 7
         return [
             Chunk(
                 chunk_id=uuid.uuid4(),
@@ -205,6 +221,40 @@ def test_internal_routes_require_service_auth() -> None:
 
     assert response.status_code == 403
     assert response.json()["detail"]["code"] == "FORBIDDEN"
+
+
+async def test_sparse_candidates_delegate_to_versioned_bm25(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = uuid.uuid4()
+    row = _chunk_row("src/requests/auth.py", "HTTPBasicAuth", 85, repo_id=repo_id)
+
+    async def fake_bm25(
+        _: object,
+        passed_repo_id: uuid.UUID,
+        query: str,
+        *,
+        index_revision: int,
+        limit: int,
+    ) -> list[tuple[ChunkRow, float]]:
+        assert passed_repo_id == repo_id
+        assert query == "HTTPBasicAuth Authorization header"
+        assert index_revision == 9
+        assert limit == 50
+        return [(row, 3.25)]
+
+    monkeypatch.setattr(internal, "search_repo_bm25", fake_bm25)
+
+    candidates = await internal._search_sparse_candidates(
+        object(),  # type: ignore[arg-type]
+        repo_id,
+        "HTTPBasicAuth Authorization header",
+        index_revision=9,
+        limit=50,
+    )
+
+    assert [candidate.row.id for candidate in candidates] == [row.id]
+    assert candidates[0].sparse_score == 3.25
 
 
 def test_hybrid_search_fuses_sparse_and_dense_scores() -> None:
@@ -350,11 +400,16 @@ async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
     row = _chunk_row("src/requests/auth.py", "HTTPBasicAuth", 85, repo_id=repo_id)
 
     async def fake_sparse(
-        _: object, passed_repo_id: uuid.UUID, query: str, terms: list[str], *, limit: int
+        _: object,
+        passed_repo_id: uuid.UUID,
+        query: str,
+        *,
+        index_revision: int,
+        limit: int,
     ) -> list[internal.SearchCandidate]:
         assert passed_repo_id == repo_id
         assert query == "HTTPBasicAuth"
-        assert terms[0] == "httpbasicauth"
+        assert index_revision == 3
         assert limit >= 2
         return [internal.SearchCandidate(row=row, sparse_score=88.0)]
 
@@ -370,13 +425,21 @@ async def test_search_chunks_degrades_to_sparse_only_when_embedding_is_stub(
     monkeypatch.setattr(internal, "_search_dense_candidates", fake_dense)
     monkeypatch.setattr(internal.api_settings, "embedding_model", "stub")
 
-    chunks = await internal._search_chunks(object(), repo_id, "HTTPBasicAuth", 2)
+    chunks = await internal._search_chunks(
+        object(),
+        repo_id,
+        "HTTPBasicAuth",
+        2,
+        mode="dense",
+        index_revision=3,
+    )
 
     assert len(chunks) == 1
     assert chunks[0].symbol_name == "HTTPBasicAuth"
     assert chunks[0].score_components.sparse == 88.0
     assert chunks[0].score_components.dense == 0.0
     assert chunks[0].score == chunks[0].score_components.rerank
+    assert chunks[0].score == 88.0
 
 
 async def test_embed_search_query_returns_none_for_stub(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -393,7 +456,9 @@ async def test_embed_search_query_embeds_query_text(monkeypatch: pytest.MonkeyPa
             assert texts == ["HTTP redirects"]
             return [[0.1, 0.2, 0.3]]
 
-    monkeypatch.setattr(internal.api_settings, "embedding_model", "jinaai/jina-embeddings-v2-base-code")
+    monkeypatch.setattr(
+        internal.api_settings, "embedding_model", "jinaai/jina-embeddings-v2-base-code"
+    )
     monkeypatch.setattr(internal, "_get_query_embedding_client", lambda: FakeEmbeddingClient())
 
     vector = await internal._embed_search_query("HTTP redirects")
@@ -413,8 +478,14 @@ async def test_search_chunks_passes_query_vector_to_dense_search(
         return query_vector
 
     async def fake_sparse(
-        _: object, passed_repo_id: uuid.UUID, query: str, terms: list[str], *, limit: int
+        _: object,
+        passed_repo_id: uuid.UUID,
+        query: str,
+        *,
+        index_revision: int,
+        limit: int,
     ) -> list[internal.SearchCandidate]:
+        assert index_revision == 4
         return []
 
     async def fake_dense(
@@ -428,7 +499,13 @@ async def test_search_chunks_passes_query_vector_to_dense_search(
     monkeypatch.setattr(internal, "_search_sparse_candidates", fake_sparse)
     monkeypatch.setattr(internal, "_search_dense_candidates", fake_dense)
 
-    chunks = await internal._search_chunks(object(), repo_id, "HTTP redirects", 1)
+    chunks = await internal._search_chunks(
+        object(),
+        repo_id,
+        "HTTP redirects",
+        1,
+        index_revision=4,
+    )
 
     assert len(chunks) == 1
     assert chunks[0].symbol_name == "SessionRedirectMixin"

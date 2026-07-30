@@ -16,6 +16,7 @@ from uuid import UUID
 
 from dcode_shared.cache import embedding_cache_key
 from dcode_shared.db.models import Chunk as DBChunk
+from dcode_shared.db.models import Repo
 from dcode_shared.db.session import SessionLocal
 from dcode_shared.embedding import (
     EmbeddingClient,
@@ -23,7 +24,7 @@ from dcode_shared.embedding import (
 )
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcode_worker.context import PipelineContext
@@ -171,6 +172,12 @@ async def _replace_repo_chunks(
         raise RuntimeError("chunk/vector count mismatch")
 
     await db.execute(delete(DBChunk).where(DBChunk.repo_id == repo_id))
+    # The BM25 corpus is cached by this generation rather than commit SHA: the
+    # same commit may be re-indexed into different chunk ids or with a changed
+    # chunker.  Bump it in the same transaction as the replacement.
+    await db.execute(
+        update(Repo).where(Repo.id == repo_id).values(index_revision=Repo.index_revision + 1)
+    )
     rows = [
         DBChunk(
             repo_id=repo_id,

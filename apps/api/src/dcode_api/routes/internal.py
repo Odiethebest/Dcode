@@ -1,7 +1,6 @@
 """Internal retrieval and graph-query endpoints."""
 
 import logging
-import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from uuid import UUID
@@ -14,11 +13,12 @@ from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
 from dcode_shared.symbols import select_symbol_matches
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from dcode_api.deps import get_db
+from dcode_api.retrieval.bm25 import search_repo_bm25
 from dcode_api.settings import api_settings
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ async def _require_internal_api_key(
 
 router = APIRouter(tags=["internal"], dependencies=[Depends(_require_internal_api_key)])
 
-_TERM_SPLIT_RE = re.compile(r"\s+")
 _SEARCH_CANDIDATE_LIMIT = 50
 _RRF_K = 60
 # Cap per-passage length sent to the reranker. BGE on CPU is token-bound: full
@@ -65,8 +64,15 @@ async def search(
     mode: str = Query("hybrid", pattern="^(sparse|dense|hybrid)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[Chunk]:
-    await _require_repo(db, repo_id)
-    return await _search_chunks(db, repo_id, query, k, mode=mode)
+    repo = await _require_repo(db, repo_id)
+    return await _search_chunks(
+        db,
+        repo_id,
+        query,
+        k,
+        mode=mode,
+        index_revision=int(repo.index_revision or 0),
+    )
 
 
 @router.get("/find_definition", response_model=list[Location])
@@ -130,17 +136,28 @@ async def _require_repo(db: AsyncSession, repo_id: UUID) -> Repo:
 
 
 async def _search_chunks(
-    db: AsyncSession, repo_id: UUID, query: str, k: int, *, mode: str = "hybrid"
+    db: AsyncSession,
+    repo_id: UUID,
+    query: str,
+    k: int,
+    *,
+    mode: str = "hybrid",
+    index_revision: int = 0,
 ) -> list[Chunk]:
     query_text = query.strip()
     if not query_text:
         return []
 
-    terms = _query_terms(query_text)
     candidate_limit = max(k, _SEARCH_CANDIDATE_LIMIT)
 
     if mode == "sparse":
-        sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+        sparse = await _search_sparse_candidates(
+            db,
+            repo_id,
+            query_text,
+            index_revision=index_revision,
+            limit=candidate_limit,
+        )
         reranked = _identity_rerank(sparse)
         return [_chunk_from_candidate(c) for c in reranked[:k]]
 
@@ -150,14 +167,26 @@ async def _search_chunks(
         dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
         # Degrade to sparse when stub embeddings are active (no query vector).
         if not dense:
-            sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+            sparse = await _search_sparse_candidates(
+                db,
+                repo_id,
+                query_text,
+                index_revision=index_revision,
+                limit=candidate_limit,
+            )
             reranked = _identity_rerank(sparse)
         else:
             reranked = _identity_rerank(dense)
         return [_chunk_from_candidate(c) for c in reranked[:k]]
 
     # mode == "hybrid": sparse + dense → RRF fusion → rerank
-    sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+    sparse = await _search_sparse_candidates(
+        db,
+        repo_id,
+        query_text,
+        index_revision=index_revision,
+        limit=candidate_limit,
+    )
     dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
     fused = _fuse_search_candidates(sparse, dense)
     reranked = await _rerank_candidates(query_text, fused)
@@ -168,28 +197,19 @@ async def _search_sparse_candidates(
     db: AsyncSession,
     repo_id: UUID,
     query: str,
-    terms: list[str],
     *,
+    index_revision: int,
     limit: int,
 ) -> list[SearchCandidate]:
-    patterns = [f"%{term}%" for term in terms]
-    conditions = []
-    for pattern in patterns:
-        conditions.extend(
-            [
-                ChunkRow.symbol_name.ilike(pattern),
-                ChunkRow.file_path.ilike(pattern),
-                ChunkRow.content.ilike(pattern),
-            ]
-        )
-
-    stmt = select(ChunkRow).where(ChunkRow.repo_id == repo_id).where(or_(*conditions))
-    result = await db.execute(stmt)
-    rows = list(result.scalars().all())
-    ranked = sorted(rows, key=lambda row: _chunk_rank(row, query, terms), reverse=True)
     return [
-        SearchCandidate(row=row, sparse_score=_chunk_rank(row, query, terms))
-        for row in ranked[:limit]
+        SearchCandidate(row=row, sparse_score=score)
+        for row, score in await search_repo_bm25(
+            db,
+            repo_id,
+            query,
+            index_revision=index_revision,
+            limit=limit,
+        )
     ]
 
 
@@ -387,7 +407,15 @@ def _identity_rerank(candidates: list[SearchCandidate]) -> list[SearchCandidate]
             sparse_score=candidate.sparse_score,
             dense_score=candidate.dense_score,
             fused_score=candidate.fused_score,
-            rerank_score=candidate.fused_score,
+            rerank_score=(
+                candidate.fused_score
+                if candidate.fused_score != 0.0
+                else (
+                    candidate.dense_score
+                    if candidate.dense_score != 0.0
+                    else candidate.sparse_score
+                )
+            ),
         )
         for candidate in candidates
     ]
@@ -504,43 +532,6 @@ async def _resolve_symbols(
     result = await db.execute(stmt)
     rows = list(result.scalars().all())
     return _select_symbol_matches(rows, symbol)
-
-
-def _query_terms(query: str) -> list[str]:
-    lowered = query.lower().strip()
-    terms = [term for term in _TERM_SPLIT_RE.split(lowered) if term]
-    if lowered not in terms:
-        return [lowered, *terms]
-    return terms
-
-
-def _chunk_rank(row: ChunkRow, query: str, terms: list[str]) -> float:
-    query_lower = query.lower()
-    symbol = row.symbol_name.lower()
-    path = row.file_path.lower()
-    content = row.content.lower()
-    score = 0.0
-
-    if symbol == query_lower:
-        score += 100.0
-    if path == query_lower:
-        score += 90.0
-    if query_lower in symbol:
-        score += 35.0
-    if query_lower in path:
-        score += 25.0
-    if query_lower in content:
-        score += 10.0
-
-    for term in terms:
-        if term in symbol:
-            score += 12.0
-        if term in path:
-            score += 8.0
-        if term in content:
-            score += 4.0
-
-    return score
 
 
 def _location_from_symbol(row: Symbol) -> Location:
