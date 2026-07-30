@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { h1Report, levelSummary, suiteSummary } from '@/demo/evalSnapshot';
+import { demoCases, h1Report, levelSummary, suiteSummary } from '@/demo/evalSnapshot';
 import MethodologyPage from '@/pages/MethodologyPage';
 
 function renderMethodology() {
@@ -68,6 +68,17 @@ describe('MethodologyPage', () => {
   it('routes the demo CTA into the workbench', () => {
     renderMethodology();
     expect(screen.getByRole('link', { name: /Open the demo/i })).toHaveAttribute('href', '/workbench');
+  });
+
+  it('titles the transcripts with their real scope, not the whole suite', () => {
+    // The section renders a fixed excerpt but was headed "Every question, every
+    // baseline." The honest scope existed in the footnote; the prominent line
+    // was the flattering one. Both counts come from the generated snapshot.
+    expect(demoCases.length).toBeLessThan(suiteSummary.B4.questions);
+    const { container } = renderMethodology();
+    const copy = container.textContent ?? '';
+    expect(copy).not.toMatch(/every question, every baseline/i);
+    expect(copy).toContain(`${demoCases.length} of ${suiteSummary.B4.questions} questions`);
   });
 
   it('switches question transcripts by taxonomy', () => {

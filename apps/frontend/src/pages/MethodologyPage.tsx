@@ -379,9 +379,15 @@ export default function MethodologyPage() {
       </Section>
 
       {/* the transcripts */}
+      {/* Titled "Every question, every baseline." while rendering four of the
+          sixteen. The honest scope was already in the footnote below — the
+          prominent line was the flattering one, which is the shape this page
+          keeps having to correct. Both counts are read from the generated
+          snapshot, so changing the demo set or the suite can never strand a
+          hand-typed number in this heading. */}
       <Section
         eyebrow="The transcripts"
-        title="Every question, every baseline."
+        title={<>{demoCases.length} of {questionCount} questions, every baseline.</>}
         lede="The exact answers and citations each baseline produced on the same snapshot. Nothing here is regenerated live."
       >
         <div className="flex gap-2">
