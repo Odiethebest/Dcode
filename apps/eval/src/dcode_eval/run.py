@@ -151,6 +151,7 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
             "mrr": 0.0,
             "ndcg_at_k": 0.0,
             "groundedness": 0.0,
+            "answers_without_citations": 0,
             "pairwise_win_rate": None,
         }
     return {
@@ -161,6 +162,14 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
         "mrr": mean(row["mrr"] for row in rows),
         "ndcg_at_k": mean(row["ndcg_at_k"] for row in rows),
         "groundedness": mean(row["groundedness"] for row in rows),
+        # Required alongside groundedness, not optional beside it. An answer citing
+        # nothing scores 0.0 (dcode_agent.groundedness.verify), which is the same
+        # number an answer whose every citation failed would get — two different
+        # failures that the mean cannot tell apart. This count is the only thing
+        # that separates them once the scores are averaged, and without it a
+        # baseline could post a low groundedness for the honest reason or for the
+        # useless one and read identically.
+        "answers_without_citations": sum(1 for row in rows if not row["citations"]),
         "pairwise_win_rate": None,
     }
 

@@ -305,17 +305,25 @@ everything else is independent of it.
 - **B4's groundedness dip is diagnosed and partly addressed.** The agent was offering
   the model qualified names in its allowed-citation list that the guardrail rejects by
   exact match, so it was instructing the model to emit references it would then redact
-  (`da2b6bc`). Removing them cut redaction events and cut run-to-run variance fourfold;
-  it did **not** measurably move the mean, and is not reported as a score improvement.
-  Paired measurement: `results/b4-citation-fix-experiment.md`. Still open: whatever
-  produces the remaining unverifiable `file:line` references. Do **not** address any of
-  it by changing how the score is computed (criteria set 2, item 3).
-- **An answer with no citations scores groundedness `1.000`**
-  (`apps/agent/src/dcode_agent/groundedness.py:61-62`). The metric rewards not citing,
-  so an agent emitting no references would report a perfect score — which matters more
-  to the guardrail than anything the fix above touched. Left alone deliberately: it
-  changes how the score is computed, so it needs its own decision and its own
-  before/after.
+  (`da2b6bc`). Removing them cut redaction events, and that is the only effect that
+  survived rescoring — the mean and the variance both moved the other way once uncited
+  answers stopped scoring perfectly, so **nothing about that fix is reported as a score
+  improvement.** It also has a cost the old convention hid: on some questions the model
+  is then left with nothing it will cite at all. Still open: whatever produces the
+  remaining unverifiable `file:line` references, and whether dropping the tokens was the
+  right remedy at all rather than reconciling the two symbol-matching rules below.
+  Paired measurement and both corrections: `results/b4-citation-fix-experiment.md`. Do
+  **not** address any of it by changing how the score is computed upward (criteria set 2,
+  item 3).
+- ~~An answer with no citations scores groundedness `1.000`~~ **— fixed.** It now
+  scores `0.0`, and `dcode_eval.run` reports `answers_without_citations` beside every
+  groundedness figure, because `0.0` alone cannot separate *cited nothing* from *cited
+  things that all failed*. The recorded verdict does not move: all four baselines cited
+  on all 16 questions in `results/eval-real/`, so the branch never executed there. It
+  did fire in the variance runs, where it had been paying a free perfect score — and
+  rescoring them **reverses the measured sign of the citation fix and erases its
+  apparent variance reduction**, so neither is claimed. Both corrections are recorded in
+  `results/b4-citation-fix-experiment.md`.
 - **The API and the guardrail resolve a symbol by different rules** — suffix match in
   `apps/api/src/dcode_api/routes/internal.py`, exact match in `groundedness.py`. The
   deeper defect behind the dip, and left alone for the same reason: aligning them

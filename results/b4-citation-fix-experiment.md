@@ -111,6 +111,12 @@ margin's own standard deviation.
 | pre-fix | 0.8863 · 0.8376 · 0.8776 | 0.8672 | 0.0260 | −0.0365 | 0.0122 | −0.0798 | 0.0067 |
 | post-fix | 0.8946 · 0.8914 · 0.8827 | 0.8896 | **0.0061** | −0.0280 | 0.0036 | −0.0726 | 0.0178 |
 
+> **Scored under a convention that has since been corrected.** An answer citing nothing
+> scored `1.0`; it now scores `0.0` (`dcode_agent.groundedness.verify`). Read
+> *Correction, 2026-07-30* below before using any figure in this table — **two of the
+> three conclusions first drawn from it do not survive it.** The runs are kept as taken;
+> what changed is how they are scored.
+
 Recall@5, MRR and nDCG@5 were byte-identical in all six runs, and B3's groundedness is
 1.000 on every question, so B3's composite is deterministic and the whole margin
 distribution comes from B4's synthesis.
@@ -162,6 +168,44 @@ uncertainty. These figures separate "the gap is 20× the noise" from "the gap is
 the noise", which is the resolution the decision needed. They do not support quoting
 any of them to three decimals.
 
+### Correction, 2026-07-30 — the two paragraphs above do not survive rescoring
+
+Both claims about the citation fix were artefacts of scoring an uncited answer at
+`1.0`. Recomputed on the same six runs under `0.0` — an exact recomputation, not a
+re-run, so no new sampling enters:
+
+| | old convention | corrected |
+|---|---:|---:|
+| pre-fix mean · s | 0.8672 · 0.0260 | **0.8672 · 0.0260** (unchanged — no uncited answers in any of its three runs) |
+| post-fix mean · s | 0.8896 · 0.0061 | **0.8479 · 0.0302** |
+| effect on the mean | +0.0224 | **−0.0193** — the sign reverses |
+| effect on spread | 4× reduction | **none** — 0.0260 → 0.0302, marginally worse |
+
+**The zero-citation branch fired only in the post-fix arm** — once in each of two runs,
+never in the three pre-fix runs, and never in `results/eval-real/`. Each firing
+collected a free `1.0`.
+
+So the mechanism is the cause of its own measurement artefact: dropping symbol tokens
+from the allowed list left the model, on some questions, with nothing it was willing to
+cite at all — and the old convention paid a perfect score for exactly that. **The
+correction did not merely change a number; it made visible a cost of the fix that the
+old convention concealed.**
+
+What still stands, being convention-independent: the redaction count 17 → 10 (a count of
+markers in answer text, untouched by scoring), symbol-style citations at zero in every
+answer, and the code-and-index argument that the allowed list was offering tokens
+`_verify_symbol` rejects by exact match.
+
+What no longer stands: any claim that the fix improved the score or reduced its variance.
+Neither is reported. **And the remedy itself is now open to question** — accepting suffix
+matches in the verifier (see the separate finding below) would have kept those citations
+*and* made them verify, where dropping the tokens removed them. That is a better remedy
+on this evidence, and it is the one deliberately not taken here because it moves the
+metric upward.
+
+`results/eval-real/` is unaffected in every figure: all four baselines had citations on
+all 16 questions, so the branch never executed and the recorded H1 verdict does not move.
+
 ### What this does not measure
 
 Under Correction A (criteria set 2, item 1) B4's retrieval metrics would be computed
@@ -176,15 +220,29 @@ pre-registered correction after seeing what it produces is the contamination the
 pre-registration exists to prevent. The decision below is argued from the size of the
 gap and from L3's question count, never from a preview of the result.
 
-## Separate finding, independent of all of the above
+## The finding that turned out not to be separate — now fixed
 
-`apps/agent/src/dcode_agent/groundedness.py:61-62` returns `score=1.0` when an answer
-contains no citations at all. **An answer that cites nothing scores perfectly**, and
-q-002 in the post-fix arm went from 3 verified citations to 0 while still scoring
-1.000. The metric therefore rewards not citing, which matters more to the guardrail
-than anything measured above: an agent that emitted no references would report perfect
-groundedness.
+`dcode_agent.groundedness.verify` returned `score=1.0` when an answer contained no
+citations at all, so **an answer citing nothing scored perfectly** and the metric
+rewarded vagueness. It was recorded here as an aside; the recomputation above shows it
+was load-bearing for this experiment's own conclusions, which is why the correction sits
+in the results rather than in a footnote.
 
-Deliberately not fixed. It changes how the score is computed, so it needs its own
-decision and its own before/after — the same reason `_verify_symbol`'s exact match was
-left disagreeing with `routes/internal.py`'s suffix match.
+Now `0.0`. The reasoning, and why not "exclude from the average", is in that function's
+comment; the short form is that excluding lets an agent drop the questions it is unsure
+about out of its own denominator, and `0.0` moves the number against us, which is the
+direction to choose in when a convention is being settled after the fact.
+
+`0.0` cannot by itself separate *cited nothing* from *cited ten things, all false* —
+which is the collapse Honesty_Constraints §4 forbids for the marks on individual
+references. Two things keep them apart: `enforce_groundedness` writes a different
+footnote for each, and `dcode_eval.run` reports `answers_without_citations` beside every
+groundedness figure. **That count is a condition of this convention, not an
+embellishment on it** — a baseline scoring low honestly and one scoring low uselessly
+are indistinguishable in the mean alone.
+
+Still open, and left alone for the reason this one no longer is: `_verify_symbol`'s exact
+match disagrees with `routes/internal.py`'s suffix match. Fixing that moves the score
+**upward**, which is the direction that needs pre-declaration and a published
+before/after; this one moved it downward and closed an exploit, which is why it could be
+settled now.

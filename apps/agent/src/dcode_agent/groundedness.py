@@ -59,7 +59,30 @@ async def verify(answer: str, repo_id: str, db: AsyncSession | None) -> Grounded
     """Verify every citation in `answer` against indexed chunks / symbols."""
     extracted = extract_citations(answer)
     if not extracted:
-        return GroundednessResult(citations=[], score=1.0)
+        # An answer citing nothing scores ZERO, not one.
+        #
+        # `verified / total` is undefined at total = 0, so this is a convention and
+        # not an implementation of a fact. It used to be 1.0, which made the metric
+        # reward vagueness: an answer that names no `file:line` cannot cite anything
+        # false, so it collected a perfect grounding score while delivering nothing
+        # verifiable — and an agent that stopped citing altogether would have posted
+        # 1.000 across a whole suite.
+        #
+        # Chosen at 0.0 rather than excluded-from-the-average because excluding has
+        # its own exploit: an agent that cites nothing exactly where it is unsure
+        # drops those questions from the denominator and raises the mean over the
+        # rest. 0.0 also moves the number against us, which is the direction a
+        # scoring convention should be chosen in when it is being decided after the
+        # fact.
+        #
+        # The cost is that 0.0 cannot by itself distinguish "cited nothing" from
+        # "cited ten things and all ten failed". Those are different failures, and
+        # collapsing them is what Honesty_Constraints §4 forbids for the *marks* on
+        # individual references. The distinction is kept two ways: `citations` is
+        # empty here and non-empty there, and `enforce_groundedness` writes a
+        # different footnote for each. Anything aggregating these scores has to
+        # report the no-citation count alongside — `dcode_eval.run` does.
+        return GroundednessResult(citations=[], score=0.0)
 
     try:
         parsed_repo_id = UUID(repo_id)
@@ -160,11 +183,20 @@ def enforce_groundedness(
 
     redacted = _redact_unverified(answer, unverified)
     if result.score < threshold:
-        redacted = _append_guardrail_note(
-            redacted,
-            score=result.score,
-            threshold=threshold,
-            removed=len(unverified),
+        # Two different failures reach this branch and they get different footnotes.
+        # An answer with no citations scores 0.0 by convention (see `verify`), and
+        # telling the reader "0 unverified references removed" alongside a zero score
+        # would be accurate word by word and misleading as a whole — it implies
+        # something was stripped. Say which failure it was.
+        redacted = (
+            _append_uncited_note(redacted)
+            if not result.citations
+            else _append_guardrail_note(
+                redacted,
+                score=result.score,
+                threshold=threshold,
+                removed=len(unverified),
+            )
         )
 
     return EnforcedGroundedness(
@@ -191,6 +223,20 @@ def _replace_reference(text: str, token: str) -> str:
     text = re.sub(rf"`{escaped}`", _REDACTION_MARKER, text)
     # Bare form: guard against matching inside a longer path / number / symbol.
     return re.sub(rf"(?<![\w.]){escaped}(?![\w.])", _REDACTION_MARKER, text)
+
+
+def _append_uncited_note(answer: str) -> str:
+    """The footnote for an answer that named no indexed code at all.
+
+    Deliberately says nothing was *checked*, not that anything failed. The score is
+    0.0 either way; only this line tells a reader which of the two it was.
+    """
+    note = (
+        "> ⚠️ This answer cites no indexed code, so nothing in it was checked against "
+        "the index. Treat it as unverified rather than as verified."
+    )
+    body = answer.rstrip()
+    return f"{body}\n\n{note}" if body else note
 
 
 def _append_guardrail_note(
