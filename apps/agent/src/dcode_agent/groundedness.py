@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from dcode_shared.db.models import Chunk, Symbol
+from dcode_shared.symbols import candidate_filter, select_symbol_matches
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,13 +131,29 @@ async def _verify_symbol(
     repo_id: UUID,
     symbol: str,
 ) -> CitationCheck:
-    stmt = (
-        select(Symbol)
-        .where(Symbol.repo_id == repo_id)
-        .where(Symbol.qualified_name == symbol)
-        .limit(1)
+    # The same rule `dcode_api.routes.internal` resolves a symbol by, from the one
+    # place that defines it. This used to be `qualified_name == symbol`, which is
+    # stricter than what the tools accept: the indexer builds qualified names from
+    # the repository's directory layout (`src.requests.api.get`), so a name written
+    # the way anyone writes it verified against nothing. Inside a single request the
+    # find-definition tool answered "here it is" and this function answered "that
+    # does not exist, strip it".
+    #
+    # SQL narrows to a superset; `select_symbol_matches` makes the decision, so the
+    # preference for an exact match is expressed exactly once.
+    rows = (
+        (
+            await db.execute(
+                select(Symbol)
+                .where(Symbol.repo_id == repo_id)
+                .where(candidate_filter(Symbol.qualified_name, symbol))
+            )
+        )
+        .scalars()
+        .all()
     )
-    row = await db.scalar(stmt)
+    matches = select_symbol_matches(rows, symbol)
+    row = matches[0] if matches else None
     if row is None:
         return CitationCheck(symbol=symbol, file_path="", line=0, verified=False)
     return CitationCheck(

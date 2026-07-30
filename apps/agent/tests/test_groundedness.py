@@ -12,10 +12,36 @@ from dcode_agent.groundedness import (
 from dcode_shared.db.models import Chunk, Symbol
 
 
+class FakeScalars:
+    """The slice of SQLAlchemy's Result that `_verify_symbol` uses."""
+
+    def __init__(self, rows: list[Symbol]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> "FakeScalars":
+        return self
+
+    def all(self) -> list[Symbol]:
+        return list(self._rows)
+
+
 class FakeSession:
     def __init__(self, *, chunks: list[Chunk], symbols: list[Symbol]) -> None:
         self.chunks = chunks
         self.symbols = symbols
+
+    async def execute(self, stmt: object) -> FakeScalars:
+        """Every symbol for the repo, with the name filter deliberately not applied.
+
+        The real query narrows in SQL to a superset and lets
+        `dcode_shared.symbols.select_symbol_matches` decide. Emulating the `LIKE`
+        narrowing here would be a *third* copy of the matching rule, and a fake that
+        got it subtly wrong would conceal the very disagreement that rule exists to
+        remove. Returning the superset is what the real shape means.
+        """
+        params = stmt.compile().params  # type: ignore[attr-defined]
+        repo_id = params["repo_id_1"]
+        return FakeScalars([s for s in self.symbols if s.repo_id == repo_id])
 
     async def scalar(self, stmt: object) -> Chunk | Symbol | None:
         compiled = stmt.compile()
@@ -106,6 +132,84 @@ async def test_verify_checks_file_ranges_and_symbols_against_db_fixture() -> Non
         ("src/flask/app.py", 42, True),
     ]
     assert result.score == 2 / 3
+
+
+async def test_verify_accepts_a_symbol_written_without_the_indexed_prefix() -> None:
+    """The guardrail resolves a symbol the way the find-definition tool does.
+
+    `symbols.qualified_name` is built from the repository's directory layout, so the
+    indexed name carries a `src.` component that nobody writes. While this function
+    matched exactly, the tool answered "here it is" for `api.get` and the guardrail
+    answered "that does not exist, strip it" — about one string, over one table,
+    inside one request.
+
+    **This test is why `_verify_symbol` is mutation-covered at all.** The identity
+    assertion in `test_citable_tokens.py` proves the shared rule is *imported*; only
+    an end-to-end verify like this one proves it is *used*. Reverting the function to
+    `qualified_name == symbol` leaves that identity check green and turns this red —
+    which a mutation run established, after the first pass reported four of five
+    mutations killed and this one surviving.
+    """
+    repo_id = uuid4()
+    db = FakeSession(
+        chunks=[],
+        symbols=[
+            Symbol(
+                id=uuid4(),
+                repo_id=repo_id,
+                qualified_name="src.requests.api.get",
+                kind="function",
+                file_path="src/requests/api.py",
+                line=62,
+                chunk_id=None,
+            )
+        ],
+    )
+
+    result = await verify(
+        "The entry point is `requests.api.get`, reached via `api.get`.", str(repo_id), db
+    )
+
+    assert [(c.symbol, c.file_path, c.line, c.verified) for c in result.citations] == [
+        ("requests.api.get", "src/requests/api.py", 62, True),
+        ("api.get", "src/requests/api.py", 62, True),
+    ]
+    assert result.score == 1.0, (
+        "both names refer to the one indexed symbol; rejecting them is the "
+        "disagreement dcode_shared.symbols exists to remove"
+    )
+
+
+async def test_verify_still_rejects_a_symbol_that_is_not_indexed() -> None:
+    """Loosening the rule must not make it accept anything with a matching tail.
+
+    The pair to the test above: `select_symbol_matches` requires the match to fall on
+    a component boundary, so a name that merely ends in the same letters is still
+    unverified and still redacted.
+    """
+    repo_id = uuid4()
+    db = FakeSession(
+        chunks=[],
+        symbols=[
+            Symbol(
+                id=uuid4(),
+                repo_id=repo_id,
+                qualified_name="src.requests.api.get",
+                kind="function",
+                file_path="src/requests/api.py",
+                line=62,
+                chunk_id=None,
+            )
+        ],
+    )
+
+    result = await verify("Handled by `legacy_api.get` and `requests.api.fetch`.", str(repo_id), db)
+
+    assert [(c.symbol, c.verified) for c in result.citations] == [
+        ("legacy_api.get", False),
+        ("requests.api.fetch", False),
+    ]
+    assert result.score == 0.0
 
 
 async def test_verify_marks_citations_unverified_without_db() -> None:

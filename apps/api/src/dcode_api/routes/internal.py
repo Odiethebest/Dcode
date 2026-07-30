@@ -12,6 +12,7 @@ from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import Chunk, Location, ScoreComponents
+from dcode_shared.symbols import select_symbol_matches
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -564,10 +565,15 @@ def _unique_locations(locations: Iterable[Location]) -> list[Location]:
 
 
 def _select_symbol_matches(rows: Sequence[Symbol], symbol: str) -> list[Symbol]:
-    exact = [row for row in rows if row.qualified_name == symbol]
-    if exact:
-        return exact
-    return [row for row in rows if row.qualified_name.endswith(f".{symbol}")]
+    """Thin alias over the shared rule.
+
+    The body moved to `dcode_shared.symbols` because the agent's groundedness
+    guardrail has to apply the same rule, and it was applying a stricter one — so
+    the tool here accepted a name the guardrail then rejected. Kept as a named
+    function rather than inlining the import at each call site, so the several
+    callers below read unchanged.
+    """
+    return select_symbol_matches(rows, symbol)
 
 
 def _reference_edge_types(targets: Sequence[Symbol]) -> tuple[str, ...]:

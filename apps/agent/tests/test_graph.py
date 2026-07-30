@@ -321,12 +321,34 @@ async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
     assert emitter.tool_results
 
 
+class FakeScalars:
+    """The slice of SQLAlchemy's Result that `_verify_symbol` uses."""
+
+    def __init__(self, rows: list[Symbol]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> "FakeScalars":
+        return self
+
+    def all(self) -> list[Symbol]:
+        return list(self._rows)
+
+
 class FakeGroundednessSession:
     """Minimal async session that answers groundedness verification queries."""
 
     def __init__(self, *, chunks: list[Chunk], symbols: list[Symbol]) -> None:
         self.chunks = chunks
         self.symbols = symbols
+
+    async def execute(self, stmt: object) -> FakeScalars:
+        """Superset for the repo; the name filter is deliberately not emulated.
+
+        See the same method in `test_groundedness.py` — reimplementing the SQL
+        narrowing in a fake would be a third copy of the matching rule.
+        """
+        params = stmt.compile().params  # type: ignore[attr-defined]
+        return FakeScalars([s for s in self.symbols if s.repo_id == params["repo_id_1"]])
 
     async def scalar(self, stmt: object) -> Chunk | Symbol | None:
         compiled = stmt.compile()

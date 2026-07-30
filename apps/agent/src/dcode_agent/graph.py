@@ -279,12 +279,12 @@ def _build_llm_context(state: AgentState) -> str:
                 f"{_clip(result.get('content', ''))}"
             )
         elif "locations" in result:
-            # The qualified name is context, not a citable token, so it is not
-            # backticked: backticked it matches groundedness.SYMBOL_PATTERN, and a
-            # model copying it produces a citation that exact-match verification
-            # rejects. See _allowed_citations below.
+            # Backticked again: the qualified name is a citable token now that the
+            # guardrail resolves symbols by the same rule this tool does
+            # (dcode_shared.symbols). While the two disagreed, offering it in
+            # citation form invited a reference the guardrail would strip.
             loc_lines = [
-                f"- {loc['symbol']} at `{loc['file_path']}:{loc['line']}`"
+                f"- `{loc['symbol']}` at `{loc['file_path']}:{loc['line']}`"
                 for loc in result["locations"][:10]
             ]
             if loc_lines:
@@ -303,21 +303,22 @@ def _build_llm_context(state: AgentState) -> str:
 
 
 def _allowed_citations(state: AgentState) -> list[str]:
-    """Citation tokens the evidence actually supports — `file:line` only.
+    """Citation tokens the evidence supports — `file:line` and qualified names.
 
-    Qualified names were offered here too, and they could not survive
-    verification. ``groundedness._verify_symbol`` matches ``symbols.qualified_name``
-    exactly, and the indexer builds that name from the repository's directory
-    layout (``src.requests.api.get``). A model writing about the library shortens
-    it to ``requests.api.get``, which matches no row — so offering the token only
-    invited a reference that would be redacted. Across the recorded 16-question
-    run not one symbol-style citation survived, while every location they named
-    was already reachable as ``file:line``.
+    Qualified names were removed from this list for one commit, because they could
+    not survive verification: the guardrail matched ``symbols.qualified_name``
+    exactly while the indexer builds that name from the repository's directory
+    layout (``src.requests.api.get``), so the shortened form a model actually writes
+    matched no row. Not one symbol-style citation survived the recorded run.
 
-    Note the asymmetry this leaves in place: the API resolves a symbol by *suffix*
-    match (``routes/internal.py``), this guardrail by *exact* match. Aligning them
-    would change how groundedness is computed, so it is a separate decision and
-    deliberately not folded in here.
+    **That was the wrong end to fix.** The defect was two rules for one question —
+    the tools resolved a symbol by suffix, the guardrail by exact match — and
+    removing the tokens worked around it at the cost of the evidence: on some
+    questions the model was then left with nothing it would cite at all, which the
+    old no-citation scoring convention concealed by paying a perfect score for it.
+    ``dcode_shared.symbols`` now holds the single rule and the guardrail applies it,
+    so these tokens verify. Measured either way in
+    ``results/b4-citation-fix-experiment.md``.
     """
     allowed: list[str] = []
     seen: set[str] = set()
@@ -338,6 +339,9 @@ def _allowed_citations(state: AgentState) -> list[str]:
         elif "locations" in result:
             for location in result["locations"]:
                 add(f"{location['file_path']}:{location['line']}")
+                symbol = str(location["symbol"])
+                if "." in symbol:
+                    add(symbol)
     return allowed
 
 

@@ -1,54 +1,73 @@
-"""The agent may not offer the model a citation the guardrail rejects by construction.
+"""The agent may not offer a citation the guardrail would reject.
 
-`groundedness._verify_symbol` matches `symbols.qualified_name` **exactly**, and the
-indexer builds that name from the repository's directory layout — the recorded
-`psf/requests` index stores `src.requests.api.get`, and 719 of its 724 symbols carry
-that `src.` / `tests.` prefix with no short-form row anywhere. A model writing about
-the library shortens the name, and the shortened form matches nothing.
+This is the invariant; how it is satisfied is a choice. It has been satisfied two
+ways, and the second is the one in force:
 
-So a qualified name in the 'Allowed citations' list is an instruction to produce a
-reference that will be redacted. On the recorded 16-question run **not one
-symbol-style citation survived** in any answer, while the four questions that lost
-groundedness lost it to exactly 13 such references.
+1. **Remove the offending tokens.** Qualified names were dropped from the
+   'Allowed citations' list, because the guardrail matched `symbols.qualified_name`
+   exactly while the indexer builds that name from the repository's directory layout
+   (`src.requests.api.get`) — so the shortened form a model writes matched no row.
+   This worked, and cost the evidence: on some questions the model was then left
+   with nothing it would cite, which the old no-citation scoring convention hid by
+   paying a perfect score for it.
+2. **Make one rule.** `dcode_shared.symbols` now holds the single definition of what
+   a name refers to, and both `routes/internal.py` and `groundedness._verify_symbol`
+   apply it. The tokens verify, so they can be offered again.
 
-These tests pin the generation side only. They do not touch how groundedness is
-computed: the API resolving a symbol by *suffix* match while this guardrail uses
-*exact* match is a real asymmetry, and reconciling it would move the metric, so it
-stays a separate decision.
+The tests below pin the invariant rather than either remedy, which is why they
+survived the switch between them: every token the agent offers must be one the
+guardrail's own matching rule can accept.
 
-**Mutation-verified, 3 reverts, all red** (assert on pytest's exit code, not on its
-stdout):
+**Mutation-verified, 5 reverts, all red** — over this file *and*
+`test_groundedness.py`, because mutation 5 survives this file alone. The first run
+reported 4 of 5 killed: the identity assertion below proves the shared rule is
+*imported*, and nothing here proved it was *used*. Reverting `_verify_symbol` left
+every test in this file green. `test_verify_accepts_a_symbol_written_without_the_indexed_prefix`
+was written for exactly that gap, which is the whole reason this project runs the
+mutation rather than trusting the docstring.
 
-    # 1 — re-add the symbol token in graph._allowed_citations:
-    #       symbol = str(location["symbol"])
-    #       if "." in symbol: add(symbol)
-    #     → test_allowed_citations_offers_no_dotted_symbol_token,
-    #       test_no_allowed_token_can_be_read_as_a_symbol_citation
-    # 2 — re-backtick the name in graph._build_llm_context:
-    #       f"- `{loc['symbol']}` at ..."
-    #     → test_evidence_does_not_backtick_the_qualified_name
-    # 3 — restore "`module.Class.method`" in llm.SYSTEM_PROMPT
-    #     → test_prompt_never_presents_a_dotted_name_as_citable
+Run both files, and read the exit code, not the output:
+
+    # 1 — `select_symbol_matches` returns only exact matches
+    #     → test_the_shortened_form_a_model_writes_now_resolves
+    #       test_every_allowed_symbol_token_resolves_against_its_own_row
+    # 2 — drop the leading dot: endswith(symbol) instead of endswith("." + symbol)
+    #     → test_a_suffix_must_fall_on_a_component_boundary
+    # 3 — exact matches merged with suffix matches instead of winning outright
+    #     → test_an_exact_match_wins_outright
+    # 4 — autoescape=False in candidate_filter
+    #     → test_underscore_is_escaped_and_not_a_sql_wildcard
+    # 5 — `_verify_symbol` back to `qualified_name == symbol`
+    #     → test_groundedness.py::test_verify_accepts_a_symbol_written_without_the_indexed_prefix
+    #       (NOT caught by anything in this file — see above)
     #
-    # uv run pytest apps/agent/tests/test_citable_tokens.py -q; echo "exit=$?"
+    # uv run pytest apps/agent/tests/test_citable_tokens.py \
+    #               apps/agent/tests/test_groundedness.py -q; echo "exit=$?"
 """
 
+from dataclasses import dataclass
 from uuid import uuid4
 
 from dcode_agent import graph
 from dcode_agent.groundedness import SYMBOL_PATTERN, extract_citations
-from dcode_agent.llm import SYSTEM_PROMPT
 from dcode_agent.state import AgentState
+from dcode_shared.db.models import Symbol
+from dcode_shared.symbols import candidate_filter, select_symbol_matches
 
-# Neutral corpus coordinates on purpose — this repository's notes ask that the
-# indexed library's credential-handling vocabulary stay out of the source tree's
-# test fixtures, and nothing here needs it.
-_QUALIFIED = "src.requests.api.get"
-_SHORTENED = "requests.api.get"
+# Neutral corpus coordinates: this repository's notes ask that the indexed
+# library's credential-handling vocabulary stay out of test fixtures.
+INDEXED = "src.requests.api.get"
+SHORTENED = "requests.api.get"
+
+
+@dataclass
+class Row:
+    """Stands in for a `symbols` row — the rule only reads `qualified_name`."""
+
+    qualified_name: str
 
 
 def _state_with_definition_locations() -> AgentState:
-    """A find_definition observation, the shape that used to add symbol tokens."""
     return AgentState(
         repo_id=str(uuid4()),
         query="where is the module-level request helper defined?",
@@ -58,11 +77,7 @@ def _state_with_definition_locations() -> AgentState:
                 "args": {"symbol": "get"},
                 "result": {
                     "locations": [
-                        {
-                            "symbol": _QUALIFIED,
-                            "file_path": "src/requests/api.py",
-                            "line": 62,
-                        }
+                        {"symbol": INDEXED, "file_path": "src/requests/api.py", "line": 62}
                     ]
                 },
                 "cached": False,
@@ -71,71 +86,103 @@ def _state_with_definition_locations() -> AgentState:
     )
 
 
-def test_allowed_citations_offers_no_dotted_symbol_token() -> None:
-    allowed = graph._allowed_citations(_state_with_definition_locations())
+def test_the_shortened_form_a_model_writes_now_resolves() -> None:
+    """The defect this change fixes, stated as the smallest case that shows it."""
+    rows = [Row(INDEXED)]
 
-    assert "src/requests/api.py:62" in allowed, (
-        "the location's file:line is the citable form and must still be offered"
+    assert select_symbol_matches(rows, INDEXED), "an exact name must still resolve"
+    assert select_symbol_matches(rows, SHORTENED), (
+        f"{SHORTENED!r} is how the name is written outside this repository's layout; "
+        "rejecting it is what made the guardrail disagree with the find-definition tool"
     )
-    assert _QUALIFIED not in allowed
-    assert not [token for token in allowed if "." in token and ":" not in token], (
-        f"a dotted token with no line is a qualified name: {allowed}"
-    )
+    assert select_symbol_matches(rows, "api.get")
 
 
-def test_no_allowed_token_can_be_read_as_a_symbol_citation() -> None:
-    """The property that actually matters, stated over the extractor itself.
+def test_every_allowed_symbol_token_resolves_against_its_own_row() -> None:
+    """The invariant, over the tokens the agent actually offers.
 
-    Asserting "no dotted tokens" would only restate the change. This asserts the
-    consequence: every offered token, written into an answer the way the prompt asks,
-    is extracted as a `file:line` reference — never routed to the exact-match symbol
-    path that cannot succeed here.
+    Asserting "no dotted tokens" would only restate whichever remedy is in force.
+    This asserts the property both remedies exist to produce: nothing in the list is
+    a reference the guardrail's rule cannot accept.
     """
     allowed = graph._allowed_citations(_state_with_definition_locations())
     assert allowed, "fixture produced no tokens, so the assertions below are vacuous"
 
-    for token in allowed:
-        rendered = f"see `{token}` for details"
-        assert not SYMBOL_PATTERN.search(rendered), (
-            f"allowed token {token!r} is extracted as a symbol citation, which "
-            "verifies by exact match against a prefixed qualified name"
+    symbol_tokens = [t for t in allowed if "." in t and ":" not in t]
+    file_line_tokens = [t for t in allowed if ":" in t]
+    assert file_line_tokens, "the location's file:line must still be offered"
+
+    for token in symbol_tokens:
+        assert select_symbol_matches([Row(token)], token), (
+            f"allowed token {token!r} does not resolve under the guardrail's own rule"
         )
-        extracted = extract_citations(rendered)
-        assert extracted, f"allowed token {token!r} is not extracted at all"
-        assert all(line > 0 for _sym, _path, line in extracted), (
-            f"allowed token {token!r} extracted without a line number"
+    for token in file_line_tokens:
+        extracted = extract_citations(f"see `{token}`")
+        assert extracted and all(line > 0 for _s, _p, line in extracted), (
+            f"allowed token {token!r} is not extracted as a file:line reference"
         )
 
 
-def test_evidence_does_not_backtick_the_qualified_name() -> None:
-    """Backticked, the name in the evidence block is itself an invitation to cite it."""
+def test_an_exact_match_wins_outright() -> None:
+    """Not merged with suffix matches.
+
+    A name that fully identifies a row is unambiguous. Merging would make one
+    citation resolve to every `*.api.get` in the corpus whenever an exact row also
+    existed, and the guardrail would then be reporting on a set the model never named.
+    """
+    rows = [Row("api.get"), Row("src.requests.api.get"), Row("other.pkg.api.get")]
+    matches = select_symbol_matches(rows, "api.get")
+
+    assert [m.qualified_name for m in matches] == ["api.get"]
+
+
+def test_a_suffix_must_fall_on_a_component_boundary() -> None:
+    """The leading dot is load-bearing, not decoration."""
+    assert not select_symbol_matches([Row("src.requests.widget")], "get")
+    assert not select_symbol_matches([Row("src.legacy_api.get")], "api.get")
+    assert select_symbol_matches([Row("src.legacy.api.get")], "api.get")
+
+
+def test_underscore_is_escaped_and_not_a_sql_wildcard() -> None:
+    """`_` matches any single character in LIKE, and Python names are full of them.
+
+    Unescaped, a citation of `api._get` would also be satisfied by `api.aget`. That
+    is a silent false positive inside a guardrail, so the SQL narrowing has to
+    escape — asserted on the compiled statement rather than on a live database, so
+    it runs with no infrastructure.
+    """
+    compiled = str(
+        candidate_filter(Symbol.qualified_name, "api._get").compile(
+            compile_kwargs={"literal_binds": True}
+        )
+    )
+    assert "ESCAPE" in compiled.upper(), f"no ESCAPE clause in: {compiled}"
+    # And the Python authority has no wildcard semantics at all.
+    assert not select_symbol_matches([Row("src.api.aget")], "api._get")
+    assert select_symbol_matches([Row("src.api._get")], "api._get")
+
+
+def test_the_guardrail_and_the_api_share_one_rule() -> None:
+    """Not two implementations that happen to agree today.
+
+    Checked by identity of the imported object, not by comparing behaviour: two
+    copies can agree on every case anyone thought to test and diverge on the one
+    nobody did, which is how this defect existed in the first place.
+    """
+    from dcode_agent import groundedness
+    from dcode_api.routes import internal
+
+    assert groundedness.select_symbol_matches is select_symbol_matches
+    assert internal.select_symbol_matches is select_symbol_matches
+
+
+def test_the_evidence_block_offers_the_name_in_citable_form() -> None:
+    """Backticked, because it is now a token the model may cite."""
     context = graph._build_llm_context(_state_with_definition_locations())
 
-    assert _QUALIFIED in context, "the name is useful context and is not being dropped"
-    assert f"`{_QUALIFIED}`" not in context
-    assert "`src/requests/api.py:62`" in context, "the citable token stays backticked"
-
-
-def test_prompt_never_presents_a_dotted_name_as_citable() -> None:
-    """The prompt used to offer `module.Class.method` as an example citation form."""
-    assert "`module.Class.method`" not in SYSTEM_PROMPT
-    assert not SYMBOL_PATTERN.search(SYSTEM_PROMPT), (
-        "a backticked dotted name anywhere in the prompt reads as a licensed form"
+    assert f"`{INDEXED}`" in context
+    assert "`src/requests/api.py:62`" in context
+    assert SYMBOL_PATTERN.search(context), (
+        "the evidence must present the qualified name in the form the extractor "
+        "recognises, or the model cannot cite it at all"
     )
-    # And it says so positively, so the rule survives a rewrite of the examples.
-    assert "dotted identifier in backticks" in SYSTEM_PROMPT
-
-
-def test_the_shortened_form_is_what_a_model_would_write() -> None:
-    """Pins the premise the whole change rests on, so it cannot rot silently.
-
-    If the extractor ever stopped treating a bare dotted name as a citation, the
-    reasoning above would no longer apply and this file should be revisited rather
-    than trusted.
-    """
-    assert SYMBOL_PATTERN.search(f"`{_SHORTENED}`"), (
-        "a backticked shortened name is extracted as a symbol citation — the "
-        "premise for keeping qualified names out of the allowed list"
-    )
-    assert _SHORTENED != _QUALIFIED
-    assert _QUALIFIED.endswith(f".{_SHORTENED.split('.', 1)[1]}")
