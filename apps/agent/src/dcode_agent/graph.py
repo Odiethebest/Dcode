@@ -279,8 +279,12 @@ def _build_llm_context(state: AgentState) -> str:
                 f"{_clip(result.get('content', ''))}"
             )
         elif "locations" in result:
+            # The qualified name is context, not a citable token, so it is not
+            # backticked: backticked it matches groundedness.SYMBOL_PATTERN, and a
+            # model copying it produces a citation that exact-match verification
+            # rejects. See _allowed_citations below.
             loc_lines = [
-                f"- `{loc['symbol']}` at `{loc['file_path']}:{loc['line']}`"
+                f"- {loc['symbol']} at `{loc['file_path']}:{loc['line']}`"
                 for loc in result["locations"][:10]
             ]
             if loc_lines:
@@ -299,8 +303,21 @@ def _build_llm_context(state: AgentState) -> str:
 
 
 def _allowed_citations(state: AgentState) -> list[str]:
-    """Exact citation tokens present in the evidence — the only references the
-    LLM may cite. Each one verifies against the index, keeping groundedness high.
+    """Citation tokens the evidence actually supports — `file:line` only.
+
+    Qualified names were offered here too, and they could not survive
+    verification. ``groundedness._verify_symbol`` matches ``symbols.qualified_name``
+    exactly, and the indexer builds that name from the repository's directory
+    layout (``src.requests.api.get``). A model writing about the library shortens
+    it to ``requests.api.get``, which matches no row — so offering the token only
+    invited a reference that would be redacted. Across the recorded 16-question
+    run not one symbol-style citation survived, while every location they named
+    was already reachable as ``file:line``.
+
+    Note the asymmetry this leaves in place: the API resolves a symbol by *suffix*
+    match (``routes/internal.py``), this guardrail by *exact* match. Aligning them
+    would change how groundedness is computed, so it is a separate decision and
+    deliberately not folded in here.
     """
     allowed: list[str] = []
     seen: set[str] = set()
@@ -321,9 +338,6 @@ def _allowed_citations(state: AgentState) -> list[str]:
         elif "locations" in result:
             for location in result["locations"]:
                 add(f"{location['file_path']}:{location['line']}")
-                symbol = str(location["symbol"])
-                if "." in symbol:
-                    add(symbol)
     return allowed
 
 
