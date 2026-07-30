@@ -155,10 +155,11 @@ recorded figure is the **highest** of the four; their mean sits further below th
 guardrail than the value this report displays. The direction is therefore solid, and if
 anything understated. The magnitude is not: the shortfall the recorded figure implies is
 about the same size as the spread between repeats. **No sentence here quantifies how far
-under the bar the system sits**, because one 16-question run cannot support it. The
-landing page is a separate and worse case — it still asserts that the guardrail *holds*
-— and is listed under Outstanding Work rather than softened into a precision caveat
-here.
+under the bar the system sits**, because one 16-question run cannot support it. Note the
+narrowness of that retraction: *this run came in at the recorded figure* stays exactly
+true and is what the generated blocks and the UI state. What is withdrawn is reading
+that figure as where the system sits, which is a different claim and the one a reader
+takes away.
 
 **L3 is statistically fragile.** With n=3, one question moves the average and
 significance is not computable. Sparse `B1` posts the *highest* L3 recall of any
@@ -337,14 +338,15 @@ everything else is independent of it.
 
 ### Frontend
 
-- **The landing page asserts a guardrail the system misses.** `LandingPage.tsx` says
-  "the guardrail holds it at `≥ 95%`" and tags a principle `groundedness ≥ 95%`, while
-  every recorded B4 run — the archived one and all six repeats — came in below that bar.
-  The hero proof card also resolves to a metric-shaped `1.00` with no run behind it, two
-  screens above the real figure. The accurate version is already on the same page: the
-  baseline ladder shows the dip. That pairing — flattering summary promoted to the
-  headline, honest one below the fold — is the shape this project keeps having to
-  correct, and this is the most prominent surviving instance.
+- **No surface states a single-run figure alongside its repeat spread.** The landing
+  page and `/methodology` now name the pre-registered bar and the miss, bound to the
+  generated snapshot and pinned by tests — the three earlier over-claims ("the guardrail
+  holds it at `≥ 95%`", a `groundedness ≥ 95%` principle tag, and a metric-shaped `1.00`
+  on the hero mock) are gone. What remains is smaller and real: both surfaces quote the
+  recorded groundedness to three decimals with nothing saying that a repeat of the same
+  code spans roughly ten times the last of those digits. Closing it means putting the
+  variance into the generated snapshot, since `sync_eval_artifacts.py` reads only
+  `results/eval-real/` and a hand-typed spread would be an unheld copy (§11).
 - **Accessibility live regions are missing** — a regression against a previously
   closed item. A screen-reader user hears nothing as an answer streams. The
   unresolved design question is recorded in [`CLAUDE.md`](../../CLAUDE.md), since
