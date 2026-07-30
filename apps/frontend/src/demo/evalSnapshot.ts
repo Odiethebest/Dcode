@@ -1,7 +1,8 @@
 /**
  * H1 evaluation snapshot — generated from `results/eval-real/`, the full real-model run
  * (Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini)
- * recorded 2026-07-28 against the psf/requests corpus.
+ * against the psf/requests corpus. Verdict written 2026-07-28 — a recovered
+ * date, not one the harness recorded; see `results/eval-real/provenance.json`.
  *
  * Every number below is copied verbatim from a committed artifact in that
  * directory. Nothing here is rounded, adjusted, or hand-entered: `/methodology`
@@ -56,7 +57,12 @@ export interface DemoQuestionCase {
 /** Where these numbers come from, so the page can point at it. */
 export const snapshotSource = {
   path: 'results/eval-real/',
-  recorded: '2026-07-28',
+  /**
+   * When the verdict file was written. Recovered, not recorded — the harness
+   * writes no timestamp, so any surface showing this has to say so.
+   * Reconstruction and its limits: `results/eval-real/provenance.json`.
+   */
+  verdictWritten: '2026-07-28',
   corpus: 'psf/requests',
   repoId: "2543893e-0965-4be7-ac45-5a8e38600bc0",
   k: 5,

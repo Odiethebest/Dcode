@@ -56,7 +56,9 @@ Dcode 是一个面向代码仓库理解的结构感知检索系统，包含四�
 | `B3` 混合 + 重排 | 0.542 | 0.596 | 0.508 | 1.000 |
 | `B4` Dcode（混合 + 调用图 + agent） | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ 低于 0.95 护栏 |
 
-数据来源：`results/eval-real/` · 记录于 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · 合成 gpt-4o-mini
+数据来源：`results/eval-real/` · 裁决写盘于 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · 合成 gpt-4o-mini
+
+该日期为**回溯恢复，非 harness 记录** —— harness 完全不写时间戳。恢复方式及其不能证明的部分见 `results/eval-real/provenance.json`。
 
 <!-- END generated: eval-suite-metrics -->
 

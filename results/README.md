@@ -50,6 +50,7 @@ eval-real/
 ├── h1_report.json          the verdict: decision, threshold, per-level composites and margins
 ├── suite_summary.json      whole-suite metrics per baseline
 ├── run_config.json         baselines, question set path, k, repo_id
+├── provenance.json         NOT harness output — hand-recovered metadata (see below)
 └── B1..B4/
     ├── metrics.json            that baseline's suite-level metrics
     ├── taxonomy_breakdown.json the same metrics split by L1/L2/L3
@@ -57,3 +58,11 @@ eval-real/
 ```
 
 `h1_report.json` is the file to read first, and it is reported verbatim.
+
+`provenance.json` is the one file here the harness did not write. The harness
+records no timestamp, so the date the artifacts display was reconstructed by
+hand; it is kept out of `run_config.json` precisely so it cannot be mistaken for
+something the run observed, and every field in it says **recovered**, not
+**recorded**. The generator reads the date from there rather than from a file
+mtime, which git does not preserve. See
+[`docs/en/Honesty_Constraints.md`](../docs/en/Honesty_Constraints.md) §11.

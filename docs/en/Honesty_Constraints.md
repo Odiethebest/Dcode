@@ -201,6 +201,34 @@ Prose is not generated, so it carries qualitative conclusions only — *H1
 unsupported*, *hybrid retrieval validated*, *the graph's contribution is
 unmeasured*. Any specific figure belongs inside a generated block.
 
+### The generator is a pure function of committed bytes
+
+The generator may only read bytes under `results/<run>/`. Any input taken from
+filesystem metadata, the wall clock, or a constant in the source is a bug —
+"the numbers come from the results directory" is only true while the generator
+is a pure function of those bytes.
+
+This is also the limit of what `make check` is worth. `--check` proves that
+every displayed figure agrees with the generator's own inputs; it does not
+prove those inputs are true. A generator reading the wrong source is green.
+That class of defect cannot be caught downstream — it is only excluded
+structurally, by the rule above.
+
+This was earned too. The recorded date was derived from `h1_report.json`'s
+mtime, which git does not preserve, so the drift check was anchored to a value
+no two checkouts agree on: the gate went red a day after the run and stayed red,
+and "fixing" it by regenerating would have stamped the checkout date into the
+artifacts as though it were the run's. A gate that is permanently red gets
+routed around, and this one is the only thing holding the rule above in place.
+
+Metadata for an **archived** run may be a pinned literal, but it must live in a
+separate file from the harness's own output, and it must say **recovered**
+rather than **recorded**. The test is whether the copied value can still change,
+not whether it was typed by hand: a finished run's date will never move again,
+so pinning it is safe by construction, while a model name that a future run will
+choose differently is not. Keeping it out of `run_config.json` is what stops a
+hand-reconstructed value from reading as something the harness observed.
+
 ---
 
 ## Where these are enforced

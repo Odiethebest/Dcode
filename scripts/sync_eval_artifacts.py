@@ -19,6 +19,11 @@ everything that displays it is generated from there. Prose carries qualitative
 conclusions only ("H1 unsupported", "hybrid retrieval validated", "the graph's
 contribution is unmeasured"); specific numbers belong inside a generated block.
 
+That claim only holds while this script is a pure function of the bytes under
+the run directory. Taking a value from an mtime, the wall clock, or a constant
+in here breaks it *without* breaking the check — the check would happily
+compare two outputs of the same lie. See docs/en/Honesty_Constraints.md §11.
+
 `--check` regenerates in memory and fails if any target is stale, so a future
 re-run cannot silently desync the documentation. Wired into `make check`.
 
@@ -34,7 +39,6 @@ contains what.
 
 from __future__ import annotations
 
-import datetime
 import json
 import pathlib
 import re
@@ -88,8 +92,16 @@ LABELS = {
             "`{threshold}` composite points on **both** L2 and L3."
         ),
         "source": (
-            "Source: `{path}` · recorded {recorded} · {corpus} · k={k} · embedding "
-            "{embedding} · reranker {reranker} · synthesis {synthesis}"
+            "Source: `{path}` · verdict written {verdict_written} · {corpus} · k={k} · "
+            "embedding {embedding} · reranker {reranker} · synthesis {synthesis}"
+        ),
+        # The word "recorded" was claiming trust it had not earned: the harness
+        # writes no timestamp at all, so the date is reconstructed. Markdown has
+        # room to say where from; the TypeScript snapshot keeps it to one line.
+        "recovered": (
+            "The date is **recovered, not recorded** — the harness writes no "
+            "timestamp. How it was reconstructed, and what it does not establish, "
+            "is in `{path}provenance.json`."
         ),
     },
     "ch": {
@@ -113,8 +125,12 @@ LABELS = {
             "composite 分，H1 才算被支持。"
         ),
         "source": (
-            "数据来源：`{path}` · 记录于 {recorded} · {corpus} · k={k} · embedding "
-            "{embedding} · reranker {reranker} · 合成 {synthesis}"
+            "数据来源：`{path}` · 裁决写盘于 {verdict_written} · {corpus} · k={k} · "
+            "embedding {embedding} · reranker {reranker} · 合成 {synthesis}"
+        ),
+        "recovered": (
+            "该日期为**回溯恢复，非 harness 记录** —— harness 完全不写时间戳。"
+            "恢复方式及其不能证明的部分见 `{path}provenance.json`。"
         ),
     },
 }
@@ -146,6 +162,21 @@ def load_run(run: pathlib.Path) -> dict:
                 per_question[record["question_id"]] = record
         rows[baseline] = per_question
 
+    # The date used to be derived from h1_report.json's mtime. git does not
+    # preserve mtimes, so that input changed on every clone and checkout: the
+    # drift check was anchored to a value the repository cannot reproduce, and
+    # regenerating on a fresh tree would have written the checkout date into the
+    # artifacts as though it were the run's. A run that has been archived has a
+    # date that will never move again, so it is safe to pin — see the
+    # recovered-vs-recorded rule in docs/en/Honesty_Constraints.md.
+    if not (run / "provenance.json").exists():
+        raise SystemExit(
+            f"No provenance.json under {run}.\n"
+            "Run metadata must be committed bytes under the run directory — the "
+            "generator may not read it from mtimes, the clock, or its own constants."
+        )
+    provenance = read("provenance.json")
+
     return {
         "suite": read("suite_summary.json"),
         "h1": read("h1_report.json"),
@@ -153,10 +184,9 @@ def load_run(run: pathlib.Path) -> dict:
         "levels": {b: read(f"{b}/taxonomy_breakdown.json") for b in BASELINES},
         "rows": rows,
         "path": f"{run.relative_to(ROOT).as_posix()}/",
-        # The date the run wrote its verdict, not the date this script ran.
-        "recorded": datetime.date.fromtimestamp(
-            (run / "h1_report.json").stat().st_mtime
-        ).isoformat(),
+        # When the verdict file was written. Recovered by hand, not recorded by
+        # the harness — the surfaces that display it have to say so.
+        "verdict_written": provenance["verdict_written_at"],
     }
 
 
@@ -175,13 +205,15 @@ def signed3(value: object) -> str:
 
 
 def block_provenance(run: dict, lang: str) -> str:
-    return LABELS[lang]["source"].format(
+    t = LABELS[lang]
+    source = t["source"].format(
         path=run["path"],
-        recorded=run["recorded"],
+        verdict_written=run["verdict_written"],
         corpus=CORPUS,
         k=run["config"]["k"],
         **MODELS,
     )
+    return f"{source}\n\n{t['recovered'].format(path=run['path'])}"
 
 
 def block_suite_metrics(run: dict, lang: str) -> str:
@@ -287,7 +319,8 @@ def render_ts(run: dict) -> str:
     w(f"""/**
  * H1 evaluation snapshot — generated from `{run["path"]}`, the full real-model run
  * ({MODELS["embedding"]} + {MODELS["reranker"]} + {MODELS["synthesis"]})
- * recorded {run["recorded"]} against the {CORPUS} corpus.
+ * against the {CORPUS} corpus. Verdict written {run["verdict_written"]} — a recovered
+ * date, not one the harness recorded; see `{run["path"]}provenance.json`.
  *
  * Every number below is copied verbatim from a committed artifact in that
  * directory. Nothing here is rounded, adjusted, or hand-entered: `/methodology`
@@ -344,7 +377,12 @@ export interface DemoQuestionCase {
     w("/** Where these numbers come from, so the page can point at it. */")
     w("export const snapshotSource = {")
     w(f"  path: '{run['path']}',")
-    w(f"  recorded: '{run['recorded']}',")
+    w("  /**")
+    w("   * When the verdict file was written. Recovered, not recorded — the harness")
+    w("   * writes no timestamp, so any surface showing this has to say so.")
+    w(f"   * Reconstruction and its limits: `{run['path']}provenance.json`.")
+    w("   */")
+    w(f"  verdictWritten: '{run['verdict_written']}',")
     w(f"  corpus: '{CORPUS}',")
     w(f"  repoId: {s(config['repo_id_override'])},")
     w(f"  k: {config['k']},")

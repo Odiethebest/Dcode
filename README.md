@@ -354,7 +354,9 @@ results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
 | `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
 | `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
 
-Source: `results/eval-real/` · recorded 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-real/` · verdict written 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+
+The date is **recovered, not recorded** — the harness writes no timestamp. How it was reconstructed, and what it does not establish, is in `results/eval-real/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 

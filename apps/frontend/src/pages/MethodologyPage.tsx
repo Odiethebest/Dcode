@@ -92,9 +92,9 @@ export default function MethodologyPage() {
         <p className="max-w-[62ch] font-display text-[clamp(17px,2vw,21px)] leading-[1.5] text-ink-2">
           Dcode ships a falsifiable claim and a scoreboard, not a demo reel. The hypothesis, the bar it has to clear,
           and the current result are all below — read straight from{' '}
-          <Mono>{snapshotSource.path}</Mono>, a full real-model run over {questionCount} questions recorded{' '}
-          {snapshotSource.recorded}. Every figure on this page is copied from a file in that directory, and the
-          directory is in the repository.
+          <Mono>{snapshotSource.path}</Mono>, a full real-model run over {questionCount} questions whose verdict was
+          written {snapshotSource.verdictWritten} — a recovered date, not one the harness recorded. Every figure on
+          this page is copied from a file in that directory, and the directory is in the repository.
         </p>
         <div
           className={cx(
@@ -494,8 +494,9 @@ export default function MethodologyPage() {
           <p className="max-w-[74ch] font-mono text-[11.5px] leading-relaxed text-ink-3">
             Scope, plainly: {questionCount} questions on the {snapshotSource.corpus} corpus at k={snapshotSource.k},
             embedded with {snapshotSource.embedding}, reranked with {snapshotSource.reranker}, answers synthesised by{' '}
-            {snapshotSource.synthesis}. One repository, one run, recorded {snapshotSource.recorded} — not a live or
-            large-scale benchmark, and deliberately small enough to stay reproducible. Every number on this page is
+            {snapshotSource.synthesis}. One repository, one run, verdict written {snapshotSource.verdictWritten}{' '}
+            (recovered, not recorded) — not a live or large-scale benchmark, and deliberately small enough to stay
+            reproducible. Every number on this page is
             generated from <Mono>{snapshotSource.path}</Mono>, which is committed alongside this code; if a figure here
             disagrees with that directory, the directory is right.
           </p>
