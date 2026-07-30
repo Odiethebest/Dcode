@@ -124,4 +124,16 @@ describe('LandingPage groundedness guardrail claim', () => {
     expect(copy).toMatch(/fixed at 0\.95 before the run/i);
     expect(copy).toMatch(/came in under it/i);
   });
+
+  it('reads the missed value from the snapshot rather than restating it', () => {
+    // An earlier pass pointed at the ladder instead of naming the number. A
+    // sentence that points at a location is a copy of the page layout and rots
+    // in silence, so the value is bound. Pin the binding, not the digits: a
+    // hand-typed literal here would survive a re-run and quietly disagree with
+    // the ladder in the same card.
+    const { container } = renderLanding();
+    expect(container.textContent ?? '').toContain(
+      `came in under it at ${suiteSummary.B4.groundedness.toFixed(3)}`
+    );
+  });
 });

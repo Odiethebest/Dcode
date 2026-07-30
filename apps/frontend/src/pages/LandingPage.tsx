@@ -267,13 +267,16 @@ export default function LandingPage() {
         <Reveal className="grid grid-cols-3 gap-[22px] max-[920px]:grid-cols-1">
           <Step n="01" title="Index the repo" body={<>Clone, slice at <Mono>AST</Mono> boundaries, embed every symbol, and rebuild the call graph — a dual index of vectors and structure, colocated in one store.</>} />
           <Step n="02" title="Ask in plain English" body={<>A <Mono>ReAct</Mono> agent routes your question through hybrid retrieval and atomic graph queries, reasoning across files instead of matching one.</>} />
-          {/* This step used to claim "the guardrail holds it at ≥ 95%". The recorded
-              run came in under that bar, so the claim was false — and the ladder
-              lower down on this same page already said so. Stating that the bar was
-              pre-registered and was missed is the stronger claim anyway: a threshold
-              that can only be passed isn't a threshold. The measured value stays out
-              of hand-written copy and lives in the generated ladder below. */}
-          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised: the bar was fixed at <Mono>0.95</Mono> before the run, and this run came in under it. The number is in the ladder below — the bar has not moved.</>} last />
+          {/* This step used to claim "the guardrail holds it at ≥ 95%", which the
+              recorded run missed. The first correction pointed at the ladder below
+              rather than naming the value — but a sentence that points at a location
+              is a copy of the page layout, and it rots silently the moment anything
+              moves. Nothing would have failed. (It was also ambiguous: on a card of
+              stacked rungs, "the foot of the ladder" reads as the lowest rung, not
+              the card's last line, which is where the number actually is.)
+              So the value is bound to the generated snapshot and stated here.
+              No pointer to go stale, and admitting the miss beats deferring it. */}
+          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised: the bar was fixed at <Mono>0.95</Mono> before the run, and this run came in under it at <Mono>{suiteSummary.B4.groundedness.toFixed(3)}</Mono>. The bar has not moved.</>} last />
         </Reveal>
       </Section>
 
