@@ -1,0 +1,11 @@
+{
+  "baseline": "B4",
+  "questions": 16,
+  "k": 5,
+  "recall_at_k": 0.5416666666666666,
+  "mrr": 0.5958333333333333,
+  "ndcg_at_k": 0.508070342853884,
+  "groundedness": 0.9040178571428571,
+  "answers_without_citations": 0,
+  "pairwise_win_rate": null
+}

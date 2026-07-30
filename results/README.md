@@ -9,17 +9,18 @@ says which, so nobody has to guess from timestamps.
 | `eval-real-b0/` | partial | Config only. `B0` (external code search) needs an API token this environment did not have, so B0 is **not measured** — not scored zero. It has no bearing on the H1 verdict, which rests on B2/B3/B4. |
 | `eval-suite/` | superseded | An **early stub-model run**, kept deliberately. Not the current conclusion — see below. |
 | `eval-smoke/` | not a result | Output of `make eval-smoke`, a single-baseline harness smoke test. Proves the harness runs; measures nothing. |
-| `eval-real-b4-control-prefix/` | not a verdict | B4 only, **unchanged** code — run 1 of the pre-fix arm. |
-| `eval-real-b4-citation-fix/` | not a verdict | B4 only, after `da2b6bc` — run 1 of the post-fix arm. |
-| `b4-variance/` | not a verdict | Runs 2 and 3 of each arm (`prefix-2/3`, `fix-2/3`), taking the paired experiment to n=3 a side. |
+| `eval-real-b4-control-prefix/` | not a verdict | B4 only — run 1 of the **original** arm (symbol tokens offered, guardrail matching exactly). |
+| `eval-real-b4-citation-fix/` | not a verdict | B4 only — run 1 of arm **A**, `da2b6bc` (tokens withdrawn). |
+| `b4-variance/` | not a verdict | The other six runs: `prefix-2/3`, `fix-2/3`, and `sharedrule-1/2/3` for arm **B**, `029b9de` (one shared symbol rule). |
 
-The last three hold one **paired measurement, not a result to cite** — six
-single-baseline B4 runs, three per arm, which carry no H1 verdict and exist to bound
-the run-to-run variance of groundedness rather than to report a score. Read
+The last three hold **one experiment, not a result to cite** — nine single-baseline B4
+runs across three arms, which carry no H1 verdict. Read
 [`b4-citation-fix-experiment.md`](b4-citation-fix-experiment.md) before any of those
-numbers is quoted anywhere: it records the design, what the runs establish about the
-H1 margin's noise, and the two findings that bear on the figure `eval-real/`
-displays.
+numbers is quoted anywhere. Its conclusion **reverses the change it was opened to
+measure**: arm A treated the wrong end of the defect and arm B is the remedy that
+survived, and two mutually concealing errors held that up for a full round. It also
+records what the runs establish about the H1 margin's own noise, which nothing had
+measured before.
 
 ## Why `eval-suite/` is still here
 

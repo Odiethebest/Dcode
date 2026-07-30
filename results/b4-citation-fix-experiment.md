@@ -1,8 +1,21 @@
-# B4 citation-token fix — paired measurement, 2026-07-30
+# B4 citation handling — three arms, nine runs, 2026-07-30
 
-What `da2b6bc` (*stop offering citations the guardrail rejects by construction*) did to
-B4's groundedness, measured rather than predicted. **Neither run here is a verdict.**
-`results/eval-real/` remains the recorded H1 result and was not touched.
+**Read the last section first.** This file grew as the experiment did, and its
+conclusion reverses the change it was opened to measure: `da2b6bc` treated the wrong
+end of the defect, and the remedy that survives is `029b9de`. The earlier sections are
+kept in the order they were written, with their corrections attached, because the route
+to that conclusion is the part worth reading — two mutually concealing errors held it up
+for a full round.
+
+**No run here is a verdict.** All nine are single-baseline B4 runs, which carry no H1
+decision. `results/eval-real/` remains the recorded H1 result and is untouched in every
+figure.
+
+| Arm | symbol tokens offered | guardrail's symbol rule | runs |
+|---|---|---|---|
+| **original** | yes | exact match only | 3 |
+| **A** = `da2b6bc` | no | exact match only | 3 |
+| **B** = `029b9de` | yes | shared rule (exact, then dotted suffix) | 3 |
 
 ## Why a control run exists at all
 
@@ -15,7 +28,8 @@ learn what a repeat costs before any difference could be attributed to the chang
 
 ## Design
 
-Both arms in one session, against one live stack, differing only in the agent image:
+Every arm in one session, against one live stack, differing only in the agent image
+(written when there were two arms; a third was added later under the same conditions):
 
 | Held constant | Value, checked rather than assumed |
 |---|---|
@@ -34,9 +48,10 @@ mechanical holds it: re-reading this file cannot re-establish it. That is weaker
 an executor record and is not being presented as one.
 
 The image check is the one that could not be skipped. `make up` runs a baked image, so
-a source edit does not reach the agent until it is rebuilt; both arms were confirmed
-inside the container (`if "." in symbol` present/absent, the new prompt rule
-absent/present) before their run started.
+a source edit does not reach the agent until it is rebuilt; every arm was confirmed
+inside the container before its run started — the allowed-list branch present or absent,
+the prompt rule present or absent, and for arm B also `candidate_filter` in the
+guardrail and the shared import in the api container.
 
 ## Results
 
@@ -241,8 +256,82 @@ groundedness figure. **That count is a condition of this convention, not an
 embellishment on it** — a baseline scoring low honestly and one scoring low uselessly
 are indistinguishable in the mean alone.
 
-Still open, and left alone for the reason this one no longer is: `_verify_symbol`'s exact
+~~Still open~~ **— now fixed too, and it turned out to be the actual defect.** See the
+final section. What follows below was written while it was still open; the reason it was
+left for later stands, and it was honoured: the change was pre-declared before any run.
+
+Original wording, kept: `_verify_symbol`'s exact
 match disagrees with `routes/internal.py`'s suffix match. Fixing that moves the score
 **upward**, which is the direction that needs pre-declaration and a published
 before/after; this one moved it downward and closed an exploit, which is why it could be
 settled now.
+
+---
+
+## Conclusion — arm B is the remedy, arm A was not
+
+Nine runs, three arms, one session, one index, one pair of model sidecars. Only the
+agent image differed, verified inside the container before each arm started. Every
+groundedness figure below is on the corrected no-citation convention, so the three
+arms are comparable; the original and A arms are exact recomputations of the runs
+already recorded above, not re-runs.
+
+| Arm | groundedness ×3 | mean | s | uncited answers | redaction markers | verified citations | answers keeping a symbol citation |
+|---|---|---:|---:|---|---|---|---|
+| original | 0.8863 · 0.8376 · 0.8776 | 0.8672 | 0.0260 | 0 · 0 · 0 | 17 · 19 · 21 | 54 · 48 · 51 | **0 · 0 · 0** |
+| A `da2b6bc` | 0.8321 · 0.8289 · 0.8827 | 0.8479 | 0.0302 | 1 · 1 · 0 | 10 · 14 · 12 | 43 · 45 · 47 | 0 · 0 · 0 |
+| **B `029b9de`** | 0.9000 · 0.8769 · 0.9040 | **0.8937** | 0.0146 | 0 · 0 · 0 | 12 · 13 · 9 | **65 · 62 · 67** | **2 · 2 · 2** |
+
+Against the criteria fixed before the runs:
+
+| Criterion | Result |
+|---|---|
+| B vs original — the arms differ *only* in the guardrail's rule | +0.0265, pooled s 0.0211, ratio **1.26** → resolvable |
+| B vs A | +0.0457, pooled s 0.0237, ratio **1.93** → resolvable |
+| uncited answers in B near zero | **0, 0, 0** |
+| redaction markers below the original arm's | **9–13 vs 17–21**, while citing *more* |
+
+**The counts are the evidence; the means are the weak part.** Ratios of 1.26 and 1.93
+on n=3 a side are roughly p≈0.25 and p≈0.1 — they clear a threshold declared in advance
+and they are not statistical significance, and this file does not describe them as more.
+What is not marginal is that **symbol-style citations survived for the first time**: zero
+across nine runs of the two exact-match arms, two answers in every run of arm B. Verified
+citations rose from 48–54 to 62–67. Those ~13 references were real all along and the
+guardrail was deleting them.
+
+B's spread is also the lowest of the three (0.0146). Recorded as an observation only — a
+variance ratio on n=3 has almost no power, and a variance claim made on this evidence is
+exactly what had to be retracted one section above.
+
+### Why arm A looked best under the old convention and worst under the corrected one
+
+| Arm | old convention | corrected |
+|---|---:|---:|
+| original | 0.8672 | 0.8672 |
+| A | **0.8896** | **0.8479** |
+| B | 0.9204 | 0.8937 |
+
+**Two errors were concealing each other for a full round.** Removing the tokens left the
+model with nothing to cite on some questions, and scoring an uncited answer at `1.0` paid
+a perfect score for exactly that. Under the old convention A therefore read as an
+improvement over the original arm; under the corrected one it is the worst of the three.
+Neither error was visible while the other was in place, and no single measurement would
+have separated them — it took fixing one to make the other legible.
+
+### What this does not change
+
+**H1 remains `unsupported`, and the margins barely moved.**
+
+| Level | B arm margin vs B3 | s | distance to the +0.05 bar |
+|---|---:|---:|---:|
+| L2 | −0.0253 | 0.0111 | 0.0753 = **6.8× s** |
+| L3 | −0.0478 | 0.0235 | 0.0978 = **4.2× s** |
+
+Groundedness rose 0.867 → 0.894 and the L2 margin moved −0.0365 → −0.0253, because
+groundedness is one of four equally weighted composite terms. This was stated before the
+runs and is repeated because the numbers moved favourably: B4's ceiling under this scoring
+is a tie with B3, so no groundedness work can clear a +0.05 bar.
+
+**The 0.95 guardrail is still missed**, at 0.894. What remains is `file:line` references
+the model invents — a model-behaviour problem, not a scoring one, and the next thing to
+look at if this line of work continues.

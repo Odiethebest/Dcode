@@ -305,16 +305,14 @@ everything else is independent of it.
 - **B4's groundedness dip is diagnosed and partly addressed.** The agent was offering
   the model qualified names in its allowed-citation list that the guardrail rejects by
   exact match, so it was instructing the model to emit references it would then redact
-  (`da2b6bc`). Removing them cut redaction events, and that is the only effect that
-  survived rescoring — the mean and the variance both moved the other way once uncited
-  answers stopped scoring perfectly, so **nothing about that fix is reported as a score
-  improvement.** It also has a cost the old convention hid: on some questions the model
-  is then left with nothing it will cite at all. Still open: whatever produces the
-  remaining unverifiable `file:line` references, and whether dropping the tokens was the
-  right remedy at all rather than reconciling the two symbol-matching rules below.
-  Paired measurement and both corrections: `results/b4-citation-fix-experiment.md`. Do
-  **not** address any of it by changing how the score is computed upward (criteria set 2,
-  item 3).
+  (`da2b6bc`), and that remedy has since been **reversed** — it treated the symptom by
+  withdrawing the evidence, and scored worst of three arms once uncited answers stopped
+  scoring perfectly. Reconciling the two symbol-matching rules (`029b9de`, entry below)
+  is what actually fixed it. **Still open: the `file:line` references the model
+  invents.** That is the whole of the remaining gap to the guardrail — 0.894 against
+  0.95 — and it is model behaviour, not scoring. Do **not** address it by changing how
+  the score is computed upward (criteria set 2, item 3). Nine-run record:
+  `results/b4-citation-fix-experiment.md`.
 - ~~An answer with no citations scores groundedness `1.000`~~ **— fixed.** It now
   scores `0.0`, and `dcode_eval.run` reports `answers_without_citations` beside every
   groundedness figure, because `0.0` alone cannot separate *cited nothing* from *cited
@@ -324,10 +322,17 @@ everything else is independent of it.
   rescoring them **reverses the measured sign of the citation fix and erases its
   apparent variance reduction**, so neither is claimed. Both corrections are recorded in
   `results/b4-citation-fix-experiment.md`.
-- **The API and the guardrail resolve a symbol by different rules** — suffix match in
-  `apps/api/src/dcode_api/routes/internal.py`, exact match in `groundedness.py`. The
-  deeper defect behind the dip, and left alone for the same reason: aligning them
-  converts failing citations into passing ones.
+- ~~The API and the guardrail resolve a symbol by different rules~~ **— fixed, and it
+  was the actual defect.** `dcode_shared.symbols` now holds one definition and both
+  apply it (`029b9de`). Pre-declared before any run, because it moves the score upward.
+  Nine runs across three arms: symbol-style citations survived for the first time (zero
+  in all six exact-match runs, two answers in every shared-rule run), verified citations
+  rose from 48–54 to 62–67, and uncited answers went back to zero — so roughly 13
+  references per run had been real all along and were being deleted. Groundedness
+  0.867 → 0.894. **This also reverses the earlier remedy**: withdrawing the tokens
+  (`da2b6bc`) scored *worst* of the three arms once uncited answers stopped scoring
+  perfectly, and only looked best while both errors were in place. Full record:
+  `results/b4-citation-fix-experiment.md`.
 - **A margin from one run should not be quoted to three decimals.** Repeat spread on
   unchanged synthesis code is roughly the size of the guardrail shortfall itself. Any
   future run reporting a margin should state how many repeats it averages, and how many
