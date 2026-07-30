@@ -267,7 +267,13 @@ export default function LandingPage() {
         <Reveal className="grid grid-cols-3 gap-[22px] max-[920px]:grid-cols-1">
           <Step n="01" title="Index the repo" body={<>Clone, slice at <Mono>AST</Mono> boundaries, embed every symbol, and rebuild the call graph — a dual index of vectors and structure, colocated in one store.</>} />
           <Step n="02" title="Ask in plain English" body={<>A <Mono>ReAct</Mono> agent routes your question through hybrid retrieval and atomic graph queries, reasoning across files instead of matching one.</>} />
-          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised — the guardrail holds it at <Mono>≥ 95%</Mono>.</>} last />
+          {/* This step used to claim "the guardrail holds it at ≥ 95%". The recorded
+              run came in under that bar, so the claim was false — and the ladder
+              lower down on this same page already said so. Stating that the bar was
+              pre-registered and was missed is the stronger claim anyway: a threshold
+              that can only be passed isn't a threshold. The measured value stays out
+              of hand-written copy and lives in the generated ladder below. */}
+          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised: the bar was fixed at <Mono>0.95</Mono> before the run, and this run came in under it. The number is in the ladder below — the bar has not moved.</>} last />
         </Reveal>
       </Section>
 
@@ -276,7 +282,9 @@ export default function LandingPage() {
         <Reveal className="grid grid-cols-3 gap-px overflow-hidden rounded-card border border-line bg-line max-[920px]:grid-cols-1">
           <Principle title="Structure-aware" tag="calls · imports · inherits · references"
             body="Cosine similarity tells you what code looks alike. A call graph tells you what actually calls what — so “trace this function’s callers” becomes a real answer." />
-          <Principle title="Grounded, not confident" tag="groundedness ≥ 95%"
+          {/* Tag states the commitment, not the outcome. `groundedness ≥ 95%` read as
+              a delivered guarantee; the recorded run is under it. */}
+          <Principle title="Grounded, not confident" tag="pre-set bar · reported either way"
             body="The failure mode of code AI is a plausible symbol that doesn’t exist. Dcode extracts every citation, checks it against the index, and strips what it can’t verify." />
           <Principle title="Hybrid retrieval" tag="BM25 + dense + RRF + rerank"
             body="Code needs exact matching and semantic intent at once. Sparse and dense run in parallel, fused by rank, then reranked." />

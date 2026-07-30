@@ -100,3 +100,28 @@ describe('LandingPage baseline ladder', () => {
     expect(screen.getByText(/not measured · requires an API token/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * The pipeline section used to assert "the guardrail holds it at ≥ 95%" and tag a
+ * principle `groundedness ≥ 95%`, while the recorded run came in under that bar —
+ * and while the ladder further down this same page reported the dip. A
+ * pre-registered threshold is only worth stating if it is allowed to fail, so the
+ * copy states the commitment and the miss instead of the guarantee.
+ */
+describe('LandingPage groundedness guardrail claim', () => {
+  beforeEach(() => mockReducedMotion());
+
+  it('never claims the pre-registered bar was met', () => {
+    // The assertions below only mean something while the run is actually under
+    // the bar; pin that precondition rather than assuming it.
+    expect(suiteSummary.B4.groundedness).toBeLessThan(0.95);
+
+    const { container } = renderLanding();
+    const copy = container.textContent ?? '';
+    expect(copy).not.toMatch(/guardrail holds it at/i);
+    expect(copy).not.toMatch(/groundedness\s*≥\s*95\s*%/i);
+    // The bar is named as a pre-registered commitment, and the miss is stated.
+    expect(copy).toMatch(/fixed at 0\.95 before the run/i);
+    expect(copy).toMatch(/came in under it/i);
+  });
+});
