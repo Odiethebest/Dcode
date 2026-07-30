@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { h1Report, suiteSummary } from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import LandingPage from '@/pages/LandingPage';
 
 // Reduced motion so the proof card jumps straight to its verified end state
@@ -114,14 +115,14 @@ describe('LandingPage groundedness guardrail claim', () => {
   it('never claims the pre-registered bar was met', () => {
     // The assertions below only mean something while the run is actually under
     // the bar; pin that precondition rather than assuming it.
-    expect(suiteSummary.B4.groundedness).toBeLessThan(0.95);
+    expect(suiteSummary.B4.groundedness).toBeLessThan(RUN_GROUNDEDNESS_BAR);
 
     const { container } = renderLanding();
     const copy = container.textContent ?? '';
     expect(copy).not.toMatch(/guardrail holds it at/i);
     expect(copy).not.toMatch(/groundedness\s*≥\s*95\s*%/i);
     // The bar is named as a pre-registered commitment, and the miss is stated.
-    expect(copy).toMatch(/fixed at 0\.95 before the run/i);
+    expect(copy).toContain(`fixed at ${RUN_GROUNDEDNESS_BAR.toFixed(2)} before the run`);
     expect(copy).toMatch(/came in under it/i);
   });
 

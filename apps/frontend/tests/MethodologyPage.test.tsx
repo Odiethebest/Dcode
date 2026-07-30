@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import { demoCases, h1Report, levelSummary, suiteSummary } from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import MethodologyPage from '@/pages/MethodologyPage';
 
 function renderMethodology() {
@@ -24,7 +25,7 @@ describe('MethodologyPage', () => {
   it('discloses the B4 groundedness dip instead of burying it', () => {
     renderMethodology();
     // The real run put B4 under the 0.95 guardrail; the page has to say so.
-    expect(suiteSummary.B4.groundedness).toBeLessThan(0.95);
+    expect(suiteSummary.B4.groundedness).toBeLessThan(RUN_GROUNDEDNESS_BAR);
     expect(screen.getByText(/below bar/i)).toBeInTheDocument();
   });
 

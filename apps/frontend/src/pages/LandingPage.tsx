@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { buttonClasses } from '@/components/ui';
 import { h1Report, snapshotSource, suiteSummary, type BaselineName } from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import { cx } from '@/lib/cx';
 import { GITHUB_URL } from '@/lib/links';
 
@@ -276,7 +277,7 @@ export default function LandingPage() {
               the card's last line, which is where the number actually is.)
               So the value is bound to the generated snapshot and stated here.
               No pointer to go stale, and admitting the miss beats deferring it. */}
-          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised: the bar was fixed at <Mono>0.95</Mono> before the run, and this run came in under it at <Mono>{suiteSummary.B4.groundedness.toFixed(3)}</Mono>. The bar has not moved.</>} last />
+          <Step n="03" title="Verify before you read" body={<>Every citation in the answer is checked against the symbol table. Groundedness is measured, not promised: the bar was fixed at <Mono>{RUN_GROUNDEDNESS_BAR.toFixed(2)}</Mono> before the run, and this run came in under it at <Mono>{suiteSummary.B4.groundedness.toFixed(3)}</Mono>. The bar has not moved.</>} last />
         </Reveal>
       </Section>
 

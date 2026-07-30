@@ -12,6 +12,7 @@ import {
   type Level,
   type Taxonomy,
 } from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import { cx } from '@/lib/cx';
 
 const BASELINE_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
@@ -35,7 +36,6 @@ const LEVEL_LABELS: Record<Level, string> = {
 const retrievalLeader = BASELINE_ORDER.reduce((best, b) =>
   suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
 );
-const GUARDRAIL = 0.95;
 
 /** Signed, fixed-precision — positive margins get an explicit +. */
 function signed(n: number, digits = 3): string {
@@ -217,7 +217,7 @@ export default function MethodologyPage() {
               {BASELINE_ORDER.map((b) => {
                 const s = suiteSummary[b];
                 const top = b === retrievalLeader;
-                const dips = s.groundedness < GUARDRAIL;
+                const dips = s.groundedness < RUN_GROUNDEDNESS_BAR;
                 return (
                   <tr key={b} className={cx('border-b border-line last:border-0', top && 'bg-brand-wash')}>
                     <td className="px-5 py-4">
@@ -244,7 +244,7 @@ export default function MethodologyPage() {
         </div>
         <p className="mt-4 max-w-[74ch] font-mono text-[11.5px] leading-relaxed text-ink-3">
           Read it straight: <b className="font-semibold text-ink">B3 leads retrieval</b>, B4 matches B3 exactly on every
-          retrieval metric, and B4 is the only rung whose groundedness falls under the {GUARDRAIL.toFixed(2)} guardrail
+          retrieval metric, and B4 is the only rung whose groundedness falls under the {RUN_GROUNDEDNESS_BAR.toFixed(2)} guardrail
           — {suiteSummary.B4.groundedness.toFixed(3)} aggregate ({levelSummary.L2.B4.groundedness.toFixed(3)} on L2,{' '}
           {levelSummary.L3.B4.groundedness.toFixed(3)} on L3). The agent sometimes emits a citation that fails
           verification; those references are stripped from the delivered answer, but the score counts the draft before
@@ -446,7 +446,7 @@ export default function MethodologyPage() {
               <div className="grid grid-cols-2 gap-4 max-[600px]:grid-cols-1">
                 {BASELINE_ORDER.map((b) => {
                   const a = selectedCase.baselines[b];
-                  const grounded = a.groundedness >= 0.95;
+                  const grounded = a.groundedness >= RUN_GROUNDEDNESS_BAR;
                   return (
                     <div key={b} className="rounded-card border border-line bg-surface p-5">
                       <div className="flex items-center justify-between gap-3">
