@@ -9,12 +9,14 @@ Dcode is a structure-aware code understanding stack built around four runtime su
 - SSE-based agent answers with grounded citations
 - an evaluation harness and comparison UI
 
-As of **2026-07-29**, the repository delivers a complete local vertical slice:
+As of **2026-07-30**, the repository delivers a complete local vertical slice:
 
 - a real indexing pipeline for Python repositories
 - retrieval and graph lookup endpoints
 - self-hosted embedding and reranker sidecars, exercised on a full real-model run
 - a working agent loop with 10 tools
+- bounded multi-turn follow-ups, bilingual caller/callee routing, same-language
+  answers, and server-owned evidence IDs
 - a single exploration workbench whose citations open real indexed source and
   walk the call graph, plus a `/methodology` page reporting this evaluation
 - a production-shaped Docker Compose package with static frontend serving
@@ -24,6 +26,11 @@ real-model run; the evaluation section below gives the numbers, why the call
 graph's contribution is unmeasured rather than absent, and what would re-open the
 question. The claim this project cares about most is not that H1 passed — it is
 that the answer is honest and checkable.
+
+The recorded run remains the project verdict, but it is a historical snapshot of
+the measured code path: it predates the corrected BM25 implementation and the
+later server-owned citation-ID, language, math-rendering, and multi-turn changes.
+Those changes have tests and live smoke coverage, not a replacement full H1 run.
 
 ## Implemented System
 
@@ -46,6 +53,10 @@ that the answer is honest and checkable.
 - `/internal/get_dependencies`
 - `/internal/get_dependents`
 - `/internal/get_file_outline`
+- bounded client-history contextualization for follow-up questions
+- English and Chinese caller/callee intent routing
+- optional LLM answers in the current question's language
+- request-local server-owned evidence IDs rather than model-invented symbol tokens
 - agent SSE events: `thought`, `tool_call`, `tool_result`, `citation`, `partial_answer`, `final_answer`, `error`
 - groundedness verification against `chunks` and `symbols`
 
@@ -60,6 +71,9 @@ that the answer is honest and checkable.
 - `/` — marketing landing; `/methodology` — the evaluation story for reviewers,
   reading the same generated snapshot as this document; `/preview` — design-system
   gallery.
+- safe Markdown rendering with KaTeX math support, including normalization of
+  common LaTeX delimiters outside code spans and fences.
+- a branded repository-native SVG favicon shared by the built frontend.
 - nginx-hosted static frontend image
 - `docker-compose.prod.yml` with frontend-only public exposure and `/api/*` proxying
 
@@ -305,16 +319,17 @@ everything else is independent of it.
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
 - **B0 is not measured** — it needs an API token. Either produce it or keep
   reporting it as unmeasured; it has no bearing on the H1 verdict.
-- **B4's groundedness dip is diagnosed and partly addressed.** The agent was offering
-  the model qualified names in its allowed-citation list that the guardrail rejects by
-  exact match, so it was instructing the model to emit references it would then redact
-  (`da2b6bc`), and that remedy has since been **reversed** — it treated the symptom by
-  withdrawing the evidence, and scored worst of three arms once uncited answers stopped
-  scoring perfectly. Reconciling the two symbol-matching rules (`029b9de`, entry below)
-  is what actually fixed it. **Still open: the `file:line` references the model
-  invents.** That is the whole of the remaining gap to the guardrail — 0.894 against
-  0.95 — and it is model behaviour, not scoring. Do **not** address it by changing how
-  the score is computed upward (criteria set 2, item 3). Nine-run record:
+- **B4's groundedness dip was diagnosed on the pre-evidence-ID protocol.** The
+  agent offered qualified names that the exact-match guardrail rejected;
+  withdrawing those names (`da2b6bc`) treated the symptom and scored worst once
+  uncited answers stopped scoring perfectly. The shared symbol rule (`029b9de`,
+  entry below) was the measured remedy. In that final measured arm, invented
+  `file:line` references made up the remaining 0.894-to-0.95 gap. The current
+  implementation subsequently replaced model-facing symbol tokens with
+  server-owned evidence IDs, so `0.894` is **not** a measurement of today's
+  agent and “only file:line remains” is a hypothesis to re-check, not a current
+  result. Do not address any remaining gap by changing the score upward
+  (criteria set 2, item 3). Nine-run record and its implementation boundary:
   `results/b4-citation-fix-experiment.md`.
 - ~~An answer with no citations scores groundedness `1.000`~~ **— fixed.** It now
   scores `0.0`, and `dcode_eval.run` reports `answers_without_citations` beside every
@@ -406,6 +421,13 @@ What was actually run, as opposed to asserted: `make check` (lint, typecheck,
 Python and frontend test suites, plus the evaluation-artifact drift check),
 `make frontend-build`, `make eval-smoke`, and a real-sidecar integration smoke
 against a live stack.
+
+On 2026-07-30, the current Docker stack and both host model sidecars were healthy.
+A live `Who calls send?` request exercised the caller route and current
+server-owned citation path, returning two verified source locations with
+groundedness `1.0`. This is an integration smoke for one question, not an
+evaluation result and not evidence that the 0.95 suite-level guardrail now
+passes.
 
 Not verified: visual appearance and interaction were never machine-checked —
 headless screenshots do not work in the development sandbox, so the UI's

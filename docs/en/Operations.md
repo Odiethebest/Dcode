@@ -5,9 +5,12 @@ harness, and the failure modes worth recognising before you hit them.
 
 ## Bringing the stack up
 
-`.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at
-`host.docker.internal:8002`/`8003`, so the models run as **host** sidecars. That
-means three processes, not one:
+A fresh `cp .env.example .env` uses stub embedding and identity reranking, so
+`make up` is sufficient for lightweight development. For the real-model path,
+set `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` to
+`host.docker.internal:8002`/`8003` and select the Jina/BGE model names described
+below. The models then run as **host** sidecars, which means three processes, not
+one:
 
 ```bash
 make embedding-host   # :8002 — wait for "Embedding model ready"
@@ -35,8 +38,9 @@ embedding stage — that is real work, not a hang.**
 
 ### Two startup failure modes
 
-- **`make up` alone** gives a stack whose API reports healthy while every query
-  dies at the embedding step. The sidecars are not optional in this configuration.
+- **With real-model endpoint values configured, `make up` alone** gives a stack
+  whose API reports healthy while every query dies at the embedding step. The
+  sidecars are not optional in that configuration. Stub mode does not need them.
 - **A wall of Vite `ECONNREFUSED` on `/api/v1/*`** in the dev-server log means the
   backend is down, not that the frontend broke.
 
@@ -374,5 +378,25 @@ Docker with `EMBEDDING_MODEL` / `RERANKER_MODEL` pointed at the host sidecars.
   get_file_outline → synthesize`, emitting 14 citations all `verified=True` with
   `groundedness=1.0`.
 
-Caveat unchanged: the agent planner/synthesis are rule-based, so the final
-answer is a grounded, citation-backed trace rather than LLM prose.
+Historical caveat: at the time of this run, planner and synthesis were
+rule-based, so the final answer was a grounded, citation-backed trace rather
+than LLM prose. The planner remains rule-based, but current deployments may set
+`SYNTHESIS_MODEL` to an LLM; do not treat this 2026-07-27 smoke as validation of
+the later citation-ID, language, math, or multi-turn contracts.
+
+## Verified Current Path — 2026-07-30
+
+The current local integration configuration used Jina 768-dimensional
+embeddings, the BGE reranker, and `gpt-4o-mini` synthesis. All seven core Docker
+services and both host model sidecars were healthy. A live
+`POST /api/v1/query` for *"Who calls send?"* exercised the explicit caller route
+and server-owned evidence-ID path, returning:
+
+- `src/requests/sessions.py:186`;
+- `src/requests/sessions.py:557`;
+- both citations with `verified=true`;
+- final groundedness `1.0`.
+
+This is a one-question integration smoke. It proves the current service path
+works end to end; it does not supersede `results/eval-real/`, validate the new
+BM25 ladder, or establish suite-level groundedness.

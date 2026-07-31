@@ -162,6 +162,13 @@ Answers render through a markdown-to-React-element pipeline with no
 `dangerouslySetInnerHTML` and no raw-HTML plugin. Embedded HTML in model output is
 ignored, not executed. XSS-safe by construction rather than by sanitising.
 
+Math is parsed only from Markdown math nodes and rendered with KaTeX. The
+frontend normalizes `\(...\)` and `\[...\]` to the Markdown delimiters understood
+by `remark-math`, but skips inline code and fenced code blocks so a code example
+cannot be reinterpreted as a formula. The synthesis prompt prefers `$...$` and
+`$$...$$`; normalization is a compatibility boundary, not permission to inject
+raw HTML.
+
 ## 8. Source and graph lookups degrade, never fabricate
 
 Clicking a citation fetches real indexed source and highlights the cited line.
@@ -275,15 +282,33 @@ The label is also subject to the pattern this document keeps recording: it may
 not be the smallest or faintest thing on the surface it qualifies. A disclosure
 demoted to fine print is the same defect as no disclosure, arrived at politely.
 
+## 13. Chinese and English answers follow the current question
+
+For the supported bilingual contract, the current user question owns the answer
+language. A Chinese question receives Chinese prose and an English question
+receives English prose; source comments, code identifiers, retrieved evidence,
+and earlier turns do not override it. Code identifiers and citation tokens stay
+verbatim in either language.
+
+The deterministic selector treats the presence of a Han character as Chinese
+and otherwise defaults to English, which keeps Latin-heavy code symbols from
+misclassifying a Chinese question. This is deliberately a Chinese/English
+contract, not a claim of general language detection. Follow-up
+contextualization preserves that selected language rather than translating the
+question.
+
 ---
 
 ## Where these are enforced
 
-Most of the above is pinned by tests in `apps/frontend/tests/` — an interrupted
-turn never renders as settled and never binds chips; an unverified chip is never
-solid; a walked graph node is marked indexed rather than verified; the landing
-chart's bars trace to the snapshot and none is full-width; the methodology page
-names the leading baseline from the data rather than from a hardcoded string.
+UI rules are pinned by tests in `apps/frontend/tests/` — an interrupted turn
+never renders as settled and never binds chips; an unverified chip is never
+solid; a walked graph node is marked indexed rather than verified; math
+delimiter normalization skips code; the landing chart's bars trace to the
+snapshot and none is full-width; the methodology page names the leading
+baseline from the data rather than from a hardcoded string. Agent tests pin the
+Chinese/English selector, history contextualization, server-owned evidence IDs,
+zero-citation score, and exact-token redaction.
 
 The intent is that breaking one of these rules breaks a test with a comment
 explaining why the rule exists.

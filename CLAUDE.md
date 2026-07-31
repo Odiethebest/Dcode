@@ -41,7 +41,7 @@ its numbers are generated rather than translated.
 ## 2. Where things are
 
 ```
-apps/frontend/   React 18 + TS strict + Vite + Tailwind + Router v6 + TanStack Query (~2k lines)
+apps/frontend/   React 18 + TS strict + Vite + Tailwind + Router v6 + TanStack Query (~4.2k TS/TSX lines)
 apps/api/        FastAPI gateway — the SPA's only contact point
 apps/agent/      LangGraph agent, emits SSE as it runs
 apps/worker/     RabbitMQ consumer, indexing pipeline
@@ -53,9 +53,12 @@ scripts/         helper scripts, incl. sync_eval_artifacts.py
 docs/en/         five authoritative documents (table above); docs/archive/ is history
 ```
 
-**Numbers are generated, never typed.** Every evaluation figure in the UI and the
-docs comes from `results/eval-real/` via `scripts/sync_eval_artifacts.py`, and
-`make check` fails if any of them drifts. Markdown targets use
+**Official snapshot numbers are generated, never typed.** Every H1 snapshot
+figure in the UI and generated documentation blocks comes from
+`results/eval-real/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
+if any of those surfaces drifts. A separately labelled experiment report may
+derive figures from its own committed run directories and must name that
+authority. Markdown targets use
 `<!-- BEGIN generated: … -->` markers. If you need to change a displayed number,
 change the run and regenerate — do not edit the number. Prose is *not* generated,
 so re-read the narrative after any regeneration.
@@ -70,7 +73,8 @@ those paths render nothing so they cannot return.
 `apps/frontend/src/api/types.ts`, a **hand-mirrored** copy of the
 `dcode_shared` schemas. It has drifted before; a compile-time test pins it, and
 adopting `openapi-typescript` remains the durable fix. Re-checked field by field
-on 2026-07-29: no drift at that point.
+on 2026-07-30, including `QueryTurn` and `QueryRequest.history`: no drift at that
+point.
 
 `streamQuery` is a hand-written SSE parser over `fetch` + `getReader()` — the query
 is a POST with a JSON body, so `EventSource` is unusable. It splits on `\n\n`,
@@ -115,7 +119,18 @@ rails (262px left, 384px right) are correct as-is.
 ## 4. Current state
 
 Everything below is committed and green: `make check`, `make frontend-build`,
-62 frontend tests, full pytest suite.
+70 frontend tests, full pytest suite.
+
+Current interaction contracts added on 2026-07-30:
+
+- query history is client-supplied, bounded by the gateway, and part of the
+  cache key; the agent contextualizes follow-ups without persisting a session;
+- English/Chinese caller and callee questions route explicitly, and synthesis
+  answers in the current question's supported language;
+- LLM citations use request-local server-owned evidence IDs; explicit
+  `file.py:line` claims are still independently verified;
+- answer Markdown supports KaTeX, with legacy LaTeX delimiters normalized only
+  outside inline and fenced code.
 
 **Known open regression — accessibility live regions.** The pre-rebuild query page
 had `aria-live="polite"` on the status region and `role="log" aria-live="polite"`

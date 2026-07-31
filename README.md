@@ -55,6 +55,8 @@ Dcode builds a dual index — semantic vectors plus a static call graph — and 
 | Call graph | AST-built symbol table, module import edges, and best-effort intra-repo call edges |
 | Hybrid retrieval | Sparse + dense candidate retrieval, RRF fusion, optional cross-encoder reranking |
 | Multi step reasoning | LangGraph state machine, 10 tools, rule based ReAct loop |
+| Multi-turn follow-ups | Client-supplied bounded history, history-aware cache keys, and standalone-query contextualization |
+| Answer presentation | Current-question language is preserved; Markdown math renders through KaTeX |
 | Hallucination control | Programmatic groundedness check with a required ≥ 95% threshold |
 | Reproducible evaluation | Five level baseline ladder + L1/L2/L3 question taxonomy |
 | Multi-tenancy | All chunks / symbols / jobs isolated by `repo_id` |
@@ -189,6 +191,12 @@ most recent turns within configurable turn and character budgets, includes the
 bounded history in the cache key, and sends it to the agent to resolve follow-up
 questions. Services remain stateless between requests.
 
+The supported Chinese/English answer contract follows the language of the
+current question, independent of source-code or history language. LLM synthesis
+is instructed to emit Markdown-compatible `$...$` / `$$...$$` math, and the
+frontend also normalizes common `\(...\)` / `\[...\]` delimiters before rendering
+with KaTeX.
+
 **SSE event types** (fixed payload schema):
 
 | Event | Payload |
@@ -217,9 +225,12 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 
 ## Getting Started
 
-> **Status (2026-07-29)**: the full path — indexing, retrieval, agent SSE, the
+> **Status (2026-07-30)**: the full path — indexing, retrieval, agent SSE, the
 > workbench frontend, the evaluation harness, production packaging — is implemented
 > and running; `make check`, `make frontend-build`, and `make eval-smoke` pass.
+> The current interaction path includes ten tools, bilingual caller/callee
+> routing, bounded multi-turn follow-ups, server-owned citation IDs,
+> same-language answers, and KaTeX math rendering.
 > H1 has been measured on a **full real-model run** and the recorded decision is
 > **unsupported**: see [Current Result](#current-result) for the numbers and why
 > the call graph's contribution is unmeasured rather than absent.

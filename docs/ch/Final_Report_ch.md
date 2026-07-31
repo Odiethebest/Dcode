@@ -8,16 +8,17 @@
 > `scripts/sync_eval_artifacts.py` 从 `results/eval-real/` 直接写入，`make check`
 > 会在漂移时失败 —— 也就是说关键数字不可能悄悄过期。
 
-> ⚠️ 交接快照，可能滞后于 `docs/en/`；以英文文档为准（en/ is the source of truth）。
+> 本文已同步到 2026-07-30 的当前分支状态；英文文档仍是最终 source of truth。
 
 ## 总结
 
-Dcode 是一个面向代码仓库理解的结构感知检索系统，包含四个运行界面：
+Dcode 是一个面向代码仓库理解的结构感知检索系统，由以下运行层面组成：
 
 - 异步索引：`POST /api/v1/repos` 到 worker pipeline；
 - internal retrieval 和 graph API；
 - 带 grounded citations 的 SSE agent 回答；
-- evaluation harness 和 Compare UI。
+- `/workbench` 探索界面、`/` 落地页、`/methodology` 评测页和 `/preview` 组件页；
+- 离线 evaluation harness。
 
 截至当前实现，仓库已经交付完整的本地 vertical slice：
 
@@ -26,26 +27,32 @@ Dcode 是一个面向代码仓库理解的结构感知检索系统，包含四�
 - 可选的 embedding 与 reranker sidecar；
 - agent tool orchestration；
 - groundedness 校验；
-- React frontend；
+- 支持多轮 follow-up、中文/英文 caller/callee 路由及同语言回答；
+- 支持 KaTeX 数学公式和可点击的真实源码引用；
+- React frontend 与品牌 favicon；
 - committed evaluation snapshot。
 
 ## 已实现能力
 
 | 区域 | 状态 |
 |---|---|
-| API gateway | 已实现 repo submission、status、query SSE、internal routes |
+| API gateway | 已实现 repo submission、status、query SSE、source/neighbors inspector routes；query 支持有界 history |
 | Worker | 已实现 clone、parse、chunk、embed、graph、state transition |
-| Retrieval | 已实现 sparse、dense sidecar path、reranker sidecar path |
-| Graph | 已实现 symbols、imports、best-effort calls |
-| Agent | 已实现 LangGraph loop、tools、groundedness、SSE |
-| Frontend | 已实现 Index、Query、Compare |
-| Eval | 已实现 baseline runner、metrics、result snapshot |
+| Retrieval | 已实现真正的 Okapi BM25、dense、默认 2:1 加权 RRF 及 reranker sidecar path |
+| Graph | 已实现 symbols、imports、best-effort calls，以及保留 unresolved source calls 的双向查询 |
+| Agent | 已实现 10 个工具、multi-turn contextualization、双语路由、server-owned evidence IDs、groundedness 与 SSE |
+| Frontend | 已实现 `/`、`/workbench`、`/methodology`、`/preview`，并支持安全 Markdown 与 KaTeX |
+| Eval | 已实现 B0–B4 runner、分层 metrics、result snapshot；新运行会记录 BM25 参数与 corpus revision |
 
 ## 当前评测状态
 
 已在**完整真实模型**下测量（Jina v2-base-code 768 维 + BGE reranker v2-m3 + gpt-4o-mini），结论 **unsupported**。这不是实现失败，而是当前受控题集与当前评分方式下的真实结论。
 
 > 本节所有数字由 `scripts/sync_eval_artifacts.py` 从结果目录生成，非手工转录；`make check` 会在两者不一致时失败。
+
+这份正式快照早于当前真正的 BM25、server-owned evidence ID、多轮上下文、
+同语言回答和 KaTeX 展示路径。它仍是已提交的 H1 结论，但不能被解释成对
+这些 2026-07-30 新行为的完整重测；后者目前只有单元测试和集成 smoke。
 
 <!-- BEGIN generated: eval-suite-metrics -->
 
@@ -115,6 +122,9 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 - `/internal/search` 返回 dense 和 rerank score components；
 - `find_references(symbol=send)` 返回真实调用方；
 - `/api/v1/query` 可走 agent query flow。
+- 2026-07-30 当前路径 smoke 中，`Who calls send?` 返回
+  `src/requests/sessions.py:186` 与 `:557` 两条 verified citation，
+  groundedness 为 `1.0`。这只证明单题端到端路径，不替代评测。
 
 复现流程见 [docs/en/Operations.md](../en/Operations.md)。
 
@@ -142,7 +152,12 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 
 2. **扩充 L3**：从 3 题扩到约 12 题，覆盖不同的跨模块流程，GT 由代码结构推导并验证能在索引里解析到，在重跑之前提交。草拟题目必须过人工评审，评审的是**架构覆盖是否公平、GT 是否诚实地源自代码** —— 明确**不**筛"B4 能不能答得上"。
 
-3. **groundedness 的算法一个字不改**。这里那个"显而易见的修法"是陷阱：只统计 redact 之后的引用，等于给一个构造上必然全部已验证的集合打分，groundedness 会平凡地趋近 1.0、B4 的 composite 被抬高，H1 可能因为一个纯粹表面的原因翻盘 —— 那是穿着 bugfix 外衣的 p-hacking。收紧**合成 prompt** 让模型只从白名单引用是正当的（改的是系统，不是度量），但它会移动 B4 的数字，必须作为独立改动单独汇报，绝不悄悄折进 H1 的结论，也刻意不与这次重跑捆在一起。
+3. **groundedness 的算法一个字不改**。这里只统计 redact 之后引用的
+   “显而易见修法”是陷阱：那会给构造上必然全部已验证的集合打分，
+   groundedness 会平凡地趋近 1.0，并可能因表面变化翻转 H1。当前实现已经
+   改用 server-owned evidence IDs；这是系统 contract 的独立改动，不是度量
+   改动。它尚未经过完整 H1 重跑，必须在下一次运行中单独记录，不能悄悄
+   折进旧结论。
 
 扩题使下一次运行成为一次**全新的预注册**：扩充后的题集与修正后的评分，都在看到任何数字之前固定下来。
 
@@ -152,5 +167,15 @@ Yuxin(Lacey)Liang 完成 retrieval 与 graph stack 后，本仓库已经完成 a
 - 当被度量的输出客观上错了，我们改**度量什么**；我们不改通过标准。
 - 两种结果都会公布。修正评分若过线，那是靠"度量了正确的东西"赢来的；若不过，本文就会写"即使把图的贡献算进去，B4 仍未过线"。
 - 目标是**真实的判定**，不是通过的判定。一个带着诊断原因和精确重开条件的诚实零结果，比一个调出来的通过更有说服力。
+
+## 当前未完成项
+
+- 按最终 verified evidence set 给 B4 计分，并在看到新数字之前扩充 L3。
+- 用当前真正的 BM25 和 server-owned evidence ID 协议完整重跑 B1–B4。
+- B0 仍需要外部 provider token；judge / pairwise 指标仍是 stub。
+- migration 已加入 `index_runs` 与 `repos.current_index_run_id`，但 ORM 和
+  worker 尚未写入或暴露这条 provenance 记录。
+- workbench 缺少 screen-reader live region；TypeScript API contract 仍是手工镜像。
+- `dcode.odieyang.com` 尚未解析，production Compose 仅做过本地验证。
 
 复现见 [Operations.md](../en/Operations.md)。

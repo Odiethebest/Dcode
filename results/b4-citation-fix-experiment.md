@@ -332,6 +332,22 @@ groundedness is one of four equally weighted composite terms. This was stated be
 runs and is repeated because the numbers moved favourably: B4's ceiling under this scoring
 is a tie with B3, so no groundedness work can clear a +0.05 bar.
 
-**The 0.95 guardrail is still missed**, at 0.894. What remains is `file:line` references
-the model invents — a model-behaviour problem, not a scoring one, and the next thing to
-look at if this line of work continues.
+**The final measured arm still missed the 0.95 guardrail**, at 0.894. Under that
+protocol, the remaining failures were `file:line` references invented by the
+model — a model-behaviour problem rather than a scoring one. The implementation
+boundary below limits how that diagnosis can be applied to the current agent.
+
+## Post-experiment implementation boundary
+
+All nine runs above predate `87ffa88`, which replaced model-facing symbol and
+location tokens with request-local server-owned evidence IDs such as `[C1]`.
+They therefore establish the shared symbol rule under the protocol they
+measured, but they do not measure the current citation protocol. In particular,
+`0.894` is the last arm-B mean, not an estimate of today's agent, and “invented
+`file:line` references are the remaining gap” is the last measured diagnosis
+rather than a current-system conclusion.
+
+The later evidence-ID path, exact-token redaction, same-language synthesis, and
+multi-turn contextualization are covered by tests and a one-question live smoke.
+Only a complete pre-registered B1–B4 run can supersede the recorded H1 result or
+establish the current suite-level groundedness.

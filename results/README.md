@@ -13,6 +13,14 @@ says which, so nobody has to guess from timestamps.
 | `eval-real-b4-citation-fix/` | not a verdict | B4 only — run 1 of arm **A**, `da2b6bc` (tokens withdrawn). |
 | `b4-variance/` | not a verdict | The other six runs: `prefix-2/3`, `fix-2/3`, and `sharedrule-1/2/3` for arm **B**, `029b9de` (one shared symbol rule). |
 
+The recorded H1 snapshot and the nine-run citation experiment both predate the
+server-owned evidence-ID protocol, bounded multi-turn contextualization,
+same-language answer contract, and KaTeX presentation changes now on the branch.
+Those changes have unit and integration-smoke coverage, but no complete
+replacement evaluation. The committed `unsupported` verdict therefore remains
+the project result while being explicitly historical rather than a measurement
+of every current interaction behavior.
+
 The last three hold **one experiment, not a result to cite** — nine single-baseline B4
 runs across three arms, which carry no H1 verdict. Read
 [`b4-citation-fix-experiment.md`](b4-citation-fix-experiment.md) before any of those

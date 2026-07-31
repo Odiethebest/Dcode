@@ -112,10 +112,13 @@ embedding/reranker path existed in code, but the checked-in evaluation snapshot
 still came from an older state. That distinction affected README language,
 `docs/en/Final_Report.md`, and the H1 decision.
 
-## Example: Retrieval and Agent Integration
+## Historical Example: Retrieval and Agent Integration
 
 A concrete example was the integration pass after the retrieval and graph stack
-landed on `main`.
+landed in the repository. It describes the 2026-07-27 path; the later BM25,
+server-owned citation-ID, bilingual, math-rendering, and multi-turn changes are
+documented in the current Technical Design and Operations runbook rather than
+retroactively folded into this historical sequence.
 
 The retrieval side added real Jina embeddings, query-side dense search, BGE
 reranking, and call edges in the worker graph stage. The integration pass

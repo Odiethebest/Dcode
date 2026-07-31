@@ -43,7 +43,7 @@ exclusively; internal retrieval, graph, and agent routes are not public surfaces
 ### Frontend surfaces
 
 `apps/frontend` is a React 18 + TypeScript (strict) + Vite + Tailwind SPA of
-roughly 2k lines, with four routes:
+roughly 4.2k TypeScript/TSX lines, with four routes:
 
 | Route | Surface |
 |---|---|
@@ -75,7 +75,7 @@ The deployed local stack contains the following services:
 | API | Public FastAPI gateway for repository submission, status reads, query SSE, and internal retrieval routes |
 | Worker | RabbitMQ consumer that clones repositories, parses Python code, chunks files, writes embeddings, and builds graph edges |
 | Agent | Internal LangGraph service that plans tool calls, executes retrieval and graph tools, synthesizes answers, and verifies citations |
-| Frontend | React/Vite UI for indexing, querying, and comparing evaluation results |
+| Frontend | React/Vite landing, exploration workbench, generated methodology view, and component preview |
 | Embedding sidecar | Optional self-hosted HTTP embedding model service |
 | Reranker sidecar | Optional self-hosted HTTP cross-encoder reranker service |
 | Postgres | Durable repository, chunk, symbol, and edge storage with pgvector |
@@ -199,6 +199,12 @@ The graph stage currently extracts:
 
 Graph v1 is intentionally conservative. It may miss dynamic calls, complex attribute chains, and mixin or MRO-based `self.method` references. Those gaps are graph coverage limits, not API contract breaks.
 
+`get_call_neighbors` supplements resolved graph edges with call expressions read
+from the indexed source. A source call whose static target cannot be resolved is
+returned explicitly as `unresolved_target` rather than silently discarded.
+Caller/callee intent routing recognises both English and Chinese question forms;
+the graph data and limitations remain the same in either language.
+
 ## Agent Design
 
 The agent is a bounded LangGraph loop with rule-based planning. Its ten
@@ -208,14 +214,25 @@ registered tools are `search_code`, `read_file`, `find_definition`,
 
 The answer path is:
 
-1. classify the query intent;
-2. choose one or more tools;
-3. execute internal API calls;
-4. synthesize a response from tool results — a rule-based template by default, or an optional LLM (`SYNTHESIS_MODEL`) that cites request-local server-owned evidence IDs such as `[C1]`;
-5. verify citations against indexed evidence;
-6. stream typed SSE events through the API gateway.
+1. contextualize a follow-up from the bounded client history, with a narrow
+   deterministic symbol-binding fallback for caller/callee pronouns;
+2. classify the query intent;
+3. choose one or more tools;
+4. execute internal API calls;
+5. synthesize a response from tool results — a rule-based template by default,
+   or an optional LLM (`SYNTHESIS_MODEL`) that cites request-local server-owned
+   evidence IDs such as `[C1]`;
+6. verify citations against indexed evidence;
+7. stream typed SSE events through the API gateway.
 
 Groundedness is a hard product requirement. The server resolves LLM evidence IDs back to indexed locations or symbols before verification; ordinary backticked code is formatting, not a citation. Unsupported IDs and explicit file-line citations must be removed or flagged instead of being presented as verified evidence.
+
+LLM synthesis follows the natural language of the current question rather than
+the source code or prior turns. Chinese questions receive Chinese answers and
+English questions receive English answers; code identifiers stay verbatim.
+Math uses Markdown `$...$` / `$$...$$` delimiters and is rendered by the
+frontend through KaTeX, which also normalizes common LaTeX delimiters outside
+code spans and fences.
 
 ## API Contracts
 
