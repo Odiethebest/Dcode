@@ -44,7 +44,7 @@ When a new engineer joins a mature codebase, the useful questions are relational
 | Flat vector RAG | Standard RAG implementations | Text similarity only; loses call relationships |
 | General chat assistants | Generic LLM apps | Lacks grounded codebase context; citation hallucination |
 
-Dcode builds a dual index — semantic vectors plus a static call graph — and exposes it through a ReAct agent. Every code reference in a final answer is verified against the index before reaching the user.
+Dcode builds a dual index — semantic vectors plus a static call graph — and exposes it through a ReAct agent. Every citation presented as code evidence in a final answer is verified against the index before reaching the user; ordinary inline code remains formatting rather than an implicit citation.
 
 ### What it handles
 
@@ -54,7 +54,7 @@ Dcode builds a dual index — semantic vectors plus a static call graph — and 
 | Chunk granularity | AST boundary chunks via Python `ast` |
 | Call graph | AST-built symbol table, module import edges, and best-effort intra-repo call edges |
 | Hybrid retrieval | Sparse + dense candidate retrieval, RRF fusion, optional cross-encoder reranking |
-| Multi step reasoning | LangGraph state machine, 8 tools, rule based ReAct loop |
+| Multi step reasoning | LangGraph state machine, 10 tools, rule based ReAct loop |
 | Hallucination control | Programmatic groundedness check with a required ≥ 95% threshold |
 | Reproducible evaluation | Five level baseline ladder + L1/L2/L3 question taxonomy |
 | Multi-tenancy | All chunks / symbols / jobs isolated by `repo_id` |
@@ -119,7 +119,12 @@ Full architecture, component design, and design decisions: [`docs/en/Technical_D
 
 ## Data Model
 
-Four core tables, all isolated by `repo_id` for multi-tenancy. Vectors and call graph live in the same PostgreSQL instance, eliminating a separate vector service.
+Four runtime ORM tables are isolated by `repo_id` for multi-tenancy. Vectors and
+the call graph live in the same PostgreSQL instance, eliminating a separate
+vector service. The migration schema also contains an append-only `index_runs`
+provenance table and `repos.current_index_run_id`; the current worker does not
+populate either yet, so they are recorded as unfinished integration rather than
+described as an active audit trail.
 
 ### Entity Hierarchy
 
@@ -145,7 +150,7 @@ imports / inherits / references) and is indexed in **both** directions, on
 `source_id` and on `target_id` — which is what makes the reverse lookup behind
 *who calls this?* a single indexed query rather than a scan.
 
-Authoritative schema: the Alembic migration under `infra/alembic/`. Design
+Authoritative schema: the Alembic migrations under `infra/migrations/`. Design
 reasoning, storage topology, and the Redis keyspace:
 [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
@@ -175,9 +180,14 @@ existing `repo_id` — no second clone.
 | `POST` | `/api/v1/query` | Ask a natural language question; returns an SSE stream |
 
 ```http
-POST /api/v1/query          { "repo_id": "uuid", "query": "How is auth wired end to end?" }
+POST /api/v1/query          { "repo_id": "uuid", "query": "How is auth wired end to end?", "history": [] }
 Accept: text/event-stream   → a stream of the events below
 ```
+
+`history` is optional client-supplied conversation context. The gateway keeps the
+most recent turns within configurable turn and character budgets, includes the
+bounded history in the cache key, and sends it to the agent to resolve follow-up
+questions. Services remain stateless between requests.
 
 **SSE event types** (fixed payload schema):
 
@@ -332,11 +342,14 @@ H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieva
 
 ### Acceptance Thresholds
 
-| Metric | Target |
+The executable H1 decision in `dcode_eval.run` is deliberately narrower than the
+additional product-quality gates tracked beside it:
+
+| Check | Current rule |
 |---|---|
-| Retrieval (Recall@k / MRR / nDCG) | B4 strictly improves over every B0 through B3; statistically significant on L2 / L3 |
-| Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% — **unmeasured**, the judge is still a stub |
-| Groundedness (programmatic) | ≥ 95% |
+| **Recorded H1 decision** | On both L2 and L3, B4 must beat B2 and B3 by at least `0.05` composite points. The composite is the mean of Recall@k, MRR, nDCG@k, and groundedness. |
+| Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% — **unmeasured**, the judge is still a stub and this value is not part of the current `h1_report` decision |
+| Groundedness (programmatic) | ≥ 95% product guardrail — reported separately; the recorded B4 run misses it |
 
 Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
@@ -408,12 +421,20 @@ explicitly not the current conclusion — see [`results/README.md`](results/READ
 Dcode chunks code at function, method, class, and module docstring boundaries via Python `ast` (`D-2.1.1`). This keeps import context and symbol boundaries attached to retrieved chunks, which makes the evidence easier to cite and verify.
 
 **Vectors and call graph in a single PostgreSQL instance**
-`pgvector` stores embeddings with HNSW and GIN indexes; ordinary relational tables store symbols and edges. One connection pool, one backup boundary, one consistency model — and a citation's chunk and its graph neighbours are read in the same transaction, so the inspector cannot show source from one snapshot and edges from another. The tradeoff is custom hybrid-retrieval logic.
+`pgvector` stores embeddings under an HNSW index; the retained `tsv` column has
+a dormant GIN index, while ordinary relational tables store symbols and edges.
+This gives one connection pool and one backup
+boundary, but not one atomic index-generation transaction: chunks and graph rows
+commit in separate worker stages, and the inspector reads source and neighbours
+through separate requests. A failed graph stage can therefore leave new chunks
+beside stale or missing graph rows until a successful re-index. The tradeoff is
+custom hybrid-retrieval and consistency logic.
 
 **Hybrid retrieval is required**
 Code search needs exact symbol matching *and* semantic intent. Code-tokenized
 Okapi BM25 and dense retrieval run in parallel, fuse by Reciprocal Rank Fusion
-(`k=60`), then rerank through a cross encoder (`D-2.2.1`). The checked-in
+(`k=60`, dense:sparse weight `2:1` by default), then rerank through a cross
+encoder (`D-2.2.1`). The checked-in
 real-model run predates the BM25 implementation, so its ladder is retained as
 historical evidence and is not presented as validation of the corrected path.
 

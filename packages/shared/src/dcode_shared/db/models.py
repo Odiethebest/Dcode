@@ -1,8 +1,13 @@
-"""SQLAlchemy 2.0 declarative models — implements DESIGN.md §3.2 Table Design.
+"""SQLAlchemy 2.0 declarative models for the current runtime tables.
 
-Four entities: repos, chunks, symbols, edges. All scoped by `repo_id` for
+Four runtime entities: repos, chunks, symbols, edges. All scoped by `repo_id` for
 multi-tenancy (NFR-3). Vectors and the call graph live in the same PostgreSQL
 instance via pgvector.
+
+The Alembic schema also contains the append-only ``index_runs`` table and
+``repos.current_index_run_id``. They are not modelled here, and the current
+worker does not populate that provenance record; see the outstanding-work entry
+in ``docs/en/Final_Report.md``.
 
 Indexes (HNSW on `chunks.embedding`, GIN on `chunks.tsv`, the reverse edge
 index, etc.) are created in the Alembic migration rather than declared here,

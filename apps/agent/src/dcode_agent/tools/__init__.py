@@ -19,7 +19,7 @@ from dcode_agent.tools.search_code import SearchCodeTool
 
 
 def default_registry() -> ToolRegistry:
-    """Construct the canonical 9-tool registry."""
+    """Construct the canonical 10-tool registry."""
     registry = ToolRegistry()
     for tool_cls in (
         SearchCodeTool,

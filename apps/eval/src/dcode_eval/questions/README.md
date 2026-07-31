@@ -1,7 +1,8 @@
 # Question set construction
 
-Per [Technical_Design.md §2.4.1](../../../../../docs/en/Technical_Design.md), the evaluation question
-set draws from three complementary sources:
+Per the
+[Technical Design question-set contract](../../../../../docs/en/Technical_Design.md#question-set-construction),
+the evaluation question set draws from three complementary sources:
 
 | Source | Target size | Ground Truth |
 |---|---|---|
@@ -22,15 +23,16 @@ The repository currently includes a small versioned `requests` dataset at
 | Size | 16 questions |
 | Source | manual |
 | Taxonomy coverage | `L1`, `L2`, `L3` |
-| Recorded outputs | `results/eval-suite/` |
+| Recorded outputs | `results/eval-real/` (current H1 snapshot; its sparse arm predates BM25) |
 
 This dataset is sufficient for a reproducible demo and for the current H1
 snapshot. It is not yet large enough to be treated as a stable final benchmark.
 
 ## Taxonomy
 
-Every question MUST carry one taxonomy label (Technical_Design.md §2.4.2). The H1
-hypothesis is checked primarily on the **L2 + L3** subset.
+Every question MUST carry one taxonomy label; see the
+[H1 decision contract](../../../../../docs/en/Technical_Design.md#h1-decision-and-additional-gates).
+The H1 hypothesis is checked on the **L2 + L3** subsets.
 
 | Label | Reasoning scope |
 |---|---|

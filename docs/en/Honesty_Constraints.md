@@ -1,10 +1,12 @@
 # Honesty Constraints
 
 This document exists because the project's central claim is narrow and easy to
-fake: **every code reference in an answer is verified against the index before a
-user sees it.** A system can produce a convincing verified-citations interface
-without any verification behind it, and the difference is invisible from a
-screenshot. So the rules below are written down, and most are pinned by tests.
+fake: **every citation presented as indexed code evidence is verified before a
+user sees it.** Ordinary inline code is formatting, not an implicit citation; a
+server-owned evidence ID or explicit `file.py:line` is the claim the guardrail
+checks. A system can produce a convincing verified-citations interface without
+any verification behind it, and the difference is invisible from a screenshot.
+So the rules below are written down, and most are pinned by tests.
 
 Several of them look like things worth cleaning up. They are not. Each entry
 gives the rule and the reason, because the reason is what stops a later change
@@ -127,6 +129,12 @@ build shipped a filled unverified chip, which made an unverified reference read 
 The score is the fraction of the model's citations that passed verification **in
 the draft**, not in the delivered answer.
 
+An answer with no citations scores `0.0`, not `1.0` and not “excluded”. Excluding
+it would let an uncertain agent improve its own denominator by citing nothing;
+scoring it perfectly would reward the same failure directly. The evaluation
+output therefore reports `answers_without_citations` alongside the mean so
+“cited nothing” remains distinguishable from “all cited claims failed”.
+
 The obvious change here is a trap, so it is worth being explicit. Unverifiable
 references are already stripped before the user sees the answer. If the score
 counted only what survived, it would be scoring a set that is verified *by
@@ -141,8 +149,12 @@ user got safe output, but the model needed a lot of correcting to produce it.
 The consequence is that this guardrail can visibly fail. On the recorded run B4
 scores 0.916 against a pre-registered floor of 0.95, and that is reported as a
 failure rather than explained away. Tightening the synthesis prompt so the model
-cites only from the allowed list is the legitimate fix — it changes the system,
-not the metric — and it has to be reported as its own change.
+cites only server-owned evidence IDs is a legitimate class of fix — it changes
+the system, not the metric — and it has to be reported as its own change. The
+recorded three-arm experiment also showed why merely withdrawing valid symbol
+tokens was not sufficient: the durable remedy was one shared symbol-resolution
+rule. The implementation later moved to server-owned evidence IDs as a further
+contract hardening step; that newer path has not received a complete H1 re-run.
 
 ## 7. Markdown is rendered, never injected
 
@@ -186,9 +198,12 @@ The same applies to a failed index: show the reason, not just that it failed.
 
 ## 11. Displayed numbers are generated, never transcribed
 
-Every evaluation figure in the UI and in the documentation is generated from
-`results/eval-real/` by `scripts/sync_eval_artifacts.py`, and `make check` fails
-if any of them drifts.
+Every official H1 snapshot figure in the UI and in the generated documentation
+blocks comes from `results/eval-real/` through
+`scripts/sync_eval_artifacts.py`, and `make check` fails if any of those surfaces
+drifts. A separately labelled experiment report may contain figures derived
+from its own committed run directories; it must name that authority explicitly
+and must not imply that the generated-artifact drift check covers it.
 
 This rule was earned. The same defect occurred three times: numbers hand-copied
 into a surface, then reality moved and the copy stayed. It hit the frontend's
@@ -197,10 +212,12 @@ page's baseline chart (decorative hardcoded bars showing the system winning whil
 the methodology page reported the hypothesis unsupported), and the README plus
 this document set (stub-run numbers left in place after the real-model run).
 
-Prose is not generated, so it carries qualitative conclusions only — *H1
-unsupported*, *the archived sparse baseline was not BM25*, *the graph's
-contribution is unmeasured*. Any specific figure belongs inside a generated
-block.
+Prose around the official snapshot is not generated, so it carries qualitative
+conclusions only — *H1 unsupported*, *the archived sparse baseline was not
+BM25*, *the graph's contribution is unmeasured*. Any specific official-snapshot
+figure belongs inside a generated block. Experimental figures belong in their
+named experiment record; when a report cites one, it must state that exception
+and link the authority.
 
 ### The generator is a pure function of committed bytes
 

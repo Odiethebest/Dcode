@@ -14,7 +14,7 @@ As of **2026-07-29**, the repository delivers a complete local vertical slice:
 - a real indexing pipeline for Python repositories
 - retrieval and graph lookup endpoints
 - self-hosted embedding and reranker sidecars, exercised on a full real-model run
-- a working agent loop with 8 tools
+- a working agent loop with 10 tools
 - a single exploration workbench whose citations open real indexed source and
   walk the call graph, plus a `/methodology` page reporting this evaluation
 - a production-shaped Docker Compose package with static frontend serving
@@ -42,7 +42,9 @@ that the answer is honest and checkable.
 - sparse retrieval, dense retrieval hook, RRF fusion, and optional reranking
 - `/internal/find_definition`
 - `/internal/find_references`
+- `/internal/get_call_neighbors`
 - `/internal/get_dependencies`
+- `/internal/get_dependents`
 - `/internal/get_file_outline`
 - agent SSE events: `thought`, `tool_call`, `tool_result`, `citation`, `partial_answer`, `final_answer`, `error`
 - groundedness verification against `chunks` and `symbols`
@@ -344,6 +346,11 @@ everything else is independent of it.
 ### Retrieval and indexing
 
 - **Python only.** The worker parses no other language.
+- **Index-run provenance is schema-only.** The migrations add append-only
+  `index_runs` records and `repos.current_index_run_id`, but the current ORM and
+  worker do not populate or expose them. Runtime cache invalidation uses
+  `index_revision`; either wire the executor record through the pipeline or
+  remove the dormant schema after an explicit design decision.
 - Richer graph edges beyond calls / imports / inherits / references — no type
   inference, and inherited `self.method()` calls do not resolve. See
   [Operations.md](Operations.md) for the precise coverage limits.

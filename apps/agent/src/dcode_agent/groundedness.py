@@ -1,13 +1,15 @@
-"""Citation verification — implements DESIGN.md §2.3.4 and D-2.3.1.
+"""Citation verification for Dcode's hard groundedness guardrail.
 
-For every code reference in a draft answer, :func:`verify` queries the live
-index to confirm existence; :func:`enforce_groundedness` then redacts every
-unverified reference from the answer text before it is returned, so an
-unverified code location is never presented to the user as evidence.
+For every citation in a draft answer, :func:`verify` queries the live index to
+confirm existence; :func:`enforce_groundedness` then redacts every unverified
+citation before the answer is returned, so an unverified code location is never
+presented to the user as evidence. In LLM synthesis mode, server-owned evidence
+IDs and explicit ``file.py:line`` locations are citations; ordinary inline code
+is formatting and is deliberately not treated as an implicit evidence claim.
 
-**D-2.3.1 — Groundedness is a HARD GUARDRAIL.** It must not be disable-able
-in production: the same routine produces the ≥95% groundedness number that
-NFR-4 and PLAN.md §3.1 measure against.
+The same routine produces the pre-redaction score compared with the 95% product
+threshold. See ``docs/en/Honesty_Constraints.md`` for the scoring and redaction
+contract.
 """
 
 import re
@@ -46,7 +48,7 @@ class CitationCheck:
 @dataclass
 class GroundednessResult:
     citations: list[CitationCheck]
-    score: float  # fraction verified — 1.0 means every citation found in index
+    score: float  # verified fraction; 0.0 by convention when the draft cites nothing
 
 
 def extract_citations(answer: str) -> list[tuple[str, str, int]]:
