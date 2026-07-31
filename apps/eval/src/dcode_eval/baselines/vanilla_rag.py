@@ -16,5 +16,4 @@ class VanillaRAGBaseline(Baseline):
         return await common.internal_search(repo_id, query, k, mode="dense")
 
     async def answer(self, repo_id: str, query: str) -> AnswerResult:
-        chunks = await self.retrieve(repo_id, query, 5)
-        return common.template_answer("B2 dense baseline", chunks)
+        return await common.stream_dense_rag_answer(repo_id, query)

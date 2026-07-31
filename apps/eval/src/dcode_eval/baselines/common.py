@@ -86,10 +86,34 @@ async def stream_agent_answer(repo_id: str, query: str, *, mode: str) -> AnswerR
     )
 
 
+async def stream_dense_rag_answer(repo_id: str, query: str) -> AnswerResult:
+    """B2: dense-only retrieval through the shared Agent synthesis path.
+
+    B2 used to answer from a template, which fixed its groundedness at the
+    constant 1.0 — a quarter of the composite the H1 decision is computed from,
+    awarded rather than measured — and left it unable to emit citations at all,
+    so no scoring rule could be applied to it and B4 alike.
+    """
+
+    return await stream_agent_answer(repo_id, query, mode="dense_only")
+
+
 async def stream_hybrid_rag_answer(repo_id: str, query: str) -> AnswerResult:
-    """B3: shared Agent synthesis over hybrid retrieval, with graph tools disabled."""
+    """B3: shared Agent synthesis over hybrid retrieval, with no tool expansion."""
 
     return await stream_agent_answer(repo_id, query, mode="hybrid_only")
+
+
+async def stream_agent_no_graph_answer(repo_id: str, query: str) -> AnswerResult:
+    """B3.5: B4 exactly, minus the graph and reference tools.
+
+    Diagnostic arm. ``B4 - B3`` measures the whole agent system; ``B4 - B3.5``
+    isolates the call graph, which is the actual hypothesis. It is not part of
+    the H1 pass criteria — adding an arm to the decision rule would be changing
+    the pass criteria.
+    """
+
+    return await stream_agent_answer(repo_id, query, mode="agent_no_graph")
 
 
 async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:

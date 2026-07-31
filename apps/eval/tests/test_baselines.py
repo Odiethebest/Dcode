@@ -1,9 +1,11 @@
 """Baseline implementation tests."""
 
+import pytest
 from dcode_eval.baselines import common
 from dcode_eval.baselines.base import AnswerResult
 from dcode_eval.baselines.bm25 import BM25Baseline
 from dcode_eval.baselines.full_system import FullSystemBaseline
+from dcode_eval.baselines.hybrid_agent_no_graph import HybridAgentNoGraphBaseline
 from dcode_eval.baselines.hybrid_rag import HybridRAGBaseline
 from dcode_eval.baselines.vanilla_rag import VanillaRAGBaseline
 from dcode_eval.settings import eval_settings
@@ -24,7 +26,8 @@ def _chunk() -> Chunk:
     )
 
 
-async def test_b1_b2_template_answers(monkeypatch) -> None:
+async def test_b1_still_answers_from_a_template(monkeypatch) -> None:
+    """B1 is a retrieval reference, not a system arm, and is not in the decision."""
     modes: list[str] = []
 
     async def fake_search(repo_id: str, query: str, k: int, *, mode: str) -> list[Chunk]:
@@ -37,11 +40,102 @@ async def test_b1_b2_template_answers(monkeypatch) -> None:
     monkeypatch.setattr("dcode_eval.baselines.common.internal_search", fake_search)
 
     b1 = await BM25Baseline().answer("repo-1", "auth")
-    b2 = await VanillaRAGBaseline().answer("repo-1", "auth")
     assert "B1 sparse baseline" in b1.answer
-    assert "B2 dense baseline" in b2.answer
-    assert modes == ["sparse", "dense"]
+    assert modes == ["sparse"]
     assert b1.citations == ["`src/requests/auth.py:85`"]
+    # No citation events, so no verified final evidence, so the official rule
+    # cannot apply to this arm. That is why it stays out of the H1 decision.
+    assert b1.evidence == []
+
+
+async def test_b2_answers_through_the_shared_agent_path(monkeypatch) -> None:
+    """B2's groundedness must be measured, not the template's constant 1.0.
+
+    This is what makes one scoring rule possible across the decision arms: a
+    template emits no citations, so B2 could not be scored the way B4 is.
+    """
+
+    async def fake_answer(repo_id: str, query: str) -> AnswerResult:
+        assert repo_id == "repo-1"
+        assert query == "auth"
+        return AnswerResult(answer="Dense answer", citations=[], groundedness=0.5)
+
+    monkeypatch.setattr("dcode_eval.baselines.common.stream_dense_rag_answer", fake_answer)
+
+    result = await VanillaRAGBaseline().answer("repo-1", "auth")
+
+    assert result.answer == "Dense answer"
+    assert result.groundedness == 0.5
+
+
+async def test_b3_5_answers_through_the_agent_without_the_graph(monkeypatch) -> None:
+    async def fake_answer(repo_id: str, query: str) -> AnswerResult:
+        assert repo_id == "repo-1"
+        assert query == "auth"
+        return AnswerResult(answer="No-graph answer", citations=[], groundedness=1.0)
+
+    monkeypatch.setattr("dcode_eval.baselines.common.stream_agent_no_graph_answer", fake_answer)
+
+    result = await HybridAgentNoGraphBaseline().answer("repo-1", "auth")
+
+    assert result.answer == "No-graph answer"
+
+
+@pytest.mark.parametrize(
+    ("stream_fn", "expected_mode"),
+    [
+        ("stream_dense_rag_answer", "dense_only"),
+        ("stream_hybrid_rag_answer", "hybrid_only"),
+        ("stream_agent_no_graph_answer", "agent_no_graph"),
+        ("stream_full_system_answer", "full"),
+    ],
+)
+async def test_each_arm_sends_its_own_agent_mode(monkeypatch, stream_fn, expected_mode) -> None:
+    """The arm labels are only meaningful if the mode reaches the agent.
+
+    Every arm shares one client helper, so a wiring slip here would silently
+    run four identically-configured arms and make the whole ladder meaningless
+    while every test that mocks at a higher level still passed.
+    """
+    captured: dict[str, object] = {}
+
+    class FakeStream:
+        async def __aenter__(self) -> "FakeStream":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def aiter_lines(self):
+            for line in (
+                "event: final_answer",
+                'data: {"answer": "a", "citations": [], "groundedness": 1.0}',
+                "",
+            ):
+                yield line
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def stream(self, method: str, url: str, *, json: object, headers: object) -> FakeStream:
+            captured.update(json=json)
+            return FakeStream()
+
+    monkeypatch.setattr(common.httpx, "AsyncClient", FakeClient)
+
+    await getattr(common, stream_fn)("repo-1", "auth")
+
+    assert captured["json"] == {"repo_id": "repo-1", "query": "auth", "mode": expected_mode}
 
 
 async def test_b3_uses_shared_agent_synthesis_without_graph(monkeypatch) -> None:
