@@ -14,7 +14,7 @@ import { cx } from '@/lib/cx';
 import { GITHUB_URL } from '@/lib/links';
 
 const LADDER_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
-/** Highest nDCG wins; ties keep the earlier rung, so B3 leads over a tied B4. */
+/** Highest nDCG wins; ties keep the earlier rung, so a tied B4 never displaces B3. */
 const LADDER_LEADER = LADDER_ORDER.reduce((best, b) =>
   suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
 );
@@ -520,10 +520,10 @@ export default function LandingPage() {
 
             <p className="mt-4 font-mono text-[10.5px] leading-relaxed text-ink-3">
               {suiteSummary.B4.questions} questions · {snapshotSource.corpus} · from{' '}
-              <span className="text-ink-2">{snapshotSource.path}</span>. B4 ties B3 on retrieval —
-              its call-graph tools run inside the answer, which this harness doesn&rsquo;t score —
-              while its groundedness clears the recorded guardrail at{' '}
-              {suiteSummary.B4.groundedness.toFixed(3)}.
+              <span className="text-ink-2">{snapshotSource.path}</span>. B4 and B3 retrieve the same
+              candidates; B4 is scored on the evidence it ends up citing, B3 on its top-5, so this
+              row compares two scoring rules as well as two systems. The hypothesis still came out{' '}
+              <span className="text-ink-2">{h1Report.decision}</span>.
             </p>
           </Reveal>
         </div>

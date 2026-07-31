@@ -93,10 +93,15 @@ describe('LandingPage baseline ladder', () => {
     expect(widths).not.toContain('100.0%');
   });
 
-  it('never shows B4 beating B3 — they tie on retrieval', () => {
-    expect(suiteSummary.B4.ndcgAtK).toBe(suiteSummary.B3.ndcgAtK);
+  it('discloses that B3 and B4 are scored by different rules', () => {
+    // B4 now out-scores B3, so the old guardrail ("they tie") is gone. The
+    // claim that has to stay pinned is the reason the rows differ: identical
+    // retrieval, different scoring. A ladder showing B4 ahead without that
+    // sentence would read as a clean win the run did not produce.
+    expect(suiteSummary.B4.ndcgAtK).toBeGreaterThan(suiteSummary.B3.ndcgAtK);
     renderLanding();
-    expect(screen.getByText(/B4 ties B3 on retrieval/i)).toBeInTheDocument();
+    expect(screen.getByText(/B4 and B3 retrieve the same candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/two scoring rules as well as two systems/i)).toBeInTheDocument();
   });
 
   it('states the H1 verdict plainly and links to the methodology', () => {

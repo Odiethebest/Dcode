@@ -35,34 +35,59 @@ describe('MethodologyPage', () => {
     expect(screen.getByText(/every rung clears/i)).toBeInTheDocument();
   });
 
-  it('names B3 as the retrieval leader, not B4', () => {
-    // B4 matches B3 exactly on retrieval — the page must not imply B4 won.
-    expect(suiteSummary.B4.ndcgAtK).toBe(suiteSummary.B3.ndcgAtK);
+  it('does not present B4 leading retrieval as a clean win', () => {
+    // B4 out-scores B3 for the first time, but on the same retrieved
+    // candidates under a different scoring rule. The page may say B4 leads
+    // only while it also says why the two rows are not comparable.
+    expect(suiteSummary.B4.ndcgAtK).toBeGreaterThan(suiteSummary.B3.ndcgAtK);
     renderMethodology();
-    expect(screen.getByText(/B3 leads retrieval/i)).toBeInTheDocument();
+    expect(screen.getByText(/B3 and B4 retrieved the same candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/scored on the evidence it ends up citing/i)).toBeInTheDocument();
   });
 
-  it('flags L3 as statistically fragile at n=3', () => {
-    expect(h1Report.comparisons.L3.questions).toBe(3);
+  it('keeps L3 flagged as fragile relative to the margin it missed', () => {
+    // n grew 3 -> 12, so "significance isn't computable" no longer applies.
+    // What still does: one question outweighs the gap to the bar.
+    const n = h1Report.comparisons.L3.questions;
+    expect(n).toBe(12);
+    expect(1 / n).toBeGreaterThan(Math.abs(h1Report.threshold - h1Report.comparisons.L3.marginVsB3));
     renderMethodology();
-    expect(screen.getByText(/significance isn’t computable/i)).toBeInTheDocument();
+    expect(screen.getByText(/one question still moves this level by up to/i)).toBeInTheDocument();
   });
 
-  it('frames the graph as unmeasured, never as failed', () => {
+  it('states the graph contribution as measured and small, not as unmeasured', () => {
+    // The page said "unmeasured" for two runs. That became false the moment
+    // the harness started counting structural ground-truth hits, so the
+    // guardrail now pins the opposite claim and forbids the stale one.
     renderMethodology();
-    // Pin the framing positively rather than blacklisting phrasings: the page
-    // legitimately quotes "the graph didn't work" in order to disclaim it.
-    expect(screen.getByText('unmeasured')).toBeInTheDocument();
-    expect(screen.getByText(/diagnosed limitation of the measurement design/i)).toBeInTheDocument();
+    expect(screen.queryByText('unmeasured')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/4 new ground-truth hits, across 3 of the 33 questions/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/The ablation that would separate them does not exist yet/i)
+    ).toBeInTheDocument();
   });
 
-  it('shows the corrected BM25 ladder without claiming monotonicity', () => {
-    const l2 = levelSummary.L2;
-    expect(l2.B1.recallAtK).toBeGreaterThan(l2.B2.recallAtK);
-    expect(l2.B1.recallAtK).toBeLessThan(l2.B3.recallAtK);
+  it('reports the non-monotonic ladder instead of smoothing it', () => {
+    // Sparse now out-recalls hybrid on both H1 levels, on 33 questions rather
+    // than 3 — it can no longer be waved away as one lucky lexical hit.
+    const { L2, L3 } = levelSummary;
+    expect(L2.B1.recallAtK).toBeGreaterThan(L2.B3.recallAtK);
+    expect(L3.B1.recallAtK).toBeGreaterThan(L3.B3.recallAtK);
     renderMethodology();
     expect(screen.getByText(/The BM25 rerun/i)).toBeInTheDocument();
     expect(screen.getByText(/ordering is not monotonic/i)).toBeInTheDocument();
+    expect(screen.getByText(/stopped being explainable as/i)).toBeInTheDocument();
+  });
+
+  it('publishes that the verdict depends on the scoring rule', () => {
+    // The single most omittable fact in this run: the pre-registered mixed
+    // rule fails L3, the symmetric rule would clear it. If this sentence ever
+    // disappears, the page is quietly reporting the convenient half.
+    renderMethodology();
+    expect(screen.getByText(/Scoring B3 by B4’s rule would clear/i)).toBeInTheDocument();
+    expect(screen.getByText(/pre-registered rule is the one reported/i)).toBeInTheDocument();
   });
 
   it('does not claim the page matches an unarchived run', () => {

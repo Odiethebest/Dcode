@@ -223,8 +223,9 @@ export default function MethodologyPage() {
                   {level === 'L3' && (
                     <>
                       <br />
-                      n=3 · one question moves the average; significance isn&rsquo;t computable at
-                      this size. Don&rsquo;t read L3 in either direction.
+                      one question still moves this level by up to {(1 / c.questions).toFixed(3)} —
+                      more than the margin it missed by. A single question&rsquo;s weight only drops
+                      below the bar at n&nbsp;&gt;&nbsp;20.
                     </>
                   )}
                 </p>
@@ -307,14 +308,15 @@ export default function MethodologyPage() {
           </table>
         </div>
         <p className="mt-4 max-w-[74ch] font-mono text-[11.5px] leading-relaxed text-ink-3">
-          Read it straight: <b className="font-semibold text-ink">B3 leads retrieval</b>, B4 matches
-          B3 exactly on every retrieval metric, and every rung clears the{' '}
-          {RUN_GROUNDEDNESS_BAR.toFixed(2)} groundedness guardrail. B4 records{' '}
-          {suiteSummary.B4.groundedness.toFixed(3)} aggregate (
-          {levelSummary.L2.B4.groundedness.toFixed(3)} on L2,{' '}
-          {levelSummary.L3.B4.groundedness.toFixed(3)} on L3). The score still measures the draft
-          before redaction; the evidence-ID contract improved the result without relaxing the
-          metric.
+          Read it straight:{' '}
+          <b className="font-semibold text-ink">
+            B4 leads retrieval, and B3 and B4 retrieved the same candidates
+          </b>{' '}
+          — the difference is that B4 is scored on the evidence it ends up citing and B3 on its
+          top-5. Every rung clears the {RUN_GROUNDEDNESS_BAR.toFixed(2)} groundedness guardrail, but
+          only B3 and B4 are measured against it: B1 and B2 answer from a template whose
+          groundedness is the constant 1.000. Since groundedness is one of the four composite terms,
+          a quarter of the B2 column is awarded rather than earned.
         </p>
 
         {/* the per-level ladder from the corrected BM25 rerun */}
@@ -324,10 +326,11 @@ export default function MethodologyPage() {
             <em className="italic text-brand">and what the ladder actually shows.</em>
           </h3>
           <p className="mt-2 max-w-[68ch] text-[14.5px] leading-relaxed text-ink-2">
-            This run records the corrected Okapi BM25 path in B1 and in the sparse arm of B3/B4.
-            Hybrid retrieval leads aggregate ranking quality and L2 recall, but the level-by-level
-            ordering is not monotonic: BM25 alone beats dense and hybrid recall on the
-            three-question L3 slice.
+            This run records the corrected Okapi BM25 path in B1 and in the sparse arm of B3/B4. The
+            level-by-level ordering is not monotonic and has stopped being explainable as
+            small-sample noise: across 33 questions, BM25 alone still beats dense retrieval
+            everywhere, and it out-recalls hybrid on both L2 and L3. Sparse lexical matching is
+            simply strong on this corpus, and the page reports that rather than smoothing it.
           </p>
           <div className="mt-5 overflow-x-auto rounded-card border border-line bg-surface">
             <table className="w-full min-w-[560px] border-collapse text-left">
@@ -382,36 +385,36 @@ export default function MethodologyPage() {
         eyebrow="The diagnosis"
         title={
           <>
-            The graph&rsquo;s contribution is <em className="italic text-brand">unmeasured</em>, not
-            absent.
+            The graph is now measured — and it is{' '}
+            <em className="italic text-brand">small</em>.
           </>
         }
-        lede="Why B4 cannot currently beat B3 — and why that's a fact about the evaluation, not about the system."
+        lede="B4 finally clears a level. Most of that margin is not the call graph, and the verdict turns on a scoring rule."
       >
         <div className="grid grid-cols-[1.15fr_0.85fr] gap-6 max-[920px]:grid-cols-1">
           <div className="rounded-card border border-line bg-surface p-7 max-[600px]:p-6">
             <p className="text-[15px] leading-relaxed text-ink-2">
               <b className="font-semibold text-ink">
-                B4&rsquo;s scored retrieval is identical to B3&rsquo;s by construction.
+                The call graph contributed 4 new ground-truth hits, across 3 of the 33 questions.
               </b>{' '}
-              The <Mono>retrieve()</Mono> call the harness measures is the same hybrid search in
-              both rungs — which is why every retrieval cell in the two rows above matches to the
-              digit. The call-graph tools fire later, <em>inside the agent&rsquo;s answer</em>, and
-              the harness scores retrieval, not the answer. So the entire differentiator is
-              invisible to Recall, MRR and nDCG.
+              Every citation now carries the tool that surfaced it, so evidence the graph found that
+              hybrid retrieval had not already returned can be counted rather than assumed. This is
+              the first run in which the hypothesis was measurable at all — and the measured effect
+              is this one.
             </p>
             <p className="mt-4 text-[15px] leading-relaxed text-ink-2">
-              That leaves groundedness as the only channel where B4 can differ from B3 — and
-              B4&rsquo;s groundedness also ties B3 at the ceiling on this run. Under this scoring{' '}
+              So B4&rsquo;s margin over B3 is mostly <em>not</em> the graph. What differs is the
+              agent&rsquo;s multi-step evidence selection, and nothing in this run separates the two.{' '}
               <b className="font-semibold text-ink">
-                B4 cannot beat B3, no matter how well the graph works.
+                The ablation that would separate them does not exist yet.
               </b>
             </p>
             <p className="mt-4 border-l-2 border-brand pl-4 text-[14px] leading-relaxed text-ink-2">
-              The honest phrasing matters here. This is not &ldquo;the graph didn&rsquo;t
-              work&rdquo; or &ldquo;the graph wasn&rsquo;t validated.&rdquo; It is a diagnosed
-              limitation of the measurement design: the harness never looked at the output the graph
-              contributes to. Claiming either more or less than that would be inaccurate.
+              The verdict is also protocol-sensitive: B2 and B3 are scored on retrieved top-k while
+              B4 is scored on its verified final evidence. Scoring B3 by B4&rsquo;s rule would clear
+              L3 and return <Mono>supported</Mono>. The pre-registered rule is the one reported —
+              picking the other one after seeing it flip the outcome is the failure the
+              pre-registration exists to prevent.
             </p>
           </div>
           <div className="rounded-card border border-line bg-surface p-7 max-[600px]:p-6">
@@ -420,27 +423,28 @@ export default function MethodologyPage() {
             </div>
             <ol className="space-y-3.5 text-[14px] leading-relaxed text-ink-2">
               <li>
-                <b className="font-semibold text-ink">Score B4 on its final evidence set</b> — the
-                verified citations attached to the answer, mapped to chunks by the same
-                line-containment rule ground truth uses. B2/B3 keep their full top-5, so B4 gets{' '}
-                <em>fewer</em> shots at the ground truth. The correction was chosen in the direction
-                that makes it harder for B4, because that is the truthful one.
+                <b className="font-semibold text-ink">One scoring rule for every arm.</b> Today
+                B2/B3 are scored on retrieved top-k and B4 on verified final evidence. That
+                difference is worth more than the margin L3 missed by, so nothing can be concluded
+                until it is fixed — before the run, not after.
               </li>
               <li>
-                <b className="font-semibold text-ink">Expand L3</b> from 3 to ~12 architecture
-                questions, ground truth derived from code structure, human-reviewed for fair
-                coverage — explicitly <em>not</em> screened for whether B4 can answer them — and
-                committed before the re-run.
+                <b className="font-semibold text-ink">A dense-only agent mode for B2.</b> B1 and B2
+                answer from a template, so their groundedness is the constant 1.000 — a quarter of a
+                composite, awarded rather than measured. Until B2 shares the synthesis path, no
+                symmetric rule can include it.
               </li>
               <li>
-                <b className="font-semibold text-ink">Leave groundedness scoring alone.</b> Counting
-                only post-redaction citations would push the score to ~1.00 by construction and
-                could flip H1 for a purely cosmetic reason. That is not a bug fix.
+                <b className="font-semibold text-ink">A B3.5 ablation</b> — same agent, call-graph
+                tools disabled. B4 − B3 measures the whole agent; B4 − B3.5 measures the graph
+                alone, which is the actual hypothesis. Diagnostic only: adding an arm to the pass
+                criteria would be changing the pass criteria.
               </li>
             </ol>
             <p className="mt-5 border-t border-line pt-4 font-mono text-[11px] leading-relaxed text-ink-3">
-              Expanding the suite makes the re-run a fresh pre-registration: new questions and
-              corrected scoring both fixed before any number is seen.
+              The previous re-open criteria were met and run — that is this result. One of them
+              carried a prediction that the data falsified: scoring B4 on its smaller evidence set
+              was pre-registered as a handicap, and it turned out to be an advantage.
             </p>
           </div>
         </div>
