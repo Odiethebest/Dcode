@@ -15,14 +15,27 @@ from dcode_shared.db.models import Repo
 from dcode_shared.db.session import SessionLocal
 from dcode_shared.observability import log_event
 
-from dcode_eval.baselines import build_baseline
+from dcode_eval.baselines import AGENT_BASELINES, build_baseline
 from dcode_eval.metrics.retrieval import mrr, ndcg_at_k, recall_at_k
 from dcode_eval.questions import load_questions
 from dcode_eval.questions.resolve import resolve_questions
 
 logger = logging.getLogger("dcode.eval.run")
 
-_SCORING_PROTOCOL = "final_verified_evidence_v1"
+# v2 differs from v1 in one respect, and it is the respect the previous verdict
+# turned on: the official metric is now the same rule for every arm that can
+# produce evidence, instead of verified-final-evidence for B4 and retrieved
+# top-k for everyone else.
+#
+# Under v1 the 2026-07-31 run reported B4 - B3 at +0.083 on L2 and +0.045 on L3
+# and so returned `unsupported`; scoring B3 by B4's rule gave +0.057 and +0.051,
+# which would have cleared both. A decision that moves depending on which arm is
+# measured how is not a decision. v2 removes the choice rather than resolving it
+# in either direction.
+#
+# Pre-registered before the arms that require it (B2 via dense_only, B3.5) had
+# ever been run, so no number influenced the selection between the two rules.
+_SCORING_PROTOCOL = "uniform_final_verified_evidence_v2"
 _STRUCTURAL_EVIDENCE_ORIGINS = {
     "find_definition",
     "find_references",
@@ -71,8 +84,14 @@ async def run_eval(
         final_evidence_chunk_ids = _verified_evidence_chunk_ids(answer)
         candidate_scored_chunk_ids = retrieved_chunk_ids[:k]
         final_evidence_scored_chunk_ids = final_evidence_chunk_ids[:k]
+        # One rule for every arm that answers through the agent. B0/B1 answer
+        # from a template and emit no citations, so the rule cannot apply to
+        # them; they stay retrieval references and are not in the H1 decision.
+        scores_final_evidence = baseline_id in AGENT_BASELINES
         scored_chunk_ids = (
-            final_evidence_scored_chunk_ids if baseline_id == "B4" else candidate_scored_chunk_ids
+            final_evidence_scored_chunk_ids
+            if scores_final_evidence
+            else candidate_scored_chunk_ids
         )
         gt_chunk_ids = set(question.gt_chunk_ids)
         structural_evidence_chunk_ids = _structural_evidence_chunk_ids(
@@ -102,7 +121,7 @@ async def run_eval(
             ],
             "scored_chunk_ids": scored_chunk_ids,
             "scoring_source": (
-                "final_verified_evidence" if baseline_id == "B4" else "retrieved_top_k"
+                "final_verified_evidence" if scores_final_evidence else "retrieved_top_k"
             ),
             "answer": answer.answer,
             "citations": answer.citations,
@@ -339,7 +358,7 @@ def _h1_report(suite_results: dict[str, Any]) -> dict[str, Any]:
             "supported": taxonomy_supported,
         }
 
-    return {
+    report: dict[str, Any] = {
         "decision": "supported" if supported else "unsupported",
         "threshold": threshold,
         "scoring_protocol": _SCORING_PROTOCOL,
@@ -349,6 +368,52 @@ def _h1_report(suite_results: dict[str, Any]) -> dict[str, Any]:
             "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 "
             "composite points on both L2 and L3."
         ),
+    }
+
+    diagnostics = _graph_ablation(suite_results, compared_taxonomies)
+    if diagnostics is not None:
+        report["diagnostics"] = diagnostics
+    return report
+
+
+def _graph_ablation(
+    suite_results: dict[str, Any],
+    taxonomies: tuple[str, ...],
+) -> dict[str, Any] | None:
+    """B3.5 margins, reported beside the decision and excluded from it.
+
+    ``B4 - B3`` moves when either the graph or multi-step reading moves, so on
+    its own it cannot say which. ``B4 - B3.5`` holds the agent fixed and removes
+    only the graph, which is the hypothesis. This is recorded as a diagnostic
+    because promoting an arm into the decision rule would be changing the pass
+    criteria after the fact — the one thing the standing commitments forbid.
+    """
+    if "B3.5" not in suite_results:
+        return None
+
+    per_level: dict[str, Any] = {}
+    for taxonomy in taxonomies:
+        b3 = _composite_score(suite_results["B3"]["taxonomy_breakdown"][taxonomy])
+        b35 = _composite_score(suite_results["B3.5"]["taxonomy_breakdown"][taxonomy])
+        b4 = _composite_score(suite_results["B4"]["taxonomy_breakdown"][taxonomy])
+        per_level[taxonomy] = {
+            "B3_composite": b3,
+            "B3.5_composite": b35,
+            "B4_composite": b4,
+            # The call graph alone.
+            "graph_margin_B4_vs_B3.5": b4 - b35,
+            # Multi-step reading without a graph.
+            "agent_loop_margin_B3.5_vs_B3": b35 - b3,
+        }
+
+    return {
+        "about": (
+            "Diagnostic only. B3.5 is B4 with the call-graph and reference tools "
+            "disabled and everything else identical. These margins decompose "
+            "B4 - B3 into a graph term and an agent-loop term; they do not enter "
+            "the H1 decision."
+        ),
+        "per_taxonomy": per_level,
     }
 
 
@@ -408,8 +473,11 @@ def main(argv: list[str] | None = None) -> int:
         "--baseline",
         required=True,
         nargs="+",
-        choices=["B0", "B1", "B2", "B3", "B4"],
-        help="One or more baseline tiers B0 through B4 to run",
+        choices=["B0", "B1", "B2", "B3", "B3.5", "B4"],
+        help=(
+            "One or more baseline tiers to run. B3.5 is the diagnostic no-graph "
+            "arm; it is recorded beside the H1 decision, never inside it"
+        ),
     )
     parser.add_argument(
         "--questions",
