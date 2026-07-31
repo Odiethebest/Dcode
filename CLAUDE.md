@@ -28,15 +28,18 @@ its numbers are generated rather than translated.
 
 ## 1. Two standing constraints
 
-1. **Do not start the next full H1 re-run yet.** Criteria set 2 is closed —
-   `results/eval-h1-l3x12-2026-07-31/` is the current verdict, on 33 questions
-   with `L3` at 12. Criteria set 3 in `docs/en/Final_Report.md` is the new gate,
-   and its first three items are prerequisites rather than improvements: one
-   scoring rule for every arm, a `dense_only` mode so B2 can produce final
-   evidence at all, and a `B3.5` diagnostic arm. **Re-running the current
-   protocol unchanged produces a verdict whose value depends on which arm is
-   scored by which rule**, which is the specific thing that makes the current
-   result inconclusive rather than negative.
+1. **The next H1 run is unblocked but has not happened.** Criteria set 3 items
+   1–3 are implemented and pre-registered: one scoring rule for every agent arm
+   (`uniform_final_verified_evidence_v2`), a `dense_only` mode so B2 runs the
+   real synthesis and guardrail, and the `B3.5` no-graph diagnostic arm.
+   `results/eval-h1-l3x12-2026-07-31/` is still the current verdict and was
+   produced under the **old** `final_verified_evidence_v1` protocol — do not
+   describe it as reflecting the new code.
+
+   Running it is a deliberate act, so ask first. When it happens:
+   `--baseline B1 B2 B3 B3.5 B4`, and **restart the agent container** — it holds
+   the source live-mounted but the process must pick up the new `AgentMode`
+   literals or `dense_only`/`agent_no_graph` come back `422`.
 
    Also: **flush Redis before any recorded run** (`docker exec dcode-redis-1
    redis-cli FLUSHALL`). Agent tool results cache for 24h, and a warm cache can

@@ -290,10 +290,28 @@ The harness exposes five baseline tiers:
 | Baseline | Current meaning |
 |---|---|
 | B0 | External code search; requires a provider token and is unmeasured in the recorded run |
-| B1 | Application-side Okapi BM25 over the complete chunk corpus |
-| B2 | Dense retrieval plus answer synthesis |
-| B3 | Weighted BM25 + dense RRF and reranking, followed by the shared Agent synthesis/groundedness path in `hybrid_only` mode |
-| B4 | The same hybrid start and Agent path as B3, followed by bounded graph/structure expansion in `full` mode |
+| B1 | Application-side Okapi BM25 over the complete chunk corpus. Retrieval reference, template answer, **not in the H1 decision** |
+| B2 | Dense-only retrieval through the shared Agent path (`dense_only`) |
+| B3 | Weighted BM25 + dense RRF and reranking, then the shared Agent path with no tool expansion (`hybrid_only`) |
+| B3.5 | B4 with the graph and reference tools disabled (`agent_no_graph`). **Diagnostic only**, reported beside the decision, never inside it |
+| B4 | The same hybrid start and Agent path, plus bounded graph/structure expansion (`full`) |
+
+Every arm from B2 up shares one synthesis model, prompt, citation protocol,
+groundedness verifier and step budget. They differ only along two axes, and the
+mapping lives in one table (`dcode_agent.state._MODE_TABLE`) so the claim that
+the arms are comparable is checkable in one place:
+
+| Mode | Retrieval | Tool expansion |
+|---|---|---|
+| `dense_only` | dense | none |
+| `hybrid_only` | hybrid | none |
+| `agent_no_graph` | hybrid | `read_file`, `get_file_outline` |
+| `full` | hybrid | all tools |
+
+Retrieval mode is a `search_code` **tool argument**, not ambient request state,
+because the tool cache key is `(tool, repo_id, args)` — a mode held outside the
+args would let a dense and a hybrid search for the same query collide on one
+cache entry and make two arms silently identical.
 
 The current `results/eval-h1-l3x12-2026-07-31/` snapshot exercises
 `okapi_bm25_v1` in B1 and in the sparse component of B3/B4, over the 33-question
@@ -310,14 +328,22 @@ recorded fix.
 Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
 per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
 record the formula, tokenizer, document fields, `k1`, `b`, and corpus revision,
-and reject the result if that revision changes during execution. The current
-scoring protocol, `final_verified_evidence_v1`, records three auditable views per
-question: the initial candidate list, the verified final evidence list, and the
-list used for the official metric. B2/B3 retain their retrieved top-k as their
-official list; B4 uses its ordered final verified chunk IDs. Structural origins
-are retained so a row can show whether a new ground-truth hit came from a graph
-or outline tool. All three metrics see at most the first `k` IDs, including MRR;
-the complete final-evidence list is retained separately for audit.
+and reject the result if that revision changes during execution.
+
+The scoring protocol is `uniform_final_verified_evidence_v2`. Each question
+records three auditable views: the initial candidate list, the verified final
+evidence list, and the list used for the official metric. **The official list is
+the ordered verified final evidence for every agent arm — B2, B3, B3.5 and B4
+alike.** B0/B1 emit no citations and stay on candidate top-`k`, outside the
+decision. Structural origins are retained so a row can show whether a new
+ground-truth hit came from a graph or outline tool. All three metrics see at most
+the first `k` IDs, including MRR; the complete final-evidence list is retained
+separately for audit.
+
+`v1` applied the final-evidence rule to B4 only and left the other arms on
+top-`k`. That asymmetry decided the 2026-07-31 `L3` result — +0.045 mixed against
++0.051 symmetric, across a 0.05 bar — which is why the rule is now uniform rather
+than resolved in whichever direction happened to be convenient.
 
 ### H1 decision and additional gates
 

@@ -330,20 +330,61 @@ Recorded as tested, not as intended.
 ### Criteria set 3 — to re-open H1
 
 Fixed here, before the next run, in the same spirit as the sets above.
+**Items 1–3 are implemented and pre-registered; no suite has been run under
+them.** Everything in this subsection was committed while the current recorded
+verdict was still the 2026-07-31 v1 run, so no number from the new protocol
+influenced how the protocol was defined.
 
-1. **▲ One scoring rule for every arm.** Pre-register whether the official metric
-   is candidate top-k or verified final evidence, and apply it identically to B2,
-   B3 and B4. This is a prerequisite because the current run's verdict changes
-   depending on the answer, so leaving it open means the next run cannot conclude
-   anything either.
-2. **▲ A `dense_only` agent mode for B2.** Without it B2 cannot produce final
-   evidence at all, so item 1 is impossible and B2's groundedness stays a
-   constant `1.0` that is a quarter of its composite.
-3. **▲ `B3.5` as a diagnostic arm** — same agent and `read_file` loop, call-graph
-   and reference tools disabled. `B4 − B3` measures the whole agent system;
-   `B4 − B3.5` measures the call graph on its own, which is the actual
-   hypothesis. **Diagnostic only: it does not enter the pass criteria**, because
-   adding an arm to the decision rule would be changing the pass criteria.
+1. **Implemented — one scoring rule for every arm.** The official metric is
+   **verified final evidence**, applied identically to `B2`, `B3`, `B3.5` and
+   `B4`. Protocol id `uniform_final_verified_evidence_v2`.
+
+   The rule was chosen over candidate top-`k` because top-`k` scores a list the
+   graph never touches, which is the defect criteria set 2 was opened to fix;
+   reverting to it would un-fix it. `B0` and `B1` answer from a template, emit no
+   citation events, and therefore cannot be scored by this rule — they stay
+   retrieval references on candidate top-`k`, and they are **not** in the H1
+   decision, which reads `B2`/`B3`/`B4` only. Every row still records
+   `candidate_*` and `final_evidence_*` side by side, so the other scoring
+   remains auditable without being selectable after the fact.
+
+   Stated plainly, because it is the point: under v1 this run's `L3` margin was
+   +0.045 and under symmetric scoring +0.051, straddling the 0.05 bar. **Fixing
+   the rule is expected to move the verdict, and the direction it moves is not
+   knowable until the suite runs.** That is why it is fixed first.
+
+2. **Implemented — `dense_only` agent mode for B2.** `B2` now answers through the
+   same agent, prompt, model, citation protocol and groundedness verifier as
+   `B4`, over dense-only retrieval. Its groundedness becomes a measurement rather
+   than the template constant `1.0` that was a quarter of its composite, and it
+   can produce the verified final evidence item 1 requires.
+
+   The retrieval mode travels in the `search_code` **tool arguments**, not as
+   ambient state. The tool cache key is `(tool, repo_id, args)`, so a mode kept
+   outside the args would have let B2's dense search and B3's hybrid search share
+   one cache entry — the arms would have been silently identical.
+
+3. **Implemented — `B3.5` diagnostic arm.** `B4` with `find_definition`,
+   `find_references`, `get_call_neighbors`, `get_dependencies` and
+   `get_dependents` disabled; `read_file` and `get_file_outline` retained, and
+   everything else — model, prompt, hybrid retrieval, step budget, guardrail —
+   held identical. So:
+
+   | Contrast | What it measures |
+   |---|---|
+   | `B4 − B3` | the whole agent system |
+   | `B4 − B3.5` | the call graph on its own — **the actual hypothesis** |
+   | `B3.5 − B3` | multi-step reading, without a graph |
+
+   `B3.5` is reported under `diagnostics` in `h1_report.json` and is **excluded
+   from the pass criteria**. Adding an arm to the decision rule would be changing
+   the pass criteria.
+
+   Keeping `read_file` and `get_file_outline` in `B3.5` is deliberate and is the
+   direction that costs us: a weakened no-graph arm would inflate `B4 − B3.5` and
+   make the graph look better than it is. An early draft truncated the walk at
+   the first blocked tool, which would have denied `B3.5` the outline tool purely
+   through branch ordering; that is fixed and pinned by a test.
 4. **Unify evidence ordering across sources.** Hybrid chunks carry reranker
    scores; graph results enter the context in tool-return order. Score the union
    with one query-aware ranking, with a shared context budget and a shared `k`
@@ -388,18 +429,18 @@ graph-sensitive H1 re-run; everything else is independent of it.
   handicap B4 was falsified by the result.
 - ~~Expand L3 beyond n=3~~ **— done, n=12.** Human-reviewed, resolver-verified,
   and frozen with a checksum before any baseline ran.
-- **▲ One scoring rule for every arm.** B2/B3 are scored on retrieved top-k and
-  B4 on verified final evidence. Applying the same rule to B3 moves L3 from
-  +0.045 to +0.051 and flips the verdict, so this is not a refinement — it is the
-  thing the current answer hinges on. Criteria set 3 item 1.
-- **▲ `dense_only` agent mode for B2.** B1 and B2 answer from a template, so
-  their groundedness `1.000` is a constant and their final-evidence metrics are
-  `0.0`. A quarter of B2's composite is therefore awarded rather than measured,
-  and no symmetric scoring rule can include B2 until this exists.
-- **▲ `B3.5` diagnostic arm.** Structural evidence produced only 4 new GT hits
-  across 3 of 33 questions, so B4's margin over B3 is mostly *not* the call
-  graph. Nothing currently separates graph gain from multi-step agent evidence
-  selection. Diagnostic only — it must not enter the pass criteria.
+- ~~One scoring rule for every arm~~ · ~~`dense_only` mode for B2~~ ·
+  ~~`B3.5` diagnostic arm~~ **— all three implemented and pre-registered, awaiting
+  a run.** Protocol `uniform_final_verified_evidence_v2`; see criteria set 3.
+  **The recorded verdict above predates them**, so it remains the current result
+  until a suite runs under the new protocol. Expect it to move: the rule change
+  alone straddles the bar `L3` missed by.
+- **▲ Run the suite under `uniform_final_verified_evidence_v2`.** The blockers
+  are cleared; nothing about the new protocol is measured until this happens.
+  `B1` remains a retrieval reference outside the decision — giving it a
+  `sparse_only` mode would make every displayed row one system with one variable,
+  but it would also stop `B1` being a pure retrieval baseline, so it is left as a
+  deliberate open choice rather than done quietly.
 - **Unify evidence ordering across sources**, with `graph_distance` recorded but
   excluded from the ranking. Criteria set 3 item 4.
 - **`max_steps = 8` is saturated by B4's expansion**, so `get_file_outline` is
