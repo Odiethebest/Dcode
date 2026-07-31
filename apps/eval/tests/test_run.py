@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_eval.run import _run_cli, run_eval, run_suite
+from dcode_shared.events import CitationEvent
 from dcode_shared.schemas import Chunk, ScoreComponents
 
 
@@ -166,6 +167,161 @@ async def test_run_eval_uses_resolved_repo_override(tmp_path: Path, monkeypatch)
     assert row["gt_chunk_ids"] == [resolved_chunk_id]
     assert row["recall_at_k"] == 1.0
     assert run_config["corpus_revision"] == 42
+
+
+async def test_b4_scores_final_verified_evidence_and_keeps_candidate_metrics(
+    tmp_path: Path, monkeypatch
+) -> None:
+    questions_path = tmp_path / "questions.jsonl"
+    gt_chunk_id = "11111111-1111-1111-1111-111111111111"
+    noise_chunk_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    questions_path.write_text(
+        json.dumps(
+            {
+                "id": "q-l2",
+                "repo_id": "repo-1",
+                "question": "How does the flow work?",
+                "taxonomy": "L2",
+                "gt_chunk_ids": [gt_chunk_id],
+                "gt_files": ["src/requests/api.py"],
+                "source": "manual",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class FinalEvidenceBaseline(Baseline):
+        id = "B4"
+        description = "final evidence stub"
+
+        async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
+            return [
+                Chunk(
+                    chunk_id=noise_chunk_id,
+                    file_path="tests/test_requests.py",
+                    symbol_name="noise",
+                    start_line=1,
+                    end_line=2,
+                    content="noise",
+                    score=0.1,
+                    score_components=ScoreComponents(dense=0.0, sparse=0.1, rerank=0.1),
+                )
+            ]
+
+        async def answer(self, repo_id: str, query: str) -> AnswerResult:
+            citation = CitationEvent(
+                symbol="requests.api.request",
+                file_path="src/requests/api.py",
+                line=24,
+                verified=True,
+                chunk_id=gt_chunk_id,
+                evidence_id="C1",
+                origins=["get_call_neighbors"],
+            )
+            return AnswerResult(
+                answer="Flow [C1]",
+                citations=["`src/requests/api.py:24`", "`src/requests/api.py:24`"],
+                groundedness=1.0,
+                evidence=[citation, citation],
+            )
+
+    monkeypatch.setattr(
+        "dcode_eval.run.build_baseline", lambda baseline_id: FinalEvidenceBaseline()
+    )
+
+    result = await run_eval(
+        baseline_id="B4",
+        questions_path=str(questions_path),
+        output_dir=str(tmp_path / "out"),
+        k=5,
+    )
+
+    row = result["per_question"][0]
+    assert row["candidate_recall_at_k"] == 0.0
+    assert row["recall_at_k"] == 1.0
+    assert row["scoring_source"] == "final_verified_evidence"
+    assert row["final_evidence_chunk_ids"] == [gt_chunk_id]
+    assert row["structural_evidence_chunk_ids"] == [gt_chunk_id]
+    assert row["new_gt_hits_from_structural_evidence"] == [gt_chunk_id]
+    assert result["metrics"]["candidate_recall_at_k"] == 0.0
+    assert result["metrics"]["recall_at_k"] == 1.0
+
+
+async def test_b4_caps_final_evidence_and_mrr_at_k(tmp_path: Path, monkeypatch) -> None:
+    questions_path = tmp_path / "questions.jsonl"
+    gt_chunk_id = "11111111-1111-1111-1111-111111111111"
+    noise_chunk_ids = [f"aaaaaaaa-aaaa-aaaa-aaaa-{index:012d}" for index in range(1, 6)]
+    questions_path.write_text(
+        json.dumps(
+            {
+                "id": "q-l3",
+                "repo_id": "repo-1",
+                "question": "Explain the architecture.",
+                "taxonomy": "L3",
+                "gt_chunk_ids": [gt_chunk_id],
+                "gt_files": ["src/requests/api.py"],
+                "source": "manual",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class LongFinalEvidenceBaseline(Baseline):
+        id = "B4"
+        description = "long final evidence stub"
+
+        async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
+            return []
+
+        async def answer(self, repo_id: str, query: str) -> AnswerResult:
+            evidence = [
+                CitationEvent(
+                    symbol=f"noise_{index}",
+                    file_path="src/noise.py",
+                    line=index,
+                    verified=True,
+                    chunk_id=chunk_id,
+                    origins=["search_code"],
+                )
+                for index, chunk_id in enumerate(noise_chunk_ids, start=1)
+            ]
+            evidence.append(
+                CitationEvent(
+                    symbol="requests.api.request",
+                    file_path="src/requests/api.py",
+                    line=24,
+                    verified=True,
+                    chunk_id=gt_chunk_id,
+                    origins=["get_call_neighbors"],
+                )
+            )
+            return AnswerResult(
+                answer="Long evidence answer",
+                citations=[f"`{citation.file_path}:{citation.line}`" for citation in evidence],
+                groundedness=1.0,
+                evidence=evidence,
+            )
+
+    monkeypatch.setattr(
+        "dcode_eval.run.build_baseline",
+        lambda baseline_id: LongFinalEvidenceBaseline(),
+    )
+
+    result = await run_eval(
+        baseline_id="B4",
+        questions_path=str(questions_path),
+        output_dir=str(tmp_path / "out"),
+        k=5,
+    )
+
+    row = result["per_question"][0]
+    assert row["final_evidence_chunk_ids"] == [*noise_chunk_ids, gt_chunk_id]
+    assert row["final_evidence_scored_chunk_ids"] == noise_chunk_ids
+    assert row["scored_chunk_ids"] == noise_chunk_ids
+    assert row["final_evidence_mrr"] == 0.0
+    assert row["mrr"] == 0.0
 
 
 async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -> None:

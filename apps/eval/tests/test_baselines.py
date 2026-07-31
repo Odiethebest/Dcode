@@ -24,7 +24,7 @@ def _chunk() -> Chunk:
     )
 
 
-async def test_b1_b2_b3_template_answers(monkeypatch) -> None:
+async def test_b1_b2_template_answers(monkeypatch) -> None:
     modes: list[str] = []
 
     async def fake_search(repo_id: str, query: str, k: int, *, mode: str) -> list[Chunk]:
@@ -38,13 +38,28 @@ async def test_b1_b2_b3_template_answers(monkeypatch) -> None:
 
     b1 = await BM25Baseline().answer("repo-1", "auth")
     b2 = await VanillaRAGBaseline().answer("repo-1", "auth")
-    b3 = await HybridRAGBaseline().answer("repo-1", "auth")
-
     assert "B1 sparse baseline" in b1.answer
     assert "B2 dense baseline" in b2.answer
-    assert "B3 hybrid baseline" in b3.answer
-    assert modes == ["sparse", "dense", "hybrid"]
+    assert modes == ["sparse", "dense"]
     assert b1.citations == ["`src/requests/auth.py:85`"]
+
+
+async def test_b3_uses_shared_agent_synthesis_without_graph(monkeypatch) -> None:
+    async def fake_answer(repo_id: str, query: str) -> AnswerResult:
+        assert repo_id == "repo-1"
+        assert query == "auth"
+        return AnswerResult(
+            answer="Hybrid answer",
+            citations=["`src/requests/auth.py:85`"],
+            groundedness=1.0,
+        )
+
+    monkeypatch.setattr("dcode_eval.baselines.common.stream_hybrid_rag_answer", fake_answer)
+
+    result = await HybridRAGBaseline().answer("repo-1", "auth")
+
+    assert result.answer == "Hybrid answer"
+    assert result.groundedness == 1.0
 
 
 async def test_b4_full_system_uses_sse_answer(monkeypatch) -> None:
@@ -112,7 +127,54 @@ async def test_stream_full_system_answer_targets_agent_and_bypasses_cache(monkey
     assert captured["url"] == f"{eval_settings.agent_base_url.rstrip('/')}/internal/query"
     assert "/api/v1/query" not in str(captured["url"])  # not the caching gateway path
     assert captured["headers"][INTERNAL_API_KEY_HEADER] == eval_settings.internal_api_key  # type: ignore[index]
-    assert captured["json"] == {"repo_id": "repo-1", "query": "auth"}
+    assert captured["json"] == {"repo_id": "repo-1", "query": "auth", "mode": "full"}
     assert result.answer == "Auth flow"
     assert result.citations == ["`src/requests/auth.py:85`"]
     assert result.groundedness == 1.0
+
+
+async def test_stream_hybrid_rag_answer_selects_hybrid_only_mode(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeStream:
+        async def __aenter__(self) -> "FakeStream":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def aiter_lines(self):
+            for line in (
+                "event: final_answer",
+                'data: {"answer": "Hybrid answer", "citations": [], "groundedness": 1.0}',
+                "",
+            ):
+                yield line
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+        def stream(self, method: str, url: str, *, json: object, headers: object) -> FakeStream:
+            captured.update(json=json)
+            return FakeStream()
+
+    monkeypatch.setattr(common.httpx, "AsyncClient", FakeClient)
+
+    result = await common.stream_hybrid_rag_answer("repo-1", "auth")
+
+    assert captured["json"] == {
+        "repo_id": "repo-1",
+        "query": "auth",
+        "mode": "hybrid_only",
+    }
+    assert result.answer == "Hybrid answer"

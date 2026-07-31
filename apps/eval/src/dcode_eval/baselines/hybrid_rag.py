@@ -25,5 +25,4 @@ class HybridRAGBaseline(Baseline):
         return await common.internal_search(repo_id, query, k, mode="hybrid")
 
     async def answer(self, repo_id: str, query: str) -> AnswerResult:
-        chunks = await self.retrieve(repo_id, query, 5)
-        return common.template_answer("B3 hybrid baseline", chunks)
+        return await common.stream_hybrid_rag_answer(repo_id, query)

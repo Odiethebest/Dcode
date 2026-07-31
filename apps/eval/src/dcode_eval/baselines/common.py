@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from dcode_shared.events import CitationEvent
 from dcode_shared.internal import internal_auth_headers
 from dcode_shared.schemas import Chunk
 
@@ -12,9 +13,7 @@ from dcode_eval.baselines.base import AnswerResult
 from dcode_eval.settings import eval_settings
 
 
-async def internal_search(
-    repo_id: str, query: str, k: int, *, mode: str = "hybrid"
-) -> list[Chunk]:
+async def internal_search(repo_id: str, query: str, k: int, *, mode: str = "hybrid") -> list[Chunk]:
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
         response = await client.get(
             f"{eval_settings.api_base_url.rstrip('/')}/internal/search",
@@ -38,31 +37,65 @@ def template_answer(label: str, chunks: list[Chunk], *, max_chunks: int = 3) -> 
     return AnswerResult(answer="\n".join(lines), citations=citations, groundedness=1.0)
 
 
-async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:
-    """B4 answer via the agent's ``/internal/query``, bypassing the gateway's
+async def stream_agent_answer(repo_id: str, query: str, *, mode: str) -> AnswerResult:
+    """Answer via the agent's ``/internal/query``, bypassing the gateway's
     1h query cache so each eval run measures a fresh agent execution rather than
     a replayed cached answer (reproducibility).
+
+    B3 uses ``hybrid_only`` and B4 uses ``full``. Both therefore share the same
+    synthesis model, prompt, citation protocol, and groundedness guardrail.
     """
     answer = ""
     citations: list[str] = []
+    evidence: list[CitationEvent] = []
     groundedness = 0.0
     async with (
         httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0)) as client,
         client.stream(
             "POST",
             f"{eval_settings.agent_base_url.rstrip('/')}/internal/query",
-            json={"repo_id": repo_id, "query": query},
+            json={"repo_id": repo_id, "query": query, "mode": mode},
             headers=internal_auth_headers(eval_settings.internal_api_key),
         ) as response,
     ):
         response.raise_for_status()
         async for event, payload in parse_sse(response.aiter_lines()):
             if event == "citation":
-                citations.append(f"`{payload['file_path']}:{payload['line']}`")
+                citation = CitationEvent.model_validate(
+                    {
+                        **payload,
+                        "symbol": payload.get("symbol", payload.get("file_path", "")),
+                        "verified": payload.get("verified", True),
+                    }
+                )
+                evidence.append(citation)
+                citations.append(f"`{citation.file_path}:{citation.line}`")
             elif event == "final_answer":
                 answer = str(payload["answer"])
                 groundedness = float(payload["groundedness"])
-    return AnswerResult(answer=answer, citations=citations, groundedness=groundedness)
+                if not evidence:
+                    for raw_citation in payload.get("citations", []):
+                        citation = CitationEvent.model_validate(raw_citation)
+                        evidence.append(citation)
+                        citations.append(f"`{citation.file_path}:{citation.line}`")
+    return AnswerResult(
+        answer=answer,
+        citations=citations,
+        groundedness=groundedness,
+        evidence=evidence,
+    )
+
+
+async def stream_hybrid_rag_answer(repo_id: str, query: str) -> AnswerResult:
+    """B3: shared Agent synthesis over hybrid retrieval, with graph tools disabled."""
+
+    return await stream_agent_answer(repo_id, query, mode="hybrid_only")
+
+
+async def stream_full_system_answer(repo_id: str, query: str) -> AnswerResult:
+    """B4: shared Agent synthesis with bounded structural/tool expansion enabled."""
+
+    return await stream_agent_answer(repo_id, query, mode="full")
 
 
 async def parse_sse(lines: AsyncIterator[str]) -> AsyncIterator[tuple[str, dict[str, Any]]]:

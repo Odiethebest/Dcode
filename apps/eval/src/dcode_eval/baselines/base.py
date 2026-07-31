@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from dcode_shared.events import CitationEvent
 from dcode_shared.schemas import Chunk
 
 
@@ -20,6 +21,7 @@ class AnswerResult:
     answer: str
     citations: list[str] = field(default_factory=list)
     groundedness: float = 1.0
+    evidence: list[CitationEvent] = field(default_factory=list)
 
 
 class Baseline(ABC):

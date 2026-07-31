@@ -22,6 +22,16 @@ from dcode_eval.questions.resolve import resolve_questions
 
 logger = logging.getLogger("dcode.eval.run")
 
+_SCORING_PROTOCOL = "final_verified_evidence_v1"
+_STRUCTURAL_EVIDENCE_ORIGINS = {
+    "find_definition",
+    "find_references",
+    "get_call_neighbors",
+    "get_dependencies",
+    "get_dependents",
+    "get_file_outline",
+}
+
 
 async def run_eval(
     *,
@@ -46,6 +56,7 @@ async def run_eval(
         "k": k,
         "repo_id_override": repo_id_override,
         "corpus_revision": corpus_revision,
+        "scoring_protocol": _SCORING_PROTOCOL,
         "sparse_retrieval": bm25_run_config(),
     }
     _write_json(out_dir / "run_config.json", run_config)
@@ -57,6 +68,17 @@ async def run_eval(
         answer = await baseline.answer(question.repo_id, question.question)
         retrieved_chunk_ids = [str(chunk.chunk_id) for chunk in retrieved]
         retrieved_files = [chunk.file_path for chunk in retrieved]
+        final_evidence_chunk_ids = _verified_evidence_chunk_ids(answer)
+        candidate_scored_chunk_ids = retrieved_chunk_ids[:k]
+        final_evidence_scored_chunk_ids = final_evidence_chunk_ids[:k]
+        scored_chunk_ids = (
+            final_evidence_scored_chunk_ids if baseline_id == "B4" else candidate_scored_chunk_ids
+        )
+        gt_chunk_ids = set(question.gt_chunk_ids)
+        structural_evidence_chunk_ids = _structural_evidence_chunk_ids(
+            answer,
+            exclude=set(retrieved_chunk_ids),
+        )
         row = {
             "baseline": baseline_id,
             "question_id": question.id,
@@ -69,12 +91,33 @@ async def run_eval(
             "gt_files": question.gt_files,
             "retrieved_chunk_ids": retrieved_chunk_ids,
             "retrieved_files": retrieved_files,
+            "final_evidence": [
+                citation.model_dump(mode="json", exclude_none=True) for citation in answer.evidence
+            ],
+            "final_evidence_chunk_ids": final_evidence_chunk_ids,
+            "final_evidence_scored_chunk_ids": final_evidence_scored_chunk_ids,
+            "structural_evidence_chunk_ids": structural_evidence_chunk_ids,
+            "new_gt_hits_from_structural_evidence": [
+                chunk_id for chunk_id in structural_evidence_chunk_ids if chunk_id in gt_chunk_ids
+            ],
+            "scored_chunk_ids": scored_chunk_ids,
+            "scoring_source": (
+                "final_verified_evidence" if baseline_id == "B4" else "retrieved_top_k"
+            ),
             "answer": answer.answer,
             "citations": answer.citations,
             "groundedness": answer.groundedness,
-            "recall_at_k": recall_at_k(retrieved_chunk_ids, set(question.gt_chunk_ids), k),
-            "mrr": mrr(retrieved_chunk_ids, set(question.gt_chunk_ids)),
-            "ndcg_at_k": ndcg_at_k(retrieved_chunk_ids, set(question.gt_chunk_ids), k),
+            "candidate_recall_at_k": recall_at_k(candidate_scored_chunk_ids, gt_chunk_ids, k),
+            "candidate_mrr": mrr(candidate_scored_chunk_ids, gt_chunk_ids),
+            "candidate_ndcg_at_k": ndcg_at_k(candidate_scored_chunk_ids, gt_chunk_ids, k),
+            "final_evidence_recall_at_k": recall_at_k(
+                final_evidence_scored_chunk_ids, gt_chunk_ids, k
+            ),
+            "final_evidence_mrr": mrr(final_evidence_scored_chunk_ids, gt_chunk_ids),
+            "final_evidence_ndcg_at_k": ndcg_at_k(final_evidence_scored_chunk_ids, gt_chunk_ids, k),
+            "recall_at_k": recall_at_k(scored_chunk_ids, gt_chunk_ids, k),
+            "mrr": mrr(scored_chunk_ids, gt_chunk_ids),
+            "ndcg_at_k": ndcg_at_k(scored_chunk_ids, gt_chunk_ids, k),
         }
         per_question_rows.append(row)
 
@@ -125,6 +168,7 @@ async def run_suite(
         "k": k,
         "repo_id_override": repo_id_override,
         "corpus_revision": corpus_revision,
+        "scoring_protocol": _SCORING_PROTOCOL,
         "sparse_retrieval": bm25_run_config(),
     }
     _write_json(out_dir / "run_config.json", run_config)
@@ -161,18 +205,43 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
             "recall_at_k": 0.0,
             "mrr": 0.0,
             "ndcg_at_k": 0.0,
+            "candidate_recall_at_k": 0.0,
+            "candidate_mrr": 0.0,
+            "candidate_ndcg_at_k": 0.0,
+            "final_evidence_recall_at_k": 0.0,
+            "final_evidence_mrr": 0.0,
+            "final_evidence_ndcg_at_k": 0.0,
             "groundedness": 0.0,
             "answers_without_citations": 0,
             "pairwise_win_rate": None,
         }
+
+    def average(key: str, *, fallback: str | None = None) -> float:
+        values: list[float] = []
+        for row in rows:
+            if key in row:
+                value = row[key]
+            elif fallback is not None:
+                value = row.get(fallback, 0.0)
+            else:
+                value = 0.0
+            values.append(float(value))
+        return mean(values)
+
     return {
         "baseline": baseline_id,
         "questions": len(rows),
         "k": k,
-        "recall_at_k": mean(row["recall_at_k"] for row in rows),
-        "mrr": mean(row["mrr"] for row in rows),
-        "ndcg_at_k": mean(row["ndcg_at_k"] for row in rows),
-        "groundedness": mean(row["groundedness"] for row in rows),
+        "recall_at_k": average("recall_at_k"),
+        "mrr": average("mrr"),
+        "ndcg_at_k": average("ndcg_at_k"),
+        "candidate_recall_at_k": average("candidate_recall_at_k", fallback="recall_at_k"),
+        "candidate_mrr": average("candidate_mrr", fallback="mrr"),
+        "candidate_ndcg_at_k": average("candidate_ndcg_at_k", fallback="ndcg_at_k"),
+        "final_evidence_recall_at_k": average("final_evidence_recall_at_k"),
+        "final_evidence_mrr": average("final_evidence_mrr"),
+        "final_evidence_ndcg_at_k": average("final_evidence_ndcg_at_k"),
+        "groundedness": average("groundedness"),
         # Required alongside groundedness, not optional beside it. An answer citing
         # nothing scores 0.0 (dcode_agent.groundedness.verify), which is the same
         # number an answer whose every citation failed would get — two different
@@ -183,6 +252,37 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
         "answers_without_citations": sum(1 for row in rows if not row["citations"]),
         "pairwise_win_rate": None,
     }
+
+
+def _verified_evidence_chunk_ids(answer: Any) -> list[str]:
+    """Verified final evidence, deduped by chunk after mapping and in answer order."""
+
+    chunk_ids: list[str] = []
+    for citation in answer.evidence:
+        if not citation.verified or citation.chunk_id is None:
+            continue
+        chunk_id = str(citation.chunk_id)
+        if chunk_id not in chunk_ids:
+            chunk_ids.append(chunk_id)
+    return chunk_ids
+
+
+def _structural_evidence_chunk_ids(answer: Any, *, exclude: set[str]) -> list[str]:
+    """Final evidence newly surfaced by a graph/structure tool."""
+
+    chunk_ids: list[str] = []
+    for citation in answer.evidence:
+        if (
+            not citation.verified
+            or citation.chunk_id is None
+            or not _STRUCTURAL_EVIDENCE_ORIGINS.intersection(citation.origins)
+        ):
+            continue
+        chunk_id = str(citation.chunk_id)
+        if chunk_id in exclude or chunk_id in chunk_ids:
+            continue
+        chunk_ids.append(chunk_id)
+    return chunk_ids
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -242,6 +342,7 @@ def _h1_report(suite_results: dict[str, Any]) -> dict[str, Any]:
     return {
         "decision": "supported" if supported else "unsupported",
         "threshold": threshold,
+        "scoring_protocol": _SCORING_PROTOCOL,
         "compared_taxonomies": list(compared_taxonomies),
         "comparisons": comparisons,
         "note": (
