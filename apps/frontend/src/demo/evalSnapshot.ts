@@ -292,6 +292,29 @@ export const h1Report = {
 };
 
 /**
+ * B0 — GitHub code search, an external keyword control.
+ *
+ * Separate from the ladder above on purpose. It retrieves FILES, not chunks:
+ * the API returns a path and no line, so it has no chunk-level result and is
+ * compared on the file-level metric every arm records. And it queries a live
+ * external index, so unlike every other figure here it cannot be regenerated
+ * from committed bytes — only re-queried, against an index that may have moved.
+ *
+ * `null` means unmeasured, which is a blank rather than a zero.
+ */
+export const externalKeywordBaseline = {
+  runPath: 'results/eval-b0-2026-07-31/',
+  questions: 33,
+  fileRecallAtK: 0.30808080808080807,
+  byLevel: {
+    L1: 0.6,
+    L2: 0.3645833333333333,
+    L3: 0.1111111111111111,
+  },
+  reproducible: false,
+};
+
+/**
  * Per-question transcripts, straight out of each baseline's per_question.jsonl.
  * Architectural flows chosen so the page doesn't lean on one narrow subsystem.
  */

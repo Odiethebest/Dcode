@@ -508,8 +508,23 @@ graph-sensitive H1 re-run; everything else is independent of it.
   planner's decision.
 - **Judge / pairwise scoring is a stub.** Pairwise win-rate is `null` throughout,
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
-- **B0 is not measured** — it needs an API token. Either produce it or keep
-  reporting it as unmeasured; it has no bearing on the H1 verdict.
+- ~~B0 is not measured~~ **— measured 2026-07-31, at file level.**
+  `results/eval-b0-2026-07-31/`. File-level Recall@5 **0.308** against 0.78–0.83
+  for every in-house arm, and **0.111 on architecture questions** against
+  0.63–0.80. It stays out of the H1 decision and out of the chunk-level ladder:
+  GitHub's code search returns a path and no line, so B0 has no chunk-level
+  result and inventing one would credit it with a precision it does not have.
+
+  Two things a reader is owed. **The first attempt scored L3 at exactly 0.000,
+  and that was our fault** — the query builder sent `Explain` as a required
+  term and GitHub ANDs every term, so all 17 expansion questions matched
+  nothing. Rewritten to lead with identifiers, B0 rose to 0.308 / L3 0.111; the
+  baseline was strengthened deliberately, at our own cost. **And beating keyword
+  search is not a strong claim** — B0 establishes the floor, not a rival.
+
+  It is also the only figure in this project that **cannot be regenerated from
+  committed bytes**, because it queries a live external index. It is excluded
+  from the generated-artifact drift check for that reason.
 - ~~Re-run the evidence-ID protocol across B1–B4~~ **— completed.** The earlier
   groundedness dip was diagnosed on the pre-evidence-ID protocol. The
   agent offered qualified names that the exact-match guardrail rejected;

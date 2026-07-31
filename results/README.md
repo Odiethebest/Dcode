@@ -1,6 +1,6 @@
 # Evaluation results
 
-Twelve result groups live here and only one is the current conclusion. This file
+Thirteen result groups live here and only one is the current conclusion. This file
 says which, so nobody has to guess from timestamps.
 
 | Directory | Status | What it is |
@@ -12,7 +12,8 @@ says which, so nobody has to guess from timestamps.
 | `eval-h1-l3x12-2026-07-31/` | superseded | Single run. First on the 33-question suite, under the mixed `final_verified_evidence_v1` rule that scored B4 differently from B2/B3. |
 | `eval-h1-bm25-2026-07-30/` | superseded | The last run on the original 16-question suite. Its B3 answered from a template and its protocol scored B4 on the same retrieval list as B3, so the call graph could not reach the metrics. |
 | `eval-real/` | superseded | The full real-model H1 snapshot before that. Its sparse arm was the legacy lexical heuristic rather than BM25 and its B4 answers predate server-owned evidence IDs. Retained unchanged as historical evidence. |
-| `eval-real-b0/` | partial | Config only. `B0` (external code search) needs an API token this environment did not have, so B0 is **not measured** — not scored zero. It has no bearing on the H1 verdict, which rests on B2/B3/B4. |
+| **`eval-b0-2026-07-31/`** | ✅ measured, **not reproducible** | `B0` external GitHub code search, 33 questions, **file-level only**. The one directory here whose figures cannot be regenerated from committed bytes — it queries a live external index. Not in the H1 decision. Read its `provenance.json` first; it records that the first attempt's L3 zero was our own query builder's fault, not GitHub's. |
+| `eval-real-b0/` | superseded | Config only, from when `B0` had no token and was correctly recorded as unmeasured rather than zero. |
 | `eval-suite/` | superseded | An **early stub-model run**, kept deliberately. Not the current conclusion — see below. |
 | `eval-smoke/` | not a result | Output of `make eval-smoke`, a single-baseline harness smoke test. Proves the harness runs; measures nothing. |
 | `eval-real-b4-control-prefix/` | not a verdict | B4 only — run 1 of the **original** arm (symbol tokens offered, guardrail matching exactly). |

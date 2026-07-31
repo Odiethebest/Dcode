@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { h1Report, suiteSummary } from '@/demo/evalSnapshot';
+import { externalKeywordBaseline, h1Report, suiteSummary } from '@/demo/evalSnapshot';
 import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import LandingPage from '@/pages/LandingPage';
 
@@ -114,11 +114,17 @@ describe('LandingPage baseline ladder', () => {
     );
   });
 
-  it('renders B0 as not measured, with no bar', () => {
+  it('renders B0 without a bar, in the unit it actually retrieves in', () => {
+    // B0 is measured now, and still gets no bar. The ladder plots nDCG over
+    // chunks; B0 returns files and has no chunk-level result, so a bar would be
+    // the invented number this section exists to avoid. The row states the
+    // file-level figure and that it came from a live external index — the one
+    // number on this page that cannot be regenerated from committed bytes.
+    expect(externalKeywordBaseline).not.toBeNull();
     renderLanding();
-    // A concrete bar for a baseline that was never run is the least defensible
-    // number on the page — B0 gets a row and an explanation instead.
-    expect(screen.getByText(/not measured · requires an API token/i)).toBeInTheDocument();
+    expect(screen.getByText(/file-level only/i)).toBeInTheDocument();
+    expect(screen.getByText(/not reproducible/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not measured/i)).not.toBeInTheDocument();
   });
 });
 
@@ -149,4 +155,5 @@ describe('LandingPage groundedness guardrail claim', () => {
       `cleared it at ${suiteSummary.B4.groundedness.toFixed(3)}`
     );
   });
+
 });

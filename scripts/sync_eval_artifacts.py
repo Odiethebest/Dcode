@@ -56,6 +56,12 @@ DOC_TARGETS = [
 ]
 
 BASELINES = ["B1", "B2", "B3", "B4"]
+# B0 is recorded separately and deliberately. It queries a live external index,
+# so its figures cannot be regenerated from committed bytes the way every other
+# number here can, and it retrieves files rather than chunks, so it has no
+# chunk-level result to place in the main ladder. Emitted when the directory is
+# present, `null` when it is not — an unmeasured baseline stays a visible blank.
+B0_RUN = "results/eval-b0-2026-07-31"
 LEVELS = ["L1", "L2", "L3"]
 H1_LEVELS = ["L2", "L3"]
 # Architectural flows, deliberately clear of the corpus's credential-handling
@@ -505,6 +511,38 @@ export interface DemoQuestionCase {
         w("    },")
     w("  ],")
     w("};\n")
+
+    b0_dir = ROOT / B0_RUN
+    b0_metrics = (
+        json.loads((b0_dir / "metrics.json").read_text())
+        if (b0_dir / "metrics.json").exists()
+        else None
+    )
+    w("""/**
+ * B0 — GitHub code search, an external keyword control.
+ *
+ * Separate from the ladder above on purpose. It retrieves FILES, not chunks:
+ * the API returns a path and no line, so it has no chunk-level result and is
+ * compared on the file-level metric every arm records. And it queries a live
+ * external index, so unlike every other figure here it cannot be regenerated
+ * from committed bytes — only re-queried, against an index that may have moved.
+ *
+ * `null` means unmeasured, which is a blank rather than a zero.
+ */""")
+    if b0_metrics is None:
+        w("export const externalKeywordBaseline = null;\n")
+    else:
+        b0_levels = json.loads((b0_dir / "taxonomy_breakdown.json").read_text())
+        w("export const externalKeywordBaseline = {")
+        w(f"  runPath: {s(B0_RUN + '/')},")
+        w(f"  questions: {int(b0_metrics['questions'])},")
+        w(f"  fileRecallAtK: {num(b0_metrics['file_recall_at_k'])},")
+        w("  byLevel: {")
+        for level in LEVELS:
+            w(f"    {level}: {num(b0_levels[level]['file_recall_at_k'])},")
+        w("  },")
+        w("  reproducible: false,")
+        w("};\n")
 
     w("""/**
  * Per-question transcripts, straight out of each baseline's per_question.jsonl.

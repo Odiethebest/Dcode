@@ -65,17 +65,116 @@ async def _fetch_repo_url(repo_id: str) -> str | None:
         return url if url else None
 
 
-def _query_to_keywords(query: str, max_words: int = 6) -> str:
-    """Extract keywords from a natural language query for GitHub code search."""
-    import re
-    # Strip punctuation, keep backtick-quoted symbols as-is
-    symbols = re.findall(r"`([^`]+)`", query)
-    words = re.sub(r"[^\w\s]", " ", query).split()
-    stopwords = {"what", "where", "how", "does", "is", "the", "a", "an", "in", "to",
-                 "of", "for", "and", "or", "do", "from", "with", "this"}
-    keywords = [w for w in words if w.lower() not in stopwords]
-    combined = symbols + [w for w in keywords if w not in symbols]
-    return " ".join(combined[:max_words])
+# Words that carry no lexical signal for code search. GitHub ANDs every term,
+# so each useless one here removes real results. The original list omitted
+# "explain", which every architecture question in the suite opens with — B0
+# was being asked for files containing the literal word "Explain" and returned
+# nothing for 9 of 12 of them. A baseline crippled by our own query
+# construction is a strawman, not a baseline.
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "across",
+        "as",
+        "at",
+        "be",
+        "before",
+        "between",
+        "by",
+        "can",
+        "do",
+        "does",
+        "explain",
+        "for",
+        "from",
+        "get",
+        "give",
+        "happen",
+        "happens",
+        "how",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "like",
+        "list",
+        "of",
+        "on",
+        "or",
+        "over",
+        "show",
+        "that",
+        "the",
+        "their",
+        "them",
+        "then",
+        "there",
+        "these",
+        "this",
+        "through",
+        "to",
+        "travel",
+        "travels",
+        "under",
+        "up",
+        "use",
+        "used",
+        "uses",
+        "using",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "why",
+        "will",
+        "with",
+        "within",
+        "work",
+        "works",
+        "would",
+    ]
+)
+
+# Identifiers are what code search is actually good at: snake_case, CamelCase,
+# and dotted paths. Prose words are a fallback, not the plan.
+_IDENTIFIER_RE = re.compile(
+    r"\b(?:[A-Za-z_][A-Za-z0-9_]*\.)+[A-Za-z_][A-Za-z0-9_]*\b|\b[a-z]+_[a-z0-9_]+\b|\b[A-Z][a-z]+[A-Z][A-Za-z]*\b"
+)
+
+# Few terms, because GitHub requires all of them. Three identifiers already
+# describes a flow precisely; six prose words describe nothing that exists.
+_MAX_TERMS = 3
+
+
+def _query_to_keywords(query: str, max_words: int = _MAX_TERMS) -> str:
+    """Build a GitHub code-search query, favouring identifiers over prose.
+
+    Written to give the baseline the query a competent user would type, because
+    the alternative is measuring our own keyword extraction and calling it
+    GitHub Search.
+    """
+    terms: list[str] = []
+
+    def add(token: str) -> None:
+        if token and token not in terms:
+            terms.append(token)
+
+    for token in re.findall(r"`([^`]+)`", query):
+        add(token.strip())
+    for token in _IDENTIFIER_RE.findall(query):
+        add(token)
+    if len(terms) < max_words:
+        for word in re.sub(r"[^\w\s.]", " ", query).split():
+            if word.lower() not in _STOPWORDS and len(word) > 2:
+                add(word)
+
+    return " ".join(terms[:max_words])
 
 
 async def _github_search(

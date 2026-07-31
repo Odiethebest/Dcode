@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { buttonClasses } from '@/components/ui';
 import {
   baselineLabels,
+  externalKeywordBaseline,
   h1Report,
   snapshotSource,
   suiteSummary,
@@ -538,15 +539,19 @@ export default function LandingPage() {
               </p>
             </div>
 
-            {/* B0 has never been measured — it needs an API token this run didn't
-                have. A bar here would be an invented number, which is precisely
-                what this section is claiming not to do. */}
+            {/* B0 has no bar in this ladder even now that it is measured, and
+                that is not an omission. The ladder plots nDCG over chunks; B0
+                retrieves files and has no chunk-level result to plot. Giving it
+                a bar here would require inventing the number the rest of this
+                section exists to avoid inventing. */}
             <div className="flex items-center gap-4 border-b border-line py-[13px]">
               <span className="w-[26px] flex-none font-mono text-[12px] font-semibold text-ink-3">
                 B0
               </span>
               <span className="flex-1 font-mono text-[11px] italic text-ink-3">
-                not measured · requires an API token
+                {externalKeywordBaseline === null
+                  ? 'not measured · requires an API token'
+                  : `file-level only · recall ${externalKeywordBaseline.fileRecallAtK.toFixed(2)} · external index, not reproducible`}
               </span>
               <span className="w-[130px] flex-none font-display text-[15px] text-ink-3">
                 GitHub Search

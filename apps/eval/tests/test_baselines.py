@@ -10,6 +10,7 @@ from dcode_eval.baselines.github_search import (
     GithubSearchBaseline,
     MissingGithubTokenError,
     _item_to_chunk,
+    _query_to_keywords,
 )
 from dcode_eval.baselines.hybrid_agent_no_graph import HybridAgentNoGraphBaseline
 from dcode_eval.baselines.hybrid_rag import HybridRAGBaseline
@@ -322,3 +323,34 @@ def test_b0_rate_limit_respects_the_code_search_endpoint() -> None:
     result rather than a rate limit.
     """
     assert _SECONDS_BETWEEN_CALLS >= 6.0
+
+
+def test_b0_queries_never_contain_prose_scaffolding() -> None:
+    """The baseline has to be given a query a competent user would type.
+
+    GitHub ANDs every term. The first version sent "Explain" as a required
+    term, which every architecture question in the suite opens with, and B0
+    returned nothing for 9 of 12 of them. That measured our keyword extraction
+    and would have been reported as GitHub Search's ceiling.
+    """
+    q = _query_to_keywords(
+        "Explain how verify and client-certificate settings travel from "
+        "Session.request to TLS connection verification."
+    )
+    lowered = q.lower().split()
+    for junk in ("explain", "how", "from", "and", "to", "travel"):
+        assert junk not in lowered, q
+
+
+def test_b0_prefers_identifiers_over_prose() -> None:
+    q = _query_to_keywords("Explain how Session.send selects an adapter and builds a Response")
+    assert q.split()[0] == "Session.send"
+
+
+def test_b0_sends_few_enough_terms_to_match_anything() -> None:
+    """Every extra ANDed term removes results. Three identifiers is a query."""
+    q = _query_to_keywords(
+        "Explain the cookie lifecycle from Session request preparation "
+        "through response persistence across the whole session stack"
+    )
+    assert 0 < len(q.split()) <= 3
