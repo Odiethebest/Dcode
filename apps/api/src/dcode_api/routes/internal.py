@@ -23,6 +23,7 @@ from dcode_shared.schemas import (
     SourceCall,
 )
 from dcode_shared.symbols import select_symbol_matches
+from dcode_shared.testpaths import is_test_path, query_is_about_tests
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -251,6 +252,9 @@ async def _search_chunks(
         return []
 
     candidate_limit = max(k, _SEARCH_CANDIDATE_LIMIT)
+    # Tests stay indexed and stay reachable when asked for; they are just not
+    # the answer to "how does this library do X". See dcode_shared.testpaths.
+    keep_tests = query_is_about_tests(query_text)
 
     if mode == "sparse":
         sparse = await _search_sparse_candidates(
@@ -261,7 +265,7 @@ async def _search_chunks(
             limit=candidate_limit,
         )
         reranked = _identity_rerank(sparse)
-        return [_chunk_from_candidate(c) for c in reranked[:k]]
+        return _take(reranked, k, keep_tests)
 
     query_vector = await _embed_search_query(query_text)
 
@@ -279,7 +283,7 @@ async def _search_chunks(
             reranked = _identity_rerank(sparse)
         else:
             reranked = _identity_rerank(dense)
-        return [_chunk_from_candidate(c) for c in reranked[:k]]
+        return _take(reranked, k, keep_tests)
 
     # mode == "hybrid": sparse + dense → RRF fusion → rerank
     sparse = await _search_sparse_candidates(
@@ -292,7 +296,19 @@ async def _search_chunks(
     dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
     fused = _fuse_search_candidates(sparse, dense)
     reranked = await _rerank_candidates(query_text, fused)
-    return [_chunk_from_candidate(candidate) for candidate in reranked[:k]]
+    return _take(reranked, k, keep_tests)
+
+
+def _take(candidates: list[SearchCandidate], k: int, keep_tests: bool) -> list[Chunk]:
+    """Cut to k, dropping test code unless the question asked about tests.
+
+    Filtering after ranking rather than before it keeps the candidate pool and
+    the fusion arithmetic untouched; only what reaches the caller changes.
+    """
+    selected = candidates if keep_tests else [
+        candidate for candidate in candidates if not is_test_path(candidate.row.file_path)
+    ]
+    return [_chunk_from_candidate(candidate) for candidate in selected[:k]]
 
 
 async def _search_sparse_candidates(
