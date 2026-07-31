@@ -27,7 +27,7 @@ make migrate                            # Alembic upgrade head inside the api co
 make check                              # lint + typecheck + tests + eval-artifact drift check
 make frontend-build
 npm --prefix apps/frontend run dev      # → http://localhost:5173/
-python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-bm25-2026-07-30]
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-l3x12-2026-07-31]
 make eval-smoke                         # single-baseline harness smoke
 ```
 
@@ -328,10 +328,16 @@ Expected checkpoints:
 
 Once the smoke passes:
 
+0. **Flush Redis first** (`docker exec dcode-redis-1 redis-cli FLUSHALL`) and
+   record that you did. The agent caches tool results for 24h under
+   `tool:<name>:<repo_id>:<hash>`, so a run started against a warm cache can be
+   served graph results produced by *older agent code* whose shape the current
+   scoring protocol does not fully read. This is not hypothetical: the 2026-07-31
+   run was aborted mid-B3 and restarted for exactly this reason.
 1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
    results directory. Do not overwrite any committed snapshot, including
-   `results/eval-h1-bm25-2026-07-30/` and `results/eval-real/` — see
-   [`results/README.md`](../../results/README.md).
+   `results/eval-h1-l3x12-2026-07-31/`, `results/eval-h1-bm25-2026-07-30/` and
+   `results/eval-real/` — see [`results/README.md`](../../results/README.md).
    Pass `--repo-id`; the harness then records the database's exact
    `corpus_revision` together with the BM25 formula, tokenizer, document fields,
    `k1`, and `b` in both suite and per-baseline `run_config.json` files. It reads
@@ -354,12 +360,14 @@ Once the smoke passes:
 4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
    report whichever way it lands.
 
-Before a graph-sensitive re-run intended to re-open H1, read the criteria-set-2
-items in `Final_Report.md`. The current branch implements B3/B4's shared Agent
-control and B4 final-evidence scoring under
-`final_verified_evidence_v1`. The remaining pre-registration gate is to expand
-and human-review L3 before running the suite. Until that happens, the committed
-2026-07-30 snapshot remains the current verdict.
+Criteria set 2 is closed: the shared B3/B4 agent control, B4 final-evidence
+scoring under `final_verified_evidence_v1`, and the `L3` 3 → 12 expansion were
+all run on 2026-07-31, and `results/eval-h1-l3x12-2026-07-31/` is the current
+verdict. Before the **next** H1 re-run, read criteria set 3 in
+[`Final_Report.md`](Final_Report.md): one scoring rule applied to every arm, a
+`dense_only` mode so B2 can produce final evidence at all, and a `B3.5`
+diagnostic arm. Re-running the current protocol unchanged reproduces a verdict
+whose value depends on which arm is scored by which rule.
 
 ## Verified Run — 2026-07-27
 
@@ -416,9 +424,30 @@ reranker v2-m3, and `gpt-4o-mini` were healthy and active. The runner completed
 all 16 questions for each baseline, observed the same corpus revision before
 and after, and exited successfully.
 
-The recorded output is `results/eval-h1-bm25-2026-07-30/`. It validates the
-corrected Okapi BM25 path and the evidence-ID groundedness path. H1 remains
-`unsupported`: B4 beats B2 on L2, loses slightly on L3, and ties B3 on both
-levels because the harness gives B3 and B4 the same scored retrieval list. Read
-`h1_report.json` and the generated blocks in `Final_Report.md` for the exact
-figures.
+The recorded output is `results/eval-h1-bm25-2026-07-30/`, now **superseded**. It
+validated the corrected Okapi BM25 path and the evidence-ID groundedness path.
+H1 was `unsupported`: B4 beat B2 on L2, lost slightly on L3, and tied B3 on both
+levels because that harness gave B3 and B4 the same scored retrieval list.
+
+## Complete L3-expanded H1 Run — 2026-07-31
+
+The current verdict. Same repo `2543893e-0965-4be7-ac45-5a8e38600bc0`, same
+commit `414f0513c33883adf6f2b46901d4f0b38a455851`, same 726 chunks at 768
+dimensions and the same `index_revision`, so the only differences from the run
+above are the question set and the scoring protocol.
+
+The suite was frozen first: 17 questions added (`L3` 3 → 12, 33 total), every
+anchor verified to resolve 1:1 with the resolver alone before any baseline ran,
+then committed with its sha256 recorded in `provenance.json`. Redis was flushed.
+A two-mode probe against `/internal/query` confirmed the B3/B4 control
+differentiates — `hybrid_only` issued one tool call, `full` issued eight — before
+the suite started. The runner completed all 33 questions for each baseline with
+zero errors, observed the same corpus revision before and after, and exited
+successfully.
+
+The recorded output is `results/eval-h1-l3x12-2026-07-31/`. H1 is `unsupported`:
+L2 cleared against both rivals, L3 missed by 0.005. Read `h1_report.json` and the
+generated blocks in `Final_Report.md` for the exact figures, and that report's
+*Reading the result honestly* section before quoting any margin — the verdict
+depends on B2/B3 and B4 being scored by different rules, and the call graph
+itself accounts for only 4 new ground-truth hits across 3 of the 33 questions.

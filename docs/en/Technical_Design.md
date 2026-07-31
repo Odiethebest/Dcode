@@ -63,7 +63,7 @@ user's task — nobody hand-copies a repository UUID between pages.
 | `src/components/ui/` | Six shared primitives, consuming design tokens only |
 | `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
 | `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
-| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-bm25-2026-07-30/` — do not edit |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-l3x12-2026-07-31/` — do not edit |
 | `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Runtime Architecture
@@ -295,10 +295,17 @@ The harness exposes five baseline tiers:
 | B3 | Weighted BM25 + dense RRF and reranking, followed by the shared Agent synthesis/groundedness path in `hybrid_only` mode |
 | B4 | The same hybrid start and Agent path as B3, followed by bounded graph/structure expansion in `full` mode |
 
-The current `results/eval-h1-bm25-2026-07-30/` snapshot exercises
-`okapi_bm25_v1` in B1 and in the sparse component of B3/B4. The previous
-`results/eval-real/` run used the legacy lexical heuristic and remains available
-as a superseded historical snapshot.
+The current `results/eval-h1-l3x12-2026-07-31/` snapshot exercises
+`okapi_bm25_v1` in B1 and in the sparse component of B3/B4, over the 33-question
+suite. `results/eval-h1-bm25-2026-07-30/` is the superseded previous complete
+run, and `results/eval-real/` before it used the legacy lexical heuristic; both
+remain available as historical snapshots.
+
+B1 and B2 still answer from a template, so their groundedness is the constant
+`1.0` and they emit no citation events. Only B3 and B4 exercise the real
+verifier. Since groundedness is one of the four composite terms, that constant
+is load-bearing in the H1 decision — a `dense_only` agent mode for B2 is the
+recorded fix.
 
 Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
 per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
@@ -327,12 +334,21 @@ executable decision:
 - programmatic groundedness should reach 95%; the current B4 run clears that
   guardrail.
 
-The committed `results/eval-h1-bm25-2026-07-30/` snapshot predates
-`final_verified_evidence_v1`, so the graph contribution remains unmeasured **in
-that result**. The current branch implements the corrected measurement, but it
-does not retroactively change the recorded verdict. Expanding and independently
-reviewing L3 before a fresh run remains the outstanding pre-registration gate;
-the fixed re-run criteria live in [Final_Report.md](Final_Report.md).
+The committed `results/eval-h1-l3x12-2026-07-31/` snapshot is the first to
+measure the graph's own contribution, through
+`new_gt_hits_from_structural_evidence`: 4 new ground-truth hits across 3 of 33
+questions. The verdict stays `unsupported`, with L2 cleared and L3 short by
+0.005.
+
+**Two properties of that decision a reader has to know.** B2/B3 are scored on
+retrieved top-k while B4 is scored on verified final evidence, so the arms use
+different rules, and applying B4's rule to B3 as well flips L3 from fail to pass.
+The pre-registered mixed rule is the reported verdict; the symmetric alternative
+is published beside it rather than substituted for it. Unifying the rule across
+arms — which first requires a `dense_only` mode so B2 can produce final evidence
+at all — is criteria set 3 in [Final_Report.md](Final_Report.md), along with the
+`B3.5` diagnostic arm needed to separate call-graph gain from multi-step agent
+evidence selection.
 
 ## Non-Functional Requirements
 

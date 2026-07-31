@@ -204,7 +204,7 @@ The same applies to a failed index: show the reason, not just that it failed.
 ## 11. Displayed numbers are generated, never transcribed
 
 Every official H1 snapshot figure in the UI and in the generated documentation
-blocks comes from `results/eval-h1-bm25-2026-07-30/` through
+blocks comes from `results/eval-h1-l3x12-2026-07-31/` through
 `scripts/sync_eval_artifacts.py`, and `make check` fails if any of those surfaces
 drifts. A separately labelled experiment report may contain figures derived
 from its own committed run directories; it must name that authority explicitly
@@ -219,10 +219,32 @@ this document set (stub-run numbers left in place after the real-model run).
 
 Prose around the official snapshot is not generated, so it carries qualitative
 conclusions only — *H1 unsupported*, *the current sparse path is BM25*, *the
-graph's contribution is unmeasured*. Any specific official-snapshot
-figure belongs inside a generated block. Experimental figures belong in their
-named experiment record; when a report cites one, it must state that exception
-and link the authority.
+graph's measured contribution is small*. Any specific official-snapshot figure
+belongs inside a generated block. Experimental figures belong in their named
+experiment record; when a report cites one, it must state that exception and
+link the authority.
+
+**A qualitative claim can go stale too, and this one did.** For two runs the
+prose said *the graph's contribution is unmeasured* — accurate then, false as of
+2026-07-31, when the harness began counting structural ground-truth hits. The
+drift check only guards figures. After every run, the sentences have to be
+re-read against the data by a person; that step is step 3 of the harness
+procedure in [Operations.md](Operations.md) and it is not optional.
+
+### A verdict that depends on a scoring choice must publish both
+
+When two defensible scoring rules disagree about the outcome, the surface reports
+the **pre-registered** one as the verdict and states the alternative beside it.
+It does not report whichever one is preferable, and it does not quietly omit the
+one that was not chosen.
+
+This exists because the current snapshot is such a case: B2/B3 are scored on
+retrieved top-k and B4 on its verified final evidence, and applying B4's rule to
+B3 as well moves L3 from `fail` to `pass`. The recorded verdict is `unsupported`
+because that is what the pre-registered rule returns. Selecting the other rule
+after seeing that it flips the result would be indistinguishable, from the
+outside, from having pre-registered it honestly — which is exactly why the choice
+is not available after the fact.
 
 ### The generator is a pure function of committed bytes
 

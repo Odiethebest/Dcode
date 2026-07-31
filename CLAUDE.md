@@ -28,11 +28,20 @@ its numbers are generated rather than translated.
 
 ## 1. Two standing constraints
 
-1. **Do not start the next full H1 re-run yet.** Criteria set 2 item 1 and the
-   shared B3/B4 synthesis control are implemented, but the pre-registered L3
-   expansion and human review are still pending. The committed 2026-07-30 result
-   remains current until that gate is complete and someone runs the suite
-   deliberately.
+1. **Do not start the next full H1 re-run yet.** Criteria set 2 is closed —
+   `results/eval-h1-l3x12-2026-07-31/` is the current verdict, on 33 questions
+   with `L3` at 12. Criteria set 3 in `docs/en/Final_Report.md` is the new gate,
+   and its first three items are prerequisites rather than improvements: one
+   scoring rule for every arm, a `dense_only` mode so B2 can produce final
+   evidence at all, and a `B3.5` diagnostic arm. **Re-running the current
+   protocol unchanged produces a verdict whose value depends on which arm is
+   scored by which rule**, which is the specific thing that makes the current
+   result inconclusive rather than negative.
+
+   Also: **flush Redis before any recorded run** (`docker exec dcode-redis-1
+   redis-cli FLUSHALL`). Agent tool results cache for 24h, and a warm cache can
+   serve graph results produced by older agent code. The 2026-07-31 run was
+   aborted mid-B3 and restarted over exactly this.
 2. **Avoid bulk-reading or restating credential-related source symbols from the
    indexed corpus.** That keyword density repeatedly false-tripped the
    environment's cyber safeguard and killed a session three times in a row.
@@ -57,7 +66,7 @@ docs/en/         five authoritative documents (table above); docs/archive/ is hi
 
 **Official snapshot numbers are generated, never typed.** Every H1 snapshot
 figure in the UI and generated documentation blocks comes from
-`results/eval-h1-bm25-2026-07-30/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
+`results/eval-h1-l3x12-2026-07-31/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
 if any of those surfaces drifts. A separately labelled experiment report may
 derive figures from its own committed run directories and must name that
 authority. Markdown targets use
@@ -121,7 +130,16 @@ rails (262px left, 384px right) are correct as-is.
 ## 4. Current state
 
 Everything below is committed and green: `make check`, `make frontend-build`,
-70 frontend tests, full pytest suite.
+71 frontend tests, full pytest suite.
+
+**The current H1 result is `unsupported` with a caveat worth internalising before
+you touch anything evaluation-adjacent.** L2 cleared, L3 missed by 0.005, and the
+verdict flips if B3 is scored by B4's rule instead of its own. The call graph —
+the whole hypothesis — accounts for 4 new ground-truth hits across 3 of 33
+questions. A previous session's pre-registered claim that B4's scoring rule
+"handicaps B4" was falsified: it helps B4. If you find yourself about to write
+that the graph's contribution is unmeasured, that sentence was true for two runs
+and is now false.
 
 Current interaction contracts added on 2026-07-30:
 
