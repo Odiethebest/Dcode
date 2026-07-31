@@ -8,7 +8,7 @@ from dcode_eval.baselines.base import AnswerResult, Baseline
 
 class VanillaRAGBaseline(Baseline):
     id = "B2"
-    description = "Single-path dense retrieval + LLM answer (DESIGN.md §2.4.3)."
+    description = "Single-path dense retrieval + synthesized answer."
 
     async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
         # Requests mode=dense; degrades to sparse under stub embeddings until a

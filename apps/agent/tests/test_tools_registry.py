@@ -21,7 +21,7 @@ EXPECTED_TOOLS = {
 
 
 def test_registry_has_canonical_tools() -> None:
-    """DESIGN.md tools plus explicit reverse-dependency and call-direction tools."""
+    """The runtime registry exposes exactly the ten documented canonical tools."""
     registry = default_registry()
     assert set(registry.names()) == EXPECTED_TOOLS
 
@@ -37,7 +37,7 @@ def test_every_tool_exposes_args_schema_and_description() -> None:
 
 
 def test_cache_key_is_deterministic_and_namespaced() -> None:
-    """Tool cache keys must follow DESIGN.md §3.3 `tool:{name}:{repo}:{hash}`."""
+    """Tool cache keys follow `tool:{name}:{repo}:{hash}` deterministically."""
     tool = default_registry().get("search_code")
     assert tool is not None
     args = tool.ArgsSchema(query="x", k=5)

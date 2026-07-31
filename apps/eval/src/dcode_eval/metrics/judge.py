@@ -1,12 +1,12 @@
-"""LLM-as-Judge — DESIGN.md §2.4.4 (Answer Quality) + OD-4 placeholder.
+"""Answer-quality judge contract and current stub implementation.
 
-Per PLAN.md §3.1 the judge produces:
+The intended real judge produces:
   - 4-axis rubric scores (correctness, completeness, faithfulness, actionability)
   - pairwise win-rates between competing answers
 
-The judge model itself is Open Decision OD-4 (PLAN.md §9). We define the
-client as an ABC so M3 can plug in the OD-4-resolved model without touching
-the harness internals.
+No real judge client is wired today. The stub keeps the contract executable,
+while reports mark pairwise win-rate as unmeasured rather than treating ties or
+zero rubric scores as a result.
 """
 
 from abc import ABC, abstractmethod
@@ -25,7 +25,7 @@ class JudgeScore:
 
 
 class Judge(ABC):
-    """Abstract OD-4 LLM-as-Judge client."""
+    """Abstract answer-quality judge client."""
 
     @abstractmethod
     async def score(self, question: str, answer: str, gt: str | None = None) -> JudgeScore:
@@ -37,7 +37,7 @@ class Judge(ABC):
 
 
 class StubJudge(Judge):
-    """Skeleton placeholder. Replaced at M3 once OD-4 is resolved."""
+    """Non-evaluating placeholder; its outputs must not be reported as measured."""
 
     async def score(self, question: str, answer: str, gt: str | None = None) -> JudgeScore:
         return JudgeScore(0.0, 0.0, 0.0, 0.0)

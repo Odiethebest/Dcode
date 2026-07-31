@@ -1,4 +1,4 @@
-"""Agent tools — implements DESIGN.md §2.3.2 tool clinic.
+"""Canonical tool set exposed by the Dcode agent.
 
 `default_registry()` returns a ToolRegistry containing all canonical tools.
 Used by the agent's plan / tool_call nodes and exposed for debugging

@@ -73,8 +73,8 @@ export async function getNeighbors(repoId: UUID, symbol: string): Promise<Symbol
 
 /**
  * Streaming query — consumes the agent's SSE response via fetch +
- * ReadableStream, emitting one typed event (SSEEventName) per DESIGN.md §4.3
- * to the caller-supplied handler.
+ * ReadableStream, emitting one canonical typed event to the caller-supplied
+ * handler.
  */
 export async function streamQuery(
   body: QueryRequest,

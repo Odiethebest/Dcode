@@ -8,7 +8,7 @@ from dcode_eval.baselines.base import AnswerResult, Baseline
 
 class BM25Baseline(Baseline):
     id = "B1"
-    description = "BM25 over the chunk corpus (DESIGN.md §2.4.3)."
+    description = "Okapi BM25 over the complete chunk corpus."
 
     async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
         return await common.internal_search(repo_id, query, k, mode="sparse")

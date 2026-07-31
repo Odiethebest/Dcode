@@ -8,7 +8,7 @@ from dcode_eval.baselines.base import AnswerResult, Baseline
 
 class FullSystemBaseline(Baseline):
     id = "B4"
-    description = "Dcode — hybrid retrieval + call graph + ReAct agent (DESIGN.md §2.4.3)."
+    description = "Dcode — hybrid retrieval + call graph + bounded agent."
 
     async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
         return await common.internal_search(repo_id, query, k)

@@ -1,7 +1,6 @@
 """Tool: `find_definition(symbol)` → List[Location].
 
-Implements DESIGN.md §2.3.2 row 3. Backed by the code-graph query API
-(§2.2.2): look up symbol definition location(s).
+Backed by the internal code-graph API for symbol-definition locations.
 """
 
 from dcode_shared.schemas import Location

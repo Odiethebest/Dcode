@@ -1,4 +1,4 @@
-"""Indexing endpoints — implements DESIGN.md §4.1."""
+"""Public repository submission and indexing-status endpoints."""
 
 import ipaddress
 import json

@@ -1,7 +1,7 @@
 """Shared application settings — read from env, never hardcoded.
 
-Open Decision placeholders (OD-2 EMBEDDING_*, OD-3 RERANKER_*, OD-4
-JUDGE_MODEL) live here so every service reads them uniformly.
+Embedding, reranker, judge, cache, and infrastructure settings live here so
+every service reads them uniformly.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,13 +35,13 @@ class SharedSettings(BaseSettings):
     tool_cache_ttl_seconds: int = 24 * 60 * 60
     job_state_ttl_seconds: int = 7 * 24 * 60 * 60
 
-    # --- Groundedness guardrail (D-2.3.1 / NFR-4) ---
+    # --- Groundedness guardrail ---
     # The agent redacts any final-answer citation that is not found in the
     # index. Answers scoring below this fraction carry an explicit warning.
     # Must stay > 0 in production so the guardrail cannot be silently disabled.
     groundedness_threshold: float = 0.95
 
-    # --- Open Decisions (OD-2..OD-4) ---
+    # --- Retrieval and evaluation models ---
     embedding_model: str = "stub"
     embedding_dim: int = 1024
     embedding_endpoint: str = ""

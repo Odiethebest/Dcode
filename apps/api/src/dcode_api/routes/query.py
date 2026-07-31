@@ -1,11 +1,11 @@
-"""Query endpoint — implements DESIGN.md §4.3 Agent SSE Output Format.
+"""Public query endpoint and agent SSE proxy.
 
 Architecture: the API gateway proxies POST /api/v1/query to the Agent
 service's /internal/query, streaming SSE events back unchanged. This keeps
 the agent fully isolated and lets it be scaled / replaced independently.
 
-Skeleton: if the agent service is unreachable, emit one stub `thought` event
-plus an `error` event so the SSE protocol is still exercised end-to-end.
+If the agent service is unreachable, emit one explicitly labelled stub
+`thought` plus an `error` event so the SSE protocol terminates honestly.
 """
 
 from collections.abc import AsyncIterator
@@ -94,8 +94,8 @@ async def _proxy_to_agent(
             async for chunk in response.aiter_bytes():
                 yield chunk
     except httpx.RequestError as exc:
-        # Skeleton fallback: emit one stub thought so the SSE protocol is
-        # still exercised end-to-end when the agent service is offline.
+        # Emit one explicitly labelled stub thought so the SSE protocol still
+        # terminates honestly when the agent service is offline.
         yield sse_encode(
             "thought",
             ThoughtEvent(

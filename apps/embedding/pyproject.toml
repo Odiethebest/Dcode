@@ -1,7 +1,7 @@
 [project]
 name = "dcode-embedding"
 version = "0.0.0"
-description = "Dcode embedding sidecar — self-hosted code embedding model (OD-2)"
+description = "Dcode self-hosted code-embedding sidecar"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",

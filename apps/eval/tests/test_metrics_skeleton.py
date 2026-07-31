@@ -12,7 +12,7 @@ from dcode_eval.metrics.retrieval import mrr, ndcg_at_k, recall_at_k
 
 
 def test_baseline_ladder_has_five_systems() -> None:
-    """DESIGN.md §2.4.3 enumerates exactly B0..B4."""
+    """The canonical evaluation ladder contains exactly B0 through B4."""
     baselines = (
         GithubSearchBaseline(),
         BM25Baseline(),

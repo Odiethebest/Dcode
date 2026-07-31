@@ -115,7 +115,7 @@ def test_healthz_returns_ok() -> None:
 
 
 def test_submit_repo_returns_202_with_correct_shape() -> None:
-    """DESIGN.md §4.1 POST /api/v1/repos must return 202 + RepoCreateResponse."""
+    """POST /api/v1/repos returns 202 plus RepoCreateResponse for new work."""
     session = FakeSession()
     publisher = FakePublisher(events=session.events)
     override_dependencies(session, publisher)
@@ -193,7 +193,7 @@ def test_submit_repo_marks_repo_failed_when_publish_fails() -> None:
 
 
 def test_repo_status_returns_correct_shape() -> None:
-    """DESIGN.md §4.1 GET /api/v1/repos/{id}/status must return RepoStatusResponse."""
+    """GET /api/v1/repos/{id}/status returns the canonical RepoStatusResponse."""
     rid = uuid.uuid4()
     repo = Repo(id=rid, url="https://github.com/psf/requests.git", status="embedding", progress=40)
     live_state = {

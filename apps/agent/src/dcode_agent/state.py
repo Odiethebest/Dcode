@@ -1,9 +1,9 @@
-"""LangGraph state for the Dcode agent — implements DESIGN.md §2.3.3.
+"""Per-request LangGraph state for the Dcode agent.
 
 A single AgentState dataclass flows through every node. Each tool_call
 appends a step; the ReAct loop terminates when step_count reaches the
-configured cap (AgentSettings.max_steps, §2.3.1) or when the planner emits
-a synthesize decision.
+configured ``AgentSettings.max_steps`` cap or when the planner emits a
+synthesize decision.
 """
 
 from dataclasses import dataclass, field

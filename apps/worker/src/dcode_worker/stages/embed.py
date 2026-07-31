@@ -1,10 +1,9 @@
 """Pipeline stage: batch embedding with Redis content-addressed cache.
 
-Implements DESIGN.md §2.1 'Embed' stage and D-2.1.3 (cache key
-`embed:{model_id}:{sha256(text)}`, TTL forever).
+Uses the canonical `embed:{model_id}:{sha256(text)}` cache key with no expiry.
 
-The embedding model is Open Decision OD-2 (see PLAN.md §9). Client
-implementations live in ``dcode_shared.embedding``.
+The embedding model, dimension, and optional HTTP endpoint are environment
+configuration. Client implementations live in ``dcode_shared.embedding``.
 """
 
 import json

@@ -1,7 +1,7 @@
 [project]
 name = "dcode-agent"
 version = "0.0.0"
-description = "Dcode Agent Orchestrator — implements DESIGN.md §2.3"
+description = "Dcode bounded code-understanding agent service"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",

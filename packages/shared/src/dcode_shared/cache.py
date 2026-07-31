@@ -1,4 +1,4 @@
-"""Redis cache key helpers — implements DESIGN.md §3.3 Redis Key Naming Convention.
+"""Canonical Redis cache-key helpers shared across Dcode services.
 
 Keep all key construction here. Callers MUST NOT build keys by string formatting
 inline; that diverges from spec and breaks cache lookups across services.
@@ -17,7 +17,7 @@ def embedding_cache_key(model_id: str, text: str) -> str:
 
 
 def tool_cache_key(tool_name: str, repo_id: str, args: dict[str, Any]) -> str:
-    """`tool:{tool_name}:{repo_id}:{args_hash}` — TTL: 24h (DESIGN.md D-2.3.2)."""
+    """`tool:{tool_name}:{repo_id}:{args_hash}` — TTL: 24h."""
     return f"tool:{tool_name}:{repo_id}:{_hash_args(args)}"
 
 

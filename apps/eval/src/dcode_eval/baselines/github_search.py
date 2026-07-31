@@ -115,7 +115,7 @@ def _item_to_chunk(item: dict[str, object], rank: int) -> Chunk:
 
 class GithubSearchBaseline(Baseline):
     id = "B0"
-    description = "GitHub code search — pure keyword (DESIGN.md §2.4.3)."
+    description = "GitHub code search — external pure-keyword baseline."
 
     def __init__(self, github_token: str | None = None) -> None:
         import os

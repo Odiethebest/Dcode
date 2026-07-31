@@ -1,4 +1,4 @@
-"""Pydantic request / response schemas — implements DESIGN.md §4 (Interface Contracts).
+"""Canonical Pydantic request and response schemas for cross-service contracts.
 
 This module is the single source of truth for every cross-service payload shape.
 Services MUST import these types rather than redefining.
@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # ===========================================================================
-# Enums (DESIGN.md §3.2 repos.status / §2.1 state machine)
+# Enums shared by the database, indexing state machine, and API
 # ===========================================================================
 
 
@@ -37,7 +37,7 @@ class StageState(StrEnum):
 
 
 class ChunkType(StrEnum):
-    """AST-level chunk discriminator (DESIGN.md §3.2 chunks.chunk_type)."""
+    """AST-level chunk discriminator stored by the index."""
 
     function = "function"
     method = "method"
@@ -46,7 +46,7 @@ class ChunkType(StrEnum):
 
 
 class SymbolKind(StrEnum):
-    """Code-graph node kind (DESIGN.md §3.2 symbols.kind)."""
+    """Code-graph node kind."""
 
     function = "function"
     class_ = "class"
@@ -55,7 +55,7 @@ class SymbolKind(StrEnum):
 
 
 class EdgeType(StrEnum):
-    """Code-graph edge kind (DESIGN.md §3.2 edges.edge_type)."""
+    """Code-graph edge kind."""
 
     calls = "calls"
     imports = "imports"
@@ -64,7 +64,7 @@ class EdgeType(StrEnum):
 
 
 # ===========================================================================
-# Indexing API (DESIGN.md §4.1)
+# Public indexing API
 # ===========================================================================
 
 
@@ -110,7 +110,7 @@ class RepoStatusResponse(BaseModel):
 
 
 # ===========================================================================
-# Query API (DESIGN.md §4.3 — request body; SSE events live in events.py)
+# Public query API (request body; SSE events live in events.py)
 # ===========================================================================
 
 
@@ -137,7 +137,7 @@ class QueryRequest(BaseModel):
 
 
 # ===========================================================================
-# Internal retrieval & graph API (DESIGN.md §4.2)
+# Internal retrieval and graph API
 # ===========================================================================
 
 
@@ -152,7 +152,7 @@ class ScoreComponents(BaseModel):
 
 
 class Chunk(BaseModel):
-    """A retrieved chunk (DESIGN.md §4.2 search return shape)."""
+    """A retrieved chunk returned by the internal search API."""
 
     chunk_id: UUID
     file_path: str
@@ -165,7 +165,7 @@ class Chunk(BaseModel):
 
 
 class Location(BaseModel):
-    """Graph-query result shape (DESIGN.md §4.2)."""
+    """Indexed location returned by graph-query endpoints."""
 
     symbol: str
     file_path: str

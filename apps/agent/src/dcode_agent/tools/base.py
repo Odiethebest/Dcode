@@ -1,11 +1,11 @@
-"""Tool abstract base + registry — implements DESIGN.md §2.3.2.
+"""Abstract tool contract and registry for the bounded agent.
 
 Every agent tool subclasses `Tool[ArgsT, ResultT]` and exposes:
   - `name`        — canonical identifier shown to the planner LLM
   - `description` — natural-language hint for tool choice
   - `ArgsSchema`  — Pydantic model for accepted arguments
   - `execute()`   — coroutine returning a Pydantic result
-  - `cache_key()` — Redis key for the tool: namespace (D-2.3.2, TTL 24h)
+  - `cache_key()` — deterministic Redis key in the tool namespace (TTL 24h)
 
 Tools NEVER touch the database directly — they call the Retrieval & Graph
 API (or filesystem for `read_file` / `grep` / `list_directory`). This
@@ -34,7 +34,7 @@ class Tool(ABC, Generic[ArgsT, ResultT]):
         """Execute the tool against the live index for `repo_id`."""
 
     def cache_key(self, repo_id: str, args: ArgsT) -> str:
-        """Redis cache key for this invocation (D-2.3.2, TTL 24h)."""
+        """Redis cache key for this invocation in the 24-hour tool namespace."""
         return tool_cache_key(self.name, repo_id, args.model_dump(mode="json"))
 
 

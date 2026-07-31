@@ -1,4 +1,4 @@
-"""Groundedness tests (DESIGN.md §2.3.4 / D-2.3.1)."""
+"""Groundedness verification, scoring, and exact-redaction tests."""
 
 from uuid import uuid4
 

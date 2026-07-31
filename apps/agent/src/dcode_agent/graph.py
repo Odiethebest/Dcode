@@ -1,4 +1,4 @@
-"""LangGraph state machine — implements DESIGN.md §2.3.3."""
+"""Bounded LangGraph state machine for contextualize, tool, and answer nodes."""
 
 import inspect
 import json
@@ -457,7 +457,7 @@ def _prepend_tool_failure_notice(answer: str, error: str, *, chinese: bool) -> s
 
 
 async def groundedness_node(state: AgentState) -> AgentState:
-    """Verify citations and enforce the D-2.3.1 groundedness guardrail.
+    """Verify citations and enforce the hard groundedness guardrail.
 
     Unverified references are redacted from the answer and only verified
     citations are surfaced; the recorded score reflects the pre-redaction draft.
@@ -499,7 +499,7 @@ def decide_after_plan(state: AgentState) -> str:
     if state.error is not None:
         return "synthesize"
     if state.step_count >= agent_settings.max_steps:
-        return "synthesize"  # forced synthesis at the §2.3.1 cap
+        return "synthesize"  # forced synthesis at the configured step cap
     if state.draft_answer is not None:
         return "synthesize"
     if state.pending_tool_name is None:
@@ -515,7 +515,8 @@ def decide_after_plan(state: AgentState) -> str:
 def build_graph() -> Any:
     """Compile the LangGraph state machine for an agent invocation.
 
-    TODO(M2): wire checkpointer + observability hooks per DESIGN.md NFR-5.
+    Requests remain stateless and receive bounded history explicitly, so no
+    LangGraph checkpointer is installed. Nodes emit structured service logs.
     """
     g = StateGraph(AgentState)
     g.add_node("contextualize", contextualize_node)

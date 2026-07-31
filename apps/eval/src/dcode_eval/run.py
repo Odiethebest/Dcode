@@ -1,4 +1,4 @@
-"""Evaluation CLI entry — implements DESIGN.md §2.4 + §4.4."""
+"""CLI for reproducible baseline evaluation and H1 report generation."""
 
 import argparse
 import asyncio
@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         nargs="+",
         choices=["B0", "B1", "B2", "B3", "B4"],
-        help="One or more DESIGN.md §2.4.3 baseline tiers to run",
+        help="One or more baseline tiers B0 through B4 to run",
     )
     parser.add_argument(
         "--questions",

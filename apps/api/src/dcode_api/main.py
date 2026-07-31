@@ -1,8 +1,8 @@
-"""FastAPI app entrypoint — implements DESIGN.md §2 (Overview) and §4 (Interface Contracts).
+"""FastAPI gateway entrypoint and public routing boundary.
 
-This service: authenticates clients (M2), enqueues indexing jobs (M1), and
-proxies query requests as SSE to the Agent service (M2). The frontend talks
-to this gateway exclusively — never directly to the agent or DB.
+This service validates and enqueues indexing requests, serves read-only source
+and graph inspection, and proxies query requests as SSE to the agent. The
+frontend talks to this gateway exclusively — never directly to the agent or DB.
 """
 
 from collections.abc import AsyncIterator

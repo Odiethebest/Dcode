@@ -280,7 +280,7 @@ async def _verify_symbol(
 
 
 # ---------------------------------------------------------------------------
-# Enforcement — the D-2.3.1 hard guardrail
+# Enforcement — hard groundedness guardrail
 # ---------------------------------------------------------------------------
 
 _REDACTION_MARKER = "[unverified reference removed]"
@@ -289,7 +289,7 @@ _REDACTION_MARKER_ZH = "[已移除未验证引用]"
 
 @dataclass
 class EnforcedGroundedness:
-    """Outcome of applying the D-2.3.1 guardrail to a draft answer."""
+    """Outcome of applying the hard guardrail to a draft answer."""
 
     answer: str  # draft with unverified references redacted (+ warning when low)
     citations: list[CitationCheck]  # verified citations only
@@ -304,7 +304,7 @@ def enforce_groundedness(
     threshold: float,
     chinese: bool = False,
 ) -> EnforcedGroundedness:
-    """Apply the groundedness hard guardrail (D-2.3.1).
+    """Apply the groundedness hard guardrail.
 
     Every unverified reference is redacted from the answer text so an
     unverified code location is never presented as evidence, and only verified

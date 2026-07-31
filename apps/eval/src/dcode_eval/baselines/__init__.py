@@ -1,4 +1,4 @@
-"""Baseline ladder — DESIGN.md §2.4.3 B0..B4.
+"""Canonical evaluation baseline ladder B0 through B4.
 
 Each baseline subclasses `Baseline` and exposes `retrieve()` (for IR metrics)
 and `answer()` (for judge + groundedness). The harness selects one per run

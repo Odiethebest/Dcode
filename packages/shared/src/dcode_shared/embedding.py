@@ -1,7 +1,7 @@
 """Embedding clients shared by worker (index-time) and API (query-time).
 
-Open Decision OD-2: ``jinaai/jina-embeddings-v2-base-code`` is hosted as a
-sidecar HTTP service; worker/API call it through :class:`HttpEmbeddingClient`.
+``jinaai/jina-embeddings-v2-base-code`` can be hosted as a sidecar HTTP service;
+worker/API call it through :class:`HttpEmbeddingClient`.
 ``EMBEDDING_MODEL=stub`` keeps local development working without the sidecar.
 """
 
@@ -21,7 +21,7 @@ _DEFAULT_MAX_RETRIES = 12
 
 
 class EmbeddingClient(ABC):
-    """Abstract client for the configured embedding model (OD-2)."""
+    """Abstract client for the configured embedding model."""
 
     @abstractmethod
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:

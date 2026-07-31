@@ -1,4 +1,4 @@
-"""LLM answer-synthesis client for the agent (P1-4).
+"""Optional LLM answer-synthesis and follow-up contextualization client.
 
 The agent's default synthesis is rule-based templating. When a synthesis model
 is configured (``SYNTHESIS_MODEL`` != ``stub`` with an ``OPENAI_API_KEY``), the

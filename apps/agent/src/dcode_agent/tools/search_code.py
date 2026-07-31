@@ -1,7 +1,7 @@
 """Tool: `search_code(query, k)` → List[Chunk].
 
-Implements DESIGN.md §2.3.2 row 1. Underlying call: hybrid retrieval API
-per §2.2.1 (dense + sparse + RRF k=60 + cross-encoder rerank).
+Calls the hybrid retrieval API: dense plus Okapi BM25, weighted RRF with
+`k=60`, and optional cross-encoder reranking.
 """
 
 from dcode_shared.schemas import Chunk

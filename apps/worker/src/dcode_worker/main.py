@@ -1,7 +1,8 @@
 """Index worker entrypoint — consumes RabbitMQ jobs and runs the indexing pipeline.
 
-Implements DESIGN.md §2.1. Skeleton: connects, declares queue, logs each
-received job and acks it. Real pipeline execution lands at M1.
+Connects robustly, declares the durable queue with a one-job prefetch, delegates
+each message to the complete indexing pipeline, and acknowledges it only after
+the handler returns.
 """
 
 import asyncio
