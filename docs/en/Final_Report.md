@@ -14,7 +14,7 @@ As of **2026-07-31**, the repository delivers a complete local vertical slice:
 - a real indexing pipeline for Python repositories
 - retrieval and graph lookup endpoints
 - self-hosted embedding and reranker sidecars, exercised on a full real-model run
-- a working agent loop with 10 tools
+- a working agent loop with 11 tools
 - bounded multi-turn follow-ups, bilingual caller/callee routing, same-language
   answers, and server-owned evidence IDs
 - a single exploration workbench whose citations open real indexed source and

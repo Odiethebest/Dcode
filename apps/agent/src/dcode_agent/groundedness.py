@@ -40,6 +40,12 @@ class EvidenceTarget:
     display_token: str
     chunk_id: str = ""
     origins: tuple[str, ...] = ()
+    # Source text, when this target has any. Retrieved chunks and file excerpts
+    # arrive with it; graph and reference results arrive as bare locations and
+    # are hydrated from their chunk_id before ranking, so every candidate is
+    # scored on the same footing.
+    content: str = ""
+    symbol: str = ""
 
 
 @dataclass

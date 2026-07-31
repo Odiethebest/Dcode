@@ -11,6 +11,7 @@ EXPECTED_TOOLS = {
     "read_file",
     "find_definition",
     "find_references",
+    "find_call_path",
     "get_call_neighbors",
     "get_dependencies",
     "get_dependents",

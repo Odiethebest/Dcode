@@ -6,6 +6,7 @@ via the agent service's `/internal/tools` endpoint.
 """
 
 from dcode_agent.tools.base import Tool, ToolRegistry
+from dcode_agent.tools.find_call_path import FindCallPathTool
 from dcode_agent.tools.find_definition import FindDefinitionTool
 from dcode_agent.tools.find_references import FindReferencesTool
 from dcode_agent.tools.get_call_neighbors import GetCallNeighborsTool
@@ -19,13 +20,14 @@ from dcode_agent.tools.search_code import SearchCodeTool
 
 
 def default_registry() -> ToolRegistry:
-    """Construct the canonical 10-tool registry."""
+    """Construct the canonical 11-tool registry."""
     registry = ToolRegistry()
     for tool_cls in (
         SearchCodeTool,
         ReadFileTool,
         FindDefinitionTool,
         FindReferencesTool,
+        FindCallPathTool,
         GetCallNeighborsTool,
         GetDependenciesTool,
         GetDependentsTool,

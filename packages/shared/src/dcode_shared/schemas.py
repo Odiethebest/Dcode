@@ -208,6 +208,30 @@ class CallNeighbors(BaseModel):
     source_calls: list[SourceCall] = Field(default_factory=list)
 
 
+class CallPath(BaseModel):
+    """A bounded chain of `calls` edges from one symbol to another.
+
+    Architecture questions overwhelmingly ask how control reaches B from A —
+    "explain the proxy flow from Session settings to the adapter connection".
+    Listing every reference to A answers a different question and buries the
+    chain in noise. `nodes` is ordered start → end and each hop is a stored
+    `calls` edge, so the path is evidence rather than narration.
+
+    `found=False` with an empty `nodes` is a real answer: within `max_depth`
+    there is no static call chain. It is reported rather than smoothed over,
+    because the graph's documented blind spots (no type inference, unresolved
+    inherited `self.method()`) make absence genuinely common.
+    """
+
+    found: bool
+    start: str
+    end: str
+    max_depth: int
+    nodes: list[Location] = Field(default_factory=list)
+    # Hops actually traversed; `len(nodes) - 1` when found.
+    depth: int = 0
+
+
 # ===========================================================================
 # Inspector API (read-only source + call graph — Phase 2 workbench)
 # ===========================================================================

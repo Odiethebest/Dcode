@@ -54,7 +54,7 @@ Dcode builds a dual index — semantic vectors plus a static call graph — and 
 | Chunk granularity | AST boundary chunks via Python `ast` |
 | Call graph | AST-built symbol table, module import edges, and best-effort intra-repo call edges |
 | Hybrid retrieval | Sparse + dense candidate retrieval, RRF fusion, optional cross-encoder reranking |
-| Multi step reasoning | LangGraph state machine, 10 tools, rule based ReAct loop |
+| Multi step reasoning | LangGraph state machine, 11 tools, rule based ReAct loop |
 | Multi-turn follow-ups | Client-supplied bounded history, history-aware cache keys, and standalone-query contextualization |
 | Answer presentation | Current-question language is preserved; Markdown math renders through KaTeX |
 | Hallucination control | Programmatic groundedness check with a required ≥ 95% threshold |
@@ -228,7 +228,7 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 > **Status (2026-07-31)**: the full path — indexing, retrieval, agent SSE, the
 > workbench frontend, the evaluation harness, production packaging — is implemented
 > and running; `make check`, `make frontend-build`, and `make eval-smoke` pass.
-> The current interaction path includes ten tools, bilingual caller/callee
+> The current interaction path includes eleven tools, bilingual caller/callee
 > routing, bounded multi-turn follow-ups, server-owned citation IDs,
 > same-language answers, and KaTeX math rendering.
 > H1 has been measured on a **full real-model run** over 33 questions and the

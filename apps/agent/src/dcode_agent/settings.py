@@ -6,7 +6,12 @@ from dcode_shared.settings import SharedSettings
 class AgentSettings(SharedSettings):
     """Agent service configuration."""
 
-    max_steps: int = 8  # single-query tool-step upper bound
+    # Single-query tool-step upper bound. Raised from 8 because B4's expansion
+    # saturated it: 1 search + 3 read_file + 3 find_references left exactly one
+    # step for get_file_outline, while the no-graph arm reached two outlines on
+    # the same budget. The walk was ending at the cap rather than at the
+    # planner's decision, which is a truncation artefact, not a policy.
+    max_steps: int = 14
     retrieval_base_url: str = "http://localhost:8000"  # API gateway internal retrieval surface
     workdir_base: str = "/tmp/dcode-workdirs"
 

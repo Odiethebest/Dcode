@@ -16,6 +16,7 @@ from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import (
     CallDirection,
     CallNeighbors,
+    CallPath,
     Chunk,
     Location,
     ScoreComponents,
@@ -116,6 +117,51 @@ async def find_definition(
     return await _find_definitions(db, repo_id, symbol)
 
 
+@router.get("/get_chunks", response_model=list[Chunk])
+async def get_chunks(
+    repo_id: UUID,
+    chunk_ids: list[UUID] = Query(..., min_length=1, max_length=64),
+    db: AsyncSession = Depends(get_db),
+) -> list[Chunk]:
+    """Fetch indexed chunks by id, so graph results can carry their source.
+
+    Graph and reference lookups return `(symbol, file_path, line, chunk_id)`
+    with no code. Rendered into an answer prompt that way they are bare names
+    competing against retrieved chunks that do carry code, which is a large part
+    of why graph evidence was rarely cited. Hydrating them here lets the same
+    reranker score every candidate on equal terms.
+
+    Returned in the caller's requested order; unknown ids are skipped rather
+    than erroring, because a stale chunk id is a cache-age problem, not a
+    client error.
+    """
+    await _require_repo(db, repo_id)
+    rows = (
+        await db.execute(
+            select(ChunkRow)
+            .where(ChunkRow.repo_id == repo_id)
+            .where(ChunkRow.id.in_(chunk_ids))
+        )
+    ).scalars().all()
+    by_id = {row.id: row for row in rows}
+    return [
+        Chunk(
+            chunk_id=row.id,
+            file_path=row.file_path,
+            symbol_name=row.symbol_name,
+            start_line=row.start_line,
+            end_line=row.end_line,
+            content=row.content,
+            # No retrieval happened here, so there is no relevance to report.
+            # Zeroes say "unscored" rather than inventing a rank.
+            score=0.0,
+            score_components=ScoreComponents(dense=0.0, sparse=0.0, rerank=0.0),
+        )
+        for chunk_id in chunk_ids
+        if (row := by_id.get(chunk_id)) is not None
+    ]
+
+
 @router.get("/find_references", response_model=list[Location])
 async def find_references(
     repo_id: UUID,
@@ -136,6 +182,19 @@ async def get_call_neighbors(
     """Return directed call edges plus source expressions with unresolved targets."""
     await _require_repo(db, repo_id)
     return await _get_call_neighbors(db, repo_id, symbol, direction)
+
+
+@router.get("/find_call_path", response_model=CallPath)
+async def find_call_path(
+    repo_id: UUID,
+    start: str = Query(..., min_length=1),
+    end: str = Query(..., min_length=1),
+    max_depth: int = Query(4, ge=1, le=6),
+    db: AsyncSession = Depends(get_db),
+) -> CallPath:
+    """Shortest chain of `calls` edges from `start` to `end`, if one exists."""
+    await _require_repo(db, repo_id)
+    return await _find_call_path(db, repo_id, start, end, max_depth)
 
 
 @router.get("/get_dependencies", response_model=list[Location])
@@ -547,6 +606,89 @@ async def _get_call_neighbors(
         callers=callers,
         callees=callees,
         source_calls=source_calls,
+    )
+
+
+async def _find_call_path(
+    db: AsyncSession,
+    repo_id: UUID,
+    start: str,
+    end: str,
+    max_depth: int,
+) -> CallPath:
+    """Breadth-first search over stored `calls` edges, start → end.
+
+    BFS rather than DFS so the returned chain is the shortest one: for an
+    architecture answer the direct route is the explanation, and a longer walk
+    that happens to arrive first would read as though the code were more
+    indirect than it is.
+
+    Both endpoints are resolved with the shared symbol rule, so `send`,
+    `Session.send` and `requests.sessions.Session.send` behave the same here as
+    everywhere else. A short name can resolve to several symbols; every match is
+    a valid start, and the first target reached wins.
+    """
+    start_rows = await _resolve_symbols(db, repo_id, start)
+    end_rows = await _resolve_symbols(db, repo_id, end)
+    if not start_rows or not end_rows:
+        return CallPath(found=False, start=start, end=end, max_depth=max_depth)
+
+    targets = {row.id for row in end_rows}
+    by_id: dict[UUID, Symbol] = {row.id: row for row in (*start_rows, *end_rows)}
+
+    # parent[child] = the symbol we arrived from, for path reconstruction.
+    parent: dict[UUID, UUID | None] = {row.id: None for row in start_rows}
+    frontier = [row.id for row in start_rows]
+
+    for _ in range(max_depth):
+        hit = next((symbol_id for symbol_id in frontier if symbol_id in targets), None)
+        if hit is not None:
+            break
+        if not frontier:
+            break
+
+        callee = aliased(Symbol)
+        rows = (
+            await db.execute(
+                select(Edge.source_id, callee)
+                .join(callee, Edge.target_id == callee.id)
+                .where(Edge.repo_id == repo_id)
+                .where(Edge.edge_type == "calls")
+                .where(Edge.source_id.in_(frontier))
+                .order_by(callee.file_path, callee.line, callee.qualified_name)
+            )
+        ).all()
+
+        next_frontier: list[UUID] = []
+        for source_id, callee_row in rows:
+            if callee_row.id in parent:
+                continue
+            parent[callee_row.id] = source_id
+            by_id[callee_row.id] = callee_row
+            next_frontier.append(callee_row.id)
+        frontier = next_frontier
+    else:
+        # Depth exhausted without the loop breaking early.
+        frontier = [symbol_id for symbol_id in frontier if symbol_id in targets]
+
+    reached = next((symbol_id for symbol_id in frontier if symbol_id in targets), None)
+    if reached is None:
+        return CallPath(found=False, start=start, end=end, max_depth=max_depth)
+
+    chain: list[UUID] = []
+    cursor: UUID | None = reached
+    while cursor is not None:
+        chain.append(cursor)
+        cursor = parent[cursor]
+    chain.reverse()
+
+    return CallPath(
+        found=True,
+        start=start,
+        end=end,
+        max_depth=max_depth,
+        nodes=[_location_from_symbol(by_id[symbol_id]) for symbol_id in chain],
+        depth=len(chain) - 1,
     )
 
 

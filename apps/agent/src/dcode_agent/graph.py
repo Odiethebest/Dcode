@@ -7,6 +7,7 @@ import re
 from typing import Any, cast
 
 from dcode_shared.observability import log_event
+from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import CallDirection
 from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
@@ -16,6 +17,7 @@ from dcode_agent import state as state_module
 from dcode_agent.llm import LLMClient, response_language_for
 from dcode_agent.settings import agent_settings
 from dcode_agent.state import AgentState
+from dcode_agent.tools import common as tool_common
 
 logger = logging.getLogger("dcode.agent.graph")
 
@@ -254,7 +256,7 @@ async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
     Returns ``None`` on empty context or any failure so synthesis degrades to
     the rule-based template.
     """
-    evidence_catalog = _build_evidence_catalog(state)
+    evidence_catalog = await _ranked_evidence_catalog(state)
     context = _build_llm_context(state, evidence_catalog=evidence_catalog)
     if not context.strip():
         return None
@@ -301,24 +303,54 @@ def _build_llm_context(
         target.display_token: f"[{evidence_id}]" for evidence_id, target in catalog.items()
     }
     blocks: list[str] = []
+
+    # Evidence with source text, in relevance order rather than in the order the
+    # tools happened to run. Retrieved chunks, file excerpts and hydrated graph
+    # results are rendered identically here so the model has no way to tell
+    # which tool produced a piece of evidence, and cannot prefer one on that
+    # basis rather than on what the code says.
+    ranked = [
+        (evidence_id, target) for evidence_id, target in catalog.items() if target.content.strip()
+    ]
+    if ranked:
+        rendered = []
+        for evidence_id, target in ranked:
+            symbol = f" symbol `{target.symbol}`" if target.symbol else ""
+            rendered.append(
+                f"[Evidence [{evidence_id}]] {target.display_token}{symbol}\n"
+                f"{_clip(target.content)}"
+            )
+        blocks.append(
+            "Evidence, most relevant first:\n\n" + "\n\n".join(rendered)
+        )
+
     for observation in state.observations:
         tool_name = observation["tool"]
         result = observation["result"]
-        if tool_name == "search_code":
-            for chunk in result.get("chunks", [])[:5]:
-                token = f"{chunk['file_path']}:{chunk['start_line']}"
-                blocks.append(
-                    f"[Evidence {evidence_id_for[token]}] {token} "
-                    f"symbol `{chunk['symbol_name']}`\n{_clip(chunk.get('content', ''))}"
+        if tool_name in {"search_code", "read_file"}:
+            # Already rendered above, with content, in ranked order.
+            continue
+        if tool_name == "find_call_path":
+            nodes = result.get("nodes", [])
+            if result.get("found") and nodes:
+                chain = " -> ".join(
+                    "{} `{}`".format(
+                        evidence_id_for["{}:{}".format(node["file_path"], node["line"])],
+                        node["symbol"],
+                    )
+                    for node in nodes
                 )
-        elif tool_name == "read_file":
-            start_line, end_line = result["line_range"]
-            token = f"{result['path']}:{start_line}"
-            blocks.append(
-                f"[Evidence {evidence_id_for[token]}] {result['path']}:{start_line}-{end_line} "
-                "(file excerpt)\n"
-                f"{_clip(result.get('content', ''))}"
-            )
+                blocks.append(
+                    f"[call path {result['start']} -> {result['end']}, "
+                    f"{result.get('depth', len(nodes) - 1)} hops]\n{chain}"
+                )
+            else:
+                blocks.append(
+                    f"[call path {result['start']} -> {result['end']}]\n"
+                    f"- no static call chain within depth {result.get('max_depth')}. "
+                    "State this rather than inferring a connection: the graph resolves "
+                    "neither dynamic dispatch nor inherited `self.method()` calls."
+                )
         elif tool_name == "get_call_neighbors":
             call_lines = [
                 f"Requested symbol `{result['symbol']}`; direction `{result['direction']}`.",
@@ -393,6 +425,126 @@ def _build_evidence_catalog(state: AgentState) -> dict[str, groundedness.Evidenc
     return {f"C{index}": target for index, target in enumerate(_allowed_evidence(state), start=1)}
 
 
+# How many pieces of evidence may carry their source into the answer prompt.
+# The same number for every arm: B3 never has more than its five retrieved
+# chunks, so this constrains B4, which is the point — graph evidence has to earn
+# a slot against retrieval instead of being appended for free.
+_EVIDENCE_CONTEXT_BUDGET = 10
+# Cap per passage sent to the reranker. BGE on CPU is token-bound.
+_RERANK_PASSAGE_CHARS = 1000
+
+
+async def _ranked_evidence_catalog(state: AgentState) -> dict[str, groundedness.EvidenceTarget]:
+    """Hydrate graph evidence, rank every candidate together, then assign IDs.
+
+    Two defects are being fixed here, both measured rather than suspected.
+
+    Graph and reference results arrived as bare `file:line` names while
+    retrieved chunks arrived with code, so the model had nothing to reason about
+    for the structural half of its evidence. They are hydrated from their
+    chunk_id first.
+
+    And evidence was ordered by which tool happened to run, never by relevance
+    to the question, so low-value graph hits displaced good retrieval. Now one
+    cross-encoder scores the union against the query.
+
+    `graph_distance` and evidence origin are deliberately **not** ranking terms.
+    A tunable "prefer graph results" prior fitted on the evaluation set would be
+    a hyper-parameter chosen to make the hypothesis pass; origin stays recorded
+    for diagnostics only.
+
+    Degrades to observation order if the reranker is unavailable — an ordering
+    is always returned, never an error.
+    """
+    targets = _allowed_evidence(state)
+    if not targets:
+        return {}
+
+    await _hydrate_evidence_content(state, targets)
+
+    scored_indices = [i for i, target in enumerate(targets) if target.content.strip()]
+    reranker = _get_reranker_client()
+    if reranker is not None and len(scored_indices) > 1:
+        passages = [_rerank_passage(targets[i]) for i in scored_indices]
+        try:
+            scores = await reranker.rerank(state.query, passages)
+        except Exception as exc:  # noqa: BLE001 - ranking is best-effort
+            log_event(logger, "agent_evidence_rerank_failed", error=str(exc))
+        else:
+            order = sorted(
+                range(len(scored_indices)),
+                key=lambda position: scores[position],
+                reverse=True,
+            )
+            ranked = [targets[scored_indices[position]] for position in order]
+            rest = [target for i, target in enumerate(targets) if i not in set(scored_indices)]
+            targets = ranked + rest
+
+    # Beyond the budget a target keeps its ID and stays citable and verifiable;
+    # it just does not spend context. Dropping it from the catalog instead would
+    # make the structural narrative reference IDs that do not exist.
+    for index, target in enumerate(targets):
+        if index >= _EVIDENCE_CONTEXT_BUDGET:
+            target.content = ""
+
+    return {f"C{index}": target for index, target in enumerate(targets, start=1)}
+
+
+def _rerank_passage(target: groundedness.EvidenceTarget) -> str:
+    header = f"{target.display_token} {target.symbol}".strip()
+    return f"{header}\n{target.content}"[:_RERANK_PASSAGE_CHARS]
+
+
+async def _hydrate_evidence_content(
+    state: AgentState,
+    targets: list[groundedness.EvidenceTarget],
+) -> None:
+    """Fetch source for targets that have a chunk id but no text yet."""
+    missing = [t for t in targets if t.chunk_id and not t.content.strip()]
+    if not missing:
+        return
+
+    wanted: list[str] = []
+    for target in missing:
+        if target.chunk_id not in wanted:
+            wanted.append(target.chunk_id)
+    wanted = wanted[:64]  # the endpoint's batch ceiling
+
+    try:
+        payload = await tool_common.fetch_internal_json(
+            "get_chunks",
+            state.repo_id,
+            {"chunk_ids": wanted},
+        )
+    except Exception as exc:  # noqa: BLE001 - hydration is best-effort
+        log_event(logger, "agent_evidence_hydration_failed", error=str(exc))
+        return
+
+    content_by_chunk = {
+        str(item["chunk_id"]): str(item.get("content", "")) for item in payload if item
+    }
+    for target in missing:
+        content = content_by_chunk.get(target.chunk_id)
+        if content:
+            target.content = content
+
+
+_reranker_client: RerankerClient | None = None
+_reranker_client_initialized = False
+
+
+def _get_reranker_client() -> RerankerClient | None:
+    global _reranker_client, _reranker_client_initialized
+    if not _reranker_client_initialized:
+        _reranker_client = create_reranker_client(
+            model=agent_settings.reranker_model,
+            endpoint=agent_settings.reranker_endpoint,
+            max_retries=agent_settings.reranker_max_retries,
+        )
+        _reranker_client_initialized = True
+    return _reranker_client
+
+
 def _allowed_citations(state: AgentState) -> list[str]:
     """Canonical evidence targets supported by observations.
 
@@ -416,6 +568,8 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
         *,
         chunk_id: object = "",
         origin: str,
+        content: str = "",
+        symbol: str = "",
     ) -> None:
         if not token:
             return
@@ -428,6 +582,8 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
                     display_token=token,
                     chunk_id=rendered_chunk_id,
                     origins=(origin,),
+                    content=content,
+                    symbol=symbol,
                 )
             )
             return
@@ -440,6 +596,11 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
             display_token=token,
             chunk_id=existing.chunk_id or rendered_chunk_id,
             origins=origins,
+            # The same location can be surfaced by several tools. Keep whichever
+            # copy carries source text; a bare graph hit must not blank out
+            # content the search result already provided.
+            content=existing.content or content,
+            symbol=existing.symbol or symbol,
         )
 
     for observation in state.observations:
@@ -451,11 +612,14 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
                     f"{chunk['file_path']}:{chunk['start_line']}",
                     chunk_id=chunk.get("chunk_id"),
                     origin=tool_name,
+                    content=str(chunk.get("content", "")),
+                    symbol=str(chunk.get("symbol_name", "")),
                 )
         elif tool_name == "read_file":
             add(
                 f"{result['path']}:{result['line_range'][0]}",
                 origin=tool_name,
+                content=str(result.get("content", "")),
             )
         elif tool_name == "get_call_neighbors":
             for key in ("matches", "callers", "callees"):
@@ -464,6 +628,7 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
                         f"{location['file_path']}:{location['line']}",
                         chunk_id=location.get("chunk_id"),
                         origin=tool_name,
+                        symbol=str(location["symbol"]),
                     )
                     symbol = str(location["symbol"])
                     if "." in symbol:
@@ -491,12 +656,24 @@ def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
                             chunk_id=resolved_target.get("chunk_id"),
                             origin=tool_name,
                         )
+        elif tool_name == "find_call_path":
+            for location in result.get("nodes", []):
+                add(
+                    f"{location['file_path']}:{location['line']}",
+                    chunk_id=location.get("chunk_id"),
+                    origin=tool_name,
+                    symbol=str(location["symbol"]),
+                )
+                symbol = str(location["symbol"])
+                if "." in symbol:
+                    add(symbol, chunk_id=location.get("chunk_id"), origin=tool_name)
         elif "locations" in result:
             for location in result["locations"]:
                 add(
                     f"{location['file_path']}:{location['line']}",
                     chunk_id=location.get("chunk_id"),
                     origin=tool_name,
+                    symbol=str(location["symbol"]),
                 )
                 symbol = str(location["symbol"])
                 if "." in symbol:
@@ -743,6 +920,21 @@ def _select_followup_tool(
     if not seed_chunks:
         return None
 
+    # Flow questions name two endpoints and ask how control gets from one to the
+    # other. Listing every reference to one of them answers a different question
+    # and buries the chain, so try the path first when both ends are namable.
+    if allow_structural:
+        endpoints = _extract_flow_endpoints(state.query, seed_chunks)
+        if endpoints is not None:
+            start, end = endpoints
+            args = {"start": start, "end": end, "max_depth": 4}
+            if not _has_tool_call(state, "find_call_path", args):
+                return (
+                    "find_call_path",
+                    args,
+                    f"Trace the call path from `{start}` to `{end}`.",
+                )
+
     # A top-1 seed makes every later Agent step inherit one retrieval mistake.
     # Expand up to three distinct high-ranked symbols while the global step cap
     # keeps the walk bounded.
@@ -845,6 +1037,50 @@ def _select_call_followup_tool(
             args,
             f"Walk resolved {direction} call edges for `{symbol}`.",
         )
+    return None
+
+
+_FLOW_MARKERS = (" from ", " through ", " to ", " into ", " reaches ", " travel ")
+
+
+def _extract_flow_endpoints(
+    query: str,
+    seed_chunks: list[dict[str, Any]],
+) -> tuple[str, str] | None:
+    """Pick a (start, end) pair for a flow question, or None.
+
+    Prefers two backticked symbols named in the question itself, because those
+    are the endpoints the asker chose. Falls back to the two highest-ranked
+    retrieved symbols only when the question reads as a flow question and names
+    at most one symbol — a weaker guess, which is why it is gated on the flow
+    markers rather than applied to every multihop query.
+
+    Returns None rather than guessing when there is no second endpoint: an
+    arbitrary target would send the path search somewhere the question never
+    asked about.
+    """
+    normalized = query.lower()
+    if not any(marker in normalized for marker in _FLOW_MARKERS):
+        return None
+
+    named = [
+        match.group(1)
+        for match in re.finditer(r"`([A-Za-z_][\w.]*)`", query)
+        if not match.group(1).endswith(".py")
+    ]
+    if len(named) >= 2:
+        return named[0], named[-1]
+
+    candidates = [
+        str(chunk["symbol_name"])
+        for chunk in seed_chunks
+        if str(chunk["symbol_name"]) != "__module_doc__"
+    ]
+    if named:
+        other = next((symbol for symbol in candidates if symbol != named[0]), None)
+        return (named[0], other) if other else None
+    if len(candidates) >= 2:
+        return candidates[0], candidates[1]
     return None
 
 

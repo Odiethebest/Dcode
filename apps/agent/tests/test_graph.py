@@ -5,6 +5,7 @@ import logging
 from typing import Any, ClassVar
 from uuid import uuid4
 
+from dcode_agent import graph as graph_module
 from dcode_agent.graph import (
     build_graph,
     contextualize_node,
@@ -1068,3 +1069,236 @@ async def test_full_mode_does_use_the_graph_on_the_same_query() -> None:
         _record(state, planned)
 
     assert STRUCTURAL_TOOLS.intersection(selected)
+
+
+async def test_flow_question_traces_a_call_path_before_listing_references() -> None:
+    """L3 questions ask how control reaches B from A.
+
+    find_references answers "everything that mentions A", which on the 33-question
+    suite cost the full arm 0.23 composite on two architecture questions. The path
+    tool has to be reached for that to change.
+    """
+    chunks = [
+        _seed_chunk("src/requests/sessions.py", "request", 557),
+        _seed_chunk("src/requests/adapters.py", "cert_verify", 307),
+    ]
+    query = (
+        "Explain how verify and client-certificate settings travel from "
+        "`Session.request` to `cert_verify`"
+    )
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        mode="full",
+        observations=[_search_observation(query, chunks)],
+    )
+
+    planned = await plan_node(state)
+
+    assert planned.pending_tool_name == "find_call_path"
+    assert planned.pending_tool_args["start"] == "Session.request"
+    assert planned.pending_tool_args["end"] == "cert_verify"
+
+
+async def test_no_graph_mode_never_traces_a_call_path() -> None:
+    """find_call_path is a graph tool, so B3.5 must not reach it."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "request", 557)]
+    query = "Explain how settings travel from `Session.request` to `cert_verify`"
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        mode="agent_no_graph",
+        observations=[_search_observation(query, chunks)],
+    )
+
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        assert planned.pending_tool_name != "find_call_path"
+        _record(state, planned)
+
+
+async def test_a_question_naming_one_endpoint_does_not_invent_the_other() -> None:
+    """Guessing a target would send the search somewhere never asked about."""
+    assert (
+        graph_module._extract_flow_endpoints(
+            "Explain how the redirect flow works from `resolve_redirects`",
+            [
+                {
+                    "file_path": "src/requests/sessions.py",
+                    "symbol_name": "__module_doc__",
+                    "start_line": 1,
+                }
+            ],
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evidence hydration and unified ranking
+# ---------------------------------------------------------------------------
+
+
+def _graph_observation(chunk_id: str) -> dict[str, Any]:
+    return {
+        "tool": "find_references",
+        "args": {"symbol": "resolve_redirects"},
+        "result": {
+            "locations": [
+                {
+                    "symbol": "requests.sessions.Session.resolve_redirects",
+                    "file_path": "src/requests/sessions.py",
+                    "line": 186,
+                    "chunk_id": chunk_id,
+                }
+            ]
+        },
+        "cached": False,
+    }
+
+
+async def test_graph_evidence_is_hydrated_with_source(monkeypatch) -> None:
+    """Bare file:line names cannot compete with chunks that carry code.
+
+    Before hydration the structural half of B4's evidence reached the prompt as
+    a list of locations with no source at all, which is a large part of why it
+    was rarely cited.
+    """
+    chunk_id = str(uuid4())
+    requested: dict[str, Any] = {}
+
+    async def fake_fetch(endpoint: str, repo_id: str, params: dict[str, Any]) -> Any:
+        requested.update(endpoint=endpoint, params=params)
+        return [{"chunk_id": chunk_id, "content": "def resolve_redirects(self): ..."}]
+
+    monkeypatch.setattr(graph_module.tool_common, "fetch_internal_json", fake_fetch)
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: None)
+
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="how are redirects resolved",
+        observations=[_graph_observation(chunk_id)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert requested["endpoint"] == "get_chunks"
+    assert requested["params"]["chunk_ids"] == [chunk_id]
+    hydrated = [t for t in catalog.values() if t.chunk_id == chunk_id]
+    assert hydrated and "resolve_redirects" in hydrated[0].content
+    context = graph_module._build_llm_context(state, evidence_catalog=catalog)
+    assert "def resolve_redirects" in context
+
+
+async def test_evidence_is_ordered_by_relevance_not_by_tool_order(monkeypatch) -> None:
+    """The whole point of the change: graph and retrieval compete on one scale."""
+    graph_chunk = str(uuid4())
+
+    async def fake_fetch(endpoint: str, repo_id: str, params: dict[str, Any]) -> Any:
+        return [{"chunk_id": graph_chunk, "content": "the graph hit, highly relevant"}]
+
+    class FakeReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            # Score the graph-derived passage above the retrieved one.
+            return [0.1 if "search hit" in p else 0.9 for p in passages]
+
+    monkeypatch.setattr(graph_module.tool_common, "fetch_internal_json", fake_fetch)
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: FakeReranker())
+
+    search_chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": "src/requests/models.py",
+            "symbol_name": "prepare",
+            "start_line": 424,
+            "end_line": 440,
+            "content": "the search hit",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="how are redirects resolved",
+        observations=[
+            _search_observation("redirects", search_chunks),
+            _graph_observation(graph_chunk),
+        ],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    # C1 is the first thing the model reads. Tool order would have put the
+    # search hit there; relevance puts the graph hit there.
+    assert catalog["C1"].chunk_id == graph_chunk
+
+
+async def test_context_budget_is_capped_and_overflow_stays_citable(monkeypatch) -> None:
+    """Beyond the budget a target loses its content, never its ID.
+
+    Dropping it from the catalog would leave the structural narrative
+    referencing evidence IDs that no longer exist, and would silently make
+    verified citations unverifiable.
+    """
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: None)
+
+    budget = graph_module._EVIDENCE_CONTEXT_BUDGET
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/mod{i}.py",
+            "symbol_name": f"sym{i}",
+            "start_line": i + 1,
+            "end_line": i + 5,
+            "content": f"body {i}",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for i in range(budget + 4)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="anything",
+        observations=[_search_observation("anything", chunks)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert len(catalog) == budget + 4
+    with_content = [t for t in catalog.values() if t.content]
+    assert len(with_content) == budget
+
+
+async def test_ranking_failure_degrades_to_observation_order(monkeypatch) -> None:
+    """An unavailable reranker must not cost the user their answer."""
+
+    class BrokenReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            raise RuntimeError("reranker down")
+
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: BrokenReranker())
+
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/mod{i}.py",
+            "symbol_name": f"sym{i}",
+            "start_line": i + 1,
+            "end_line": i + 5,
+            "content": f"body {i}",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for i in range(2)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="anything",
+        observations=[_search_observation("anything", chunks)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert catalog["C1"].display_token == "src/requests/mod0.py:1"
