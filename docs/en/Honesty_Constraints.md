@@ -204,7 +204,7 @@ The same applies to a failed index: show the reason, not just that it failed.
 ## 11. Displayed numbers are generated, never transcribed
 
 Every official H1 snapshot figure in the UI and in the generated documentation
-blocks comes from `results/eval-h1-l3x12-2026-07-31/` through
+blocks comes from `results/eval-h1-repeat3-2026-07-31/` through
 `scripts/sync_eval_artifacts.py`, and `make check` fails if any of those surfaces
 drifts. A separately labelled experiment report may contain figures derived
 from its own committed run directories; it must name that authority explicitly

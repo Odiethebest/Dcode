@@ -166,16 +166,20 @@ export default function MethodologyPage() {
         eyebrow="The verdict"
         title={
           <>
-            On this snapshot, it <em className="italic text-brand">doesn&rsquo;t clear the bar</em>{' '}
-            — yet.
+            Three of four comparisons clear. <em className="italic text-brand">H1 needs four.</em>
           </>
         }
         lede={
           <>
             Composite margin of <Mono>B4</Mono> over each baseline, per question level. Positive
             means B4 is ahead; the bar is <Mono>+{h1Report.threshold.toFixed(2)}</Mono> over{' '}
-            <em>both</em> B2 and B3, on <em>both</em> levels. B4 clears it against B2 on cross-file
-            questions and against nothing else.
+            <em>both</em> B2 and B3, on <em>both</em> levels. Architecture questions clear against
+            both rivals — by {(h1Report.comparisons.L3.marginVsB3 / h1Report.threshold).toFixed(1)}×
+            and {(h1Report.comparisons.L3.marginVsB2 / h1Report.threshold).toFixed(1)}× the bar.
+            Cross-file clears against dense RAG and falls{' '}
+            {(h1Report.threshold - h1Report.comparisons.L2.marginVsB3).toFixed(3)} short against
+            hybrid+rerank. H1 is a conjunction, so three of four is{' '}
+            <Mono>{h1Report.decision}</Mono>.
           </>
         }
       >
@@ -220,14 +224,9 @@ export default function MethodologyPage() {
                 </div>
                 <p className="mt-4 border-t border-line pt-4 font-mono text-[11px] leading-relaxed text-ink-3">
                   bar · both margins ≥ +{h1Report.threshold.toFixed(2)}
-                  {level === 'L3' && (
-                    <>
-                      <br />
-                      one question still moves this level by up to {(1 / c.questions).toFixed(3)} —
-                      more than the margin it missed by. A single question&rsquo;s weight only drops
-                      below the bar at n&nbsp;&gt;&nbsp;20.
-                    </>
-                  )}
+                  <br />
+                  one question moves this level by up to {(1 / c.questions).toFixed(3)}; a single
+                  question&rsquo;s weight only drops below the bar at n&nbsp;&gt;&nbsp;20
                 </p>
               </div>
             );
@@ -326,11 +325,12 @@ export default function MethodologyPage() {
             <em className="italic text-brand">and what the ladder actually shows.</em>
           </h3>
           <p className="mt-2 max-w-[68ch] text-[14.5px] leading-relaxed text-ink-2">
-            This run records the corrected Okapi BM25 path in B1 and in the sparse arm of B3/B4. The
-            level-by-level ordering is not monotonic and has stopped being explainable as
-            small-sample noise: across 33 questions, BM25 alone still beats dense retrieval
-            everywhere, and it out-recalls hybrid on both L2 and L3. Sparse lexical matching is
-            simply strong on this corpus, and the page reports that rather than smoothing it.
+            This run records the corrected Okapi BM25 path in B1 and in the sparse arm of B3/B4.
+            The ladder climbs as designed on cross-file questions now — sparse, then dense, then
+            hybrid, then the full system. It did not before: until test code was excluded from
+            retrieval, BM25 alone out-recalled hybrid on both H1 levels. One inversion survives and
+            is reported rather than smoothed: on architecture questions sparse B1 still edges dense
+            B2, by 0.008.
           </p>
           <div className="mt-5 overflow-x-auto rounded-card border border-line bg-surface">
             <table className="w-full min-w-[560px] border-collapse text-left">
@@ -395,18 +395,22 @@ export default function MethodologyPage() {
           <div className="rounded-card border border-line bg-surface p-7 max-[600px]:p-6">
             <p className="text-[15px] leading-relaxed text-ink-2">
               <b className="font-semibold text-ink">
-                The call graph contributed 4 new ground-truth hits, across 3 of the 33 questions.
+                The call graph is worth +0.022 on cross-file questions and +0.023 on architecture
+                questions.
               </b>{' '}
-              Every citation now carries the tool that surfaced it, so evidence the graph found that
-              hybrid retrieval had not already returned can be counted rather than assumed. This is
-              the first run in which the hypothesis was measurable at all — and the measured effect
-              is this one.
+              Positive and consistent — and negative two runs ago, before graph results carried
+              their source code into the answer prompt. Every citation records the tool that
+              surfaced it, so evidence the graph found that hybrid retrieval had not already
+              returned is counted rather than assumed: 14 new ground-truth hits across 10 of the 33
+              questions.
             </p>
             <p className="mt-4 text-[15px] leading-relaxed text-ink-2">
-              So B4&rsquo;s margin over B3 is mostly <em>not</em> the graph. What differs is the
-              agent&rsquo;s multi-step evidence selection, and nothing in this run separates the two.{' '}
+              And it is not what is doing the work. The <Mono>B3.5</Mono> arm is B4 with the graph
+              and reference tools switched off and everything else identical, so the two halves come
+              apart: on architecture questions the agent&rsquo;s multi-step evidence gathering is
+              worth <b className="font-semibold text-ink">+0.147</b>, roughly six times the graph.{' '}
               <b className="font-semibold text-ink">
-                The ablation that would separate them does not exist yet.
+                Without that ablation the +0.147 would have been reported as the graph&rsquo;s.
               </b>
             </p>
             <p className="mt-4 border-l-2 border-brand pl-4 text-[14px] leading-relaxed text-ink-2">

@@ -27,7 +27,7 @@ make migrate                            # Alembic upgrade head inside the api co
 make check                              # lint + typecheck + tests + eval-artifact drift check
 make frontend-build
 npm --prefix apps/frontend run dev      # → http://localhost:5173/
-python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-l3x12-2026-07-31]
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-repeat3-2026-07-31]
 make eval-smoke                         # single-baseline harness smoke
 ```
 
@@ -336,7 +336,7 @@ Once the smoke passes:
    run was aborted mid-B3 and restarted for exactly this reason.
 1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
    results directory. Do not overwrite any committed snapshot, including
-   `results/eval-h1-l3x12-2026-07-31/`, `results/eval-h1-bm25-2026-07-30/` and
+   `results/eval-h1-repeat3-2026-07-31/`, `results/eval-h1-bm25-2026-07-30/` and
    `results/eval-real/` — see [`results/README.md`](../../results/README.md).
    Pass `--repo-id`; the harness then records the database's exact
    `corpus_revision` together with the BM25 formula, tokenizer, document fields,
@@ -360,14 +360,17 @@ Once the smoke passes:
 4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
    report whichever way it lands.
 
-Criteria set 2 is closed: the shared B3/B4 agent control, B4 final-evidence
-scoring under `final_verified_evidence_v1`, and the `L3` 3 → 12 expansion were
-all run on 2026-07-31, and `results/eval-h1-l3x12-2026-07-31/` is the current
-verdict. Before the **next** H1 re-run, read criteria set 3 in
-[`Final_Report.md`](Final_Report.md): one scoring rule applied to every arm, a
-`dense_only` mode so B2 can produce final evidence at all, and a `B3.5`
-diagnostic arm. Re-running the current protocol unchanged reproduces a verdict
-whose value depends on which arm is scored by which rule.
+Criteria set 3 items 1–3 are done and were run: one scoring rule for every agent
+arm, a `dense_only` B2, and the `B3.5` no-graph ablation. The composite also
+dropped groundedness, and the suite is now averaged over three repeats. The
+current verdict is `results/eval-h1-repeat3-2026-07-31/`.
+
+**Before the next H1 run, read this.** The L2 shortfall is 0.006 against a
+between-repeat standard deviation of 0.034. Four single runs before the repeated
+one each "just missed", on alternating levels, and repeat 3 of the current run
+cleared everything on its own. **Another round of system tuning cannot be
+attributed to the tuning at this effect size.** What is left is more L2 questions
+or a second corpus — criteria set 3 item 5.
 
 ## Verified Run — 2026-07-27
 
@@ -429,25 +432,36 @@ validated the corrected Okapi BM25 path and the evidence-ID groundedness path.
 H1 was `unsupported`: B4 beat B2 on L2, lost slightly on L3, and tied B3 on both
 levels because that harness gave B3 and B4 the same scored retrieval list.
 
-## Complete L3-expanded H1 Run — 2026-07-31
+## L3-expanded single runs — 2026-07-31
 
-The current verdict. Same repo `2543893e-0965-4be7-ac45-5a8e38600bc0`, same
-commit `414f0513c33883adf6f2b46901d4f0b38a455851`, same 726 chunks at 768
-dimensions and the same `index_revision`, so the only differences from the run
-above are the question set and the scoring protocol.
+Four single runs, all superseded by the repeated run below and all retained:
+`eval-h1-l3x12` (33-question suite, mixed scoring), `eval-h1-uniform-v2` (one
+scoring rule for every arm, `B3.5` added), `eval-h1-ranked-evidence` (graph
+evidence hydrated and reranked), `eval-h1-no-test-evidence` (test code excluded
+from retrieval). Each "just missed" on one level, and which level alternated.
+That pattern is what motivated repeating the suite.
 
-The suite was frozen first: 17 questions added (`L3` 3 → 12, 33 total), every
-anchor verified to resolve 1:1 with the resolver alone before any baseline ran,
-then committed with its sha256 recorded in `provenance.json`. Redis was flushed.
-A two-mode probe against `/internal/query` confirmed the B3/B4 control
-differentiates — `hybrid_only` issued one tool call, `full` issued eight — before
-the suite started. The runner completed all 33 questions for each baseline with
-zero errors, observed the same corpus revision before and after, and exited
-successfully.
+## Repeated H1 Run — 2026-07-31 (current)
 
-The recorded output is `results/eval-h1-l3x12-2026-07-31/`. H1 is `unsupported`:
-L2 cleared against both rivals, L3 missed by 0.005. Read `h1_report.json` and the
-generated blocks in `Final_Report.md` for the exact figures, and that report's
-*Reading the result honestly* section before quoting any margin — the verdict
-depends on B2/B3 and B4 being scored by different rules, and the call graph
-itself accounts for only 4 new ground-truth hits across 3 of the 33 questions.
+Same repo `2543893e-0965-4be7-ac45-5a8e38600bc0`, same commit
+`414f0513c33883adf6f2b46901d4f0b38a455851`, same 726 chunks at 768 dimensions and
+the same `index_revision` as every run above, so differences between them are
+protocol and agent, never corpus.
+
+Five arms including the `B3.5` ablation, the frozen 33-question suite, **three
+repeats averaged**, under `uniform_final_verified_evidence_v2` and the three-term
+composite — both declared and committed before this run existed. Redis was
+flushed once before repeat 1 and deliberately not between repeats: tool results
+are deterministic for a fixed index, and the stochastic stage is synthesis, which
+is never cached. Zero API or agent errors; same corpus revision before and after.
+
+Output: `results/eval-h1-repeat3-2026-07-31/`. H1 is `unsupported` — three of the
+four required comparisons clear, and `B4 vs B3` on L2 falls 0.006 short.
+
+**The number to take from this run is the spread, not the margin.** Across the
+three repeats the L2 margin was +0.038, +0.006 and +0.088 — a range of 0.083,
+wider than the 0.050 bar — and **repeat 3 returned `supported` on its own**. Each
+repeat keeps its complete independent output under `repeat-N/` with its own
+`h1_report.json`, so that is checkable rather than asserted. Read
+`provenance.json` and the *Reading the result honestly* section of
+[`Final_Report.md`](Final_Report.md) before quoting any figure from here.

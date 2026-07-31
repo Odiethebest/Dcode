@@ -1,0 +1,53 @@
+{
+  "L1": {
+    "baseline": "B4",
+    "questions": 5,
+    "k": 5,
+    "recall_at_k": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_k": 1.0,
+    "candidate_recall_at_k": 1.0,
+    "candidate_mrr": 1.0,
+    "candidate_ndcg_at_k": 1.0,
+    "final_evidence_recall_at_k": 1.0,
+    "final_evidence_mrr": 1.0,
+    "final_evidence_ndcg_at_k": 1.0,
+    "groundedness": 1.0,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  },
+  "L2": {
+    "baseline": "B4",
+    "questions": 16,
+    "k": 5,
+    "recall_at_k": 0.5979166666666667,
+    "mrr": 0.8645833333333334,
+    "ndcg_at_k": 0.6234860899477379,
+    "candidate_recall_at_k": 0.55625,
+    "candidate_mrr": 0.7864583333333334,
+    "candidate_ndcg_at_k": 0.5565162674631962,
+    "final_evidence_recall_at_k": 0.5979166666666667,
+    "final_evidence_mrr": 0.8645833333333334,
+    "final_evidence_ndcg_at_k": 0.6234860899477379,
+    "groundedness": 1.0,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  },
+  "L3": {
+    "baseline": "B4",
+    "questions": 12,
+    "k": 5,
+    "recall_at_k": 0.5111111111111111,
+    "mrr": 0.8333333333333334,
+    "ndcg_at_k": 0.5484979583991527,
+    "candidate_recall_at_k": 0.3819444444444444,
+    "candidate_mrr": 0.6694444444444444,
+    "candidate_ndcg_at_k": 0.4013030291044964,
+    "final_evidence_recall_at_k": 0.5111111111111111,
+    "final_evidence_mrr": 0.8333333333333334,
+    "final_evidence_ndcg_at_k": 0.5484979583991527,
+    "groundedness": 1.0,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  }
+}

@@ -14,6 +14,18 @@ import { cx } from '@/lib/cx';
 import { GITHUB_URL } from '@/lib/links';
 
 const LADDER_ORDER: BaselineName[] = ['B1', 'B2', 'B3', 'B4'];
+
+/** H1 is four comparisons, not one. Count them rather than restating the word. */
+const clearedCells = (['L2', 'L3'] as const).reduce(
+  (total, level) =>
+    total +
+    Number(h1Report.comparisons[level].marginVsB2 >= h1Report.threshold) +
+    Number(h1Report.comparisons[level].marginVsB3 >= h1Report.threshold),
+  0
+);
+const supportedRepeats = h1Report.perRepeat.filter((r) => r.decision === 'supported').length;
+const l2Margins = h1Report.perRepeat.map((r) => r.marginVsB3.L2);
+const l2MarginRange = `+${Math.min(...l2Margins).toFixed(3)} to +${Math.max(...l2Margins).toFixed(3)}`;
 /** Highest nDCG wins; ties keep the earlier rung, so a tied B4 never displaces B3. */
 const LADDER_LEADER = LADDER_ORDER.reduce((best, b) =>
   suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
@@ -441,11 +453,16 @@ export default function LandingPage() {
               come in.
             </p>
             <p className="mt-5 max-w-[54ch] font-display text-[clamp(15px,1.7vw,17px)] leading-[1.7] text-ink-2">
-              On the current run it{' '}
-              <b className="font-semibold text-ink">didn&rsquo;t clear that bar</b>, so H1 stands
-              recorded <b className="font-semibold text-ink">{h1Report.decision}</b> — you can read
-              the whole scoreboard, including why, one click away. A test you can only pass
-              isn&rsquo;t a test.
+              H1 is a conjunction — two question levels, two rival baselines, all four
+              comparisons. <b className="font-semibold text-ink">Three of the four clear.</b> On
+              architecture-level questions it beats hybrid retrieval by{' '}
+              <b className="font-semibold text-ink">
+                {(h1Report.comparisons.L3.marginVsB3 / h1Report.threshold).toFixed(1)}×
+              </b>{' '}
+              the required margin, in every one of {h1Report.repeats} repeated runs. The fourth
+              falls short, so H1 stands recorded{' '}
+              <b className="font-semibold text-ink">{h1Report.decision}</b>. A test you can only
+              pass isn&rsquo;t a test.
             </p>
             <Link
               to="/methodology"
@@ -462,6 +479,63 @@ export default function LandingPage() {
               <span className="rounded-full border border-warn bg-warn-wash px-2.5 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-warn">
                 H1 — {h1Report.decision}
               </span>
+            </div>
+
+            {/* The conjunction resolves to one word; the four comparisons behind
+                it do not, and three of them clear. Showing only the word states
+                less than the run measured. */}
+            <div className="mb-5 rounded-card border border-line bg-sunk px-4 py-3.5">
+              <div className="mb-2.5 flex items-center justify-between font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-3">
+                <span>H1 · by level</span>
+                <span className="text-ink-2">{clearedCells} / 4 comparisons clear</span>
+              </div>
+              {(['L3', 'L2'] as const).map((level) => (
+                <div key={level} className="border-t border-line py-2 first:border-t-0 first:pt-0">
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-mono text-[11.5px] text-ink-2">
+                      {level === 'L3' ? 'architecture' : 'cross-file'}
+                      <span className="text-ink-3"> · {level}</span>
+                    </span>
+                    <span
+                      className={cx(
+                        'font-mono text-[10px] uppercase tracking-[0.08em]',
+                        h1Report.comparisons[level].supported ? 'text-good' : 'text-ink-3'
+                      )}
+                    >
+                      {h1Report.comparisons[level].supported ? 'supported' : 'not supported'}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex gap-5 font-mono text-[11px]">
+                    {(
+                      [
+                        ['vs dense RAG', h1Report.comparisons[level].marginVsB2],
+                        ['vs hybrid+rerank', h1Report.comparisons[level].marginVsB3],
+                      ] as const
+                    ).map(([label, margin]) => (
+                      <span key={label} className="flex items-center gap-1.5">
+                        <span className="text-ink-3">{label}</span>
+                        <span className={margin >= h1Report.threshold ? 'text-good' : 'text-bad'}>
+                          {margin >= 0 ? '+' : '−'}
+                          {Math.abs(margin).toFixed(3)}
+                        </span>
+                        <span className="text-ink-3">
+                          {margin >= h1Report.threshold
+                            ? `${(margin / h1Report.threshold).toFixed(1)}×`
+                            : `short ${(h1Report.threshold - margin).toFixed(3)}`}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {/* A mean margin without its spread claims a precision this suite
+                  does not have: across identical repeats the cross-file margin
+                  ranged wider than the bar, and one repeat cleared on its own. */}
+              <p className="mt-2.5 border-t border-line pt-2.5 font-mono text-[10px] leading-relaxed text-ink-3">
+                mean of {h1Report.repeats} repeated runs · cross-file margin ranged{' '}
+                {l2MarginRange} across them, wider than the {h1Report.threshold.toFixed(2)} bar ·{' '}
+                {supportedRepeats} of {h1Report.repeats} repeats cleared all four on their own
+              </p>
             </div>
 
             {/* B0 has never been measured — it needs an API token this run didn't

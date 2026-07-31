@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate every artifact that restates the evaluation numbers.
 
-    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-l3x12-2026-07-31]
+    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-repeat3-2026-07-31]
 
 Targets:
   - apps/frontend/src/demo/evalSnapshot.ts   (read by /methodology and the landing ladder)
@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_RUN = "results/eval-h1-l3x12-2026-07-31"
+DEFAULT_RUN = "results/eval-h1-repeat3-2026-07-31"
 TS_OUT = ROOT / "apps/frontend/src/demo/evalSnapshot.ts"
 DOC_TARGETS = [
     ROOT / "README.md",
@@ -489,6 +489,21 @@ export interface DemoQuestionCase {
         w(f"      supported: {'true' if c['supported'] else 'false'},")
         w("    },")
     w("  } satisfies Record<Taxonomy, H1Comparison>,")
+    # Repeats and their individual verdicts. A surface that shows a mean margin
+    # without the spread it came from is claiming a precision the run does not
+    # have — on this suite the L2 margin ranged wider than the bar itself.
+    w(f"  repeats: {int(h1.get('repeats', 1))},")
+    w("  perRepeat: [")
+    for entry in h1.get("per_repeat", []):
+        w("    {")
+        w(f"      repeat: {int(entry['repeat'])},")
+        w(f"      decision: {s(entry['decision'])},")
+        w("      marginVsB3: {")
+        for level in H1_LEVELS:
+            w(f"        {level}: {num(entry['comparisons'][level]['margin_vs_B3'])},")
+        w("      },")
+        w("    },")
+    w("  ],")
     w("};\n")
 
     w("""/**

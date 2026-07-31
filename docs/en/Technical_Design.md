@@ -63,7 +63,7 @@ user's task — nobody hand-copies a repository UUID between pages.
 | `src/components/ui/` | Six shared primitives, consuming design tokens only |
 | `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
 | `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
-| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-l3x12-2026-07-31/` — do not edit |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-repeat3-2026-07-31/` — do not edit |
 | `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Runtime Architecture
@@ -313,7 +313,7 @@ because the tool cache key is `(tool, repo_id, args)` — a mode held outside th
 args would let a dense and a hybrid search for the same query collide on one
 cache entry and make two arms silently identical.
 
-The current `results/eval-h1-l3x12-2026-07-31/` snapshot exercises
+The current `results/eval-h1-repeat3-2026-07-31/` snapshot exercises
 `okapi_bm25_v1` in B1 and in the sparse component of B3/B4, over the 33-question
 suite. `results/eval-h1-bm25-2026-07-30/` is the superseded previous complete
 run, and `results/eval-real/` before it used the legacy lexical heuristic; both
@@ -368,7 +368,7 @@ executable decision:
 - programmatic groundedness should reach 95%; the current B4 run clears that
   guardrail.
 
-The committed `results/eval-h1-l3x12-2026-07-31/` snapshot is the first to
+The committed `results/eval-h1-repeat3-2026-07-31/` snapshot is the first to
 measure the graph's own contribution, through
 `new_gt_hits_from_structural_evidence`: 4 new ground-truth hits across 3 of 33
 questions. The verdict stays `unsupported`, with L2 cleared and L3 short by

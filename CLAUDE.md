@@ -28,18 +28,22 @@ its numbers are generated rather than translated.
 
 ## 1. Two standing constraints
 
-1. **The next H1 run is unblocked but has not happened.** Criteria set 3 items
-   1–3 are implemented and pre-registered: one scoring rule for every agent arm
-   (`uniform_final_verified_evidence_v2`), a `dense_only` mode so B2 runs the
-   real synthesis and guardrail, and the `B3.5` no-graph diagnostic arm.
-   `results/eval-h1-l3x12-2026-07-31/` is still the current verdict and was
-   produced under the **old** `final_verified_evidence_v1` protocol — do not
-   describe it as reflecting the new code.
+1. **Do not chase the L2 margin with more system tweaks.** The current verdict
+   is `unsupported` with three of four comparisons clear; `B4 vs B3` on L2 falls
+   0.006 short. **Across three identical repeats that margin was +0.038, +0.006
+   and +0.088** — a range wider than the 0.050 bar, and repeat 3 returned
+   `supported` on its own. The shortfall is a fifth of the between-repeat
+   standard deviation, so another round of tuning cannot be attributed to the
+   tuning. Four single runs before this one each "just missed", in alternating
+   levels, for exactly this reason.
 
-   Running it is a deliberate act, so ask first. When it happens:
-   `--baseline B1 B2 B3 B3.5 B4`, and **restart the agent container** — it holds
-   the source live-mounted but the process must pick up the new `AgentMode`
-   literals or `dense_only`/`agent_no_graph` come back `422`.
+   The remedy is more L2 questions — 16 is too few for the effect size — or a
+   second corpus. Not more repeats (it would take ~100) and not more tweaks.
+
+   **The agent's source is baked into its image, not live-mounted.**
+   `docker compose restart agent` runs the old code; use
+   `docker compose up -d --build agent api`. A stale image answers `422` to any
+   new `AgentMode` literal, which is how this was found.
 
    Also: **flush Redis before any recorded run** (`docker exec dcode-redis-1
    redis-cli FLUSHALL`). Agent tool results cache for 24h, and a warm cache can
@@ -69,7 +73,7 @@ docs/en/         five authoritative documents (table above); docs/archive/ is hi
 
 **Official snapshot numbers are generated, never typed.** Every H1 snapshot
 figure in the UI and generated documentation blocks comes from
-`results/eval-h1-l3x12-2026-07-31/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
+`results/eval-h1-repeat3-2026-07-31/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
 if any of those surfaces drifts. A separately labelled experiment report may
 derive figures from its own committed run directories and must name that
 authority. Markdown targets use

@@ -328,10 +328,17 @@ def _mean_across_repeats(
                 "question": first["question"],
                 "repeats": len(samples),
             }
-            # Preserved rather than recomputed: _aggregate_metrics derives the
-            # uncited-answer count from this field, and an averaged row has no
-            # single citation list.
-            row["citations"] = [] if all(not s.get("citations") for s in samples) else ["averaged"]
+            # An average has no answer text. Carry one real sample verbatim and
+            # say which repeat it came from, rather than inventing a synthetic
+            # transcript or leaving surfaces that display answers with nothing
+            # to show. _aggregate_metrics also derives the uncited-answer count
+            # from `citations`, and repeat 1's list is a truthful sample of it.
+            row["answer"] = first.get("answer", "")
+            row["citations"] = list(first.get("citations", []))
+            row["sampled_from_repeat"] = 1
+            row["gt_chunk_ids"] = first.get("gt_chunk_ids", [])
+            row["gt_files"] = first.get("gt_files", [])
+            row["source"] = first.get("source", "")
             for metric in (
                 "recall_at_k",
                 "mrr",

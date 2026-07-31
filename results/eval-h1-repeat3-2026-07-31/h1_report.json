@@ -1,0 +1,115 @@
+{
+  "decision": "unsupported",
+  "threshold": 0.05,
+  "scoring_protocol": "uniform_final_verified_evidence_v2",
+  "compared_taxonomies": [
+    "L2",
+    "L3"
+  ],
+  "comparisons": {
+    "L2": {
+      "B2_composite": 0.5789821474264015,
+      "B3_composite": 0.67139632857864,
+      "B4_composite": 0.7153009931424164,
+      "margin_vs_B2": 0.13631884571601482,
+      "margin_vs_B3": 0.0439046645637764,
+      "supported": false,
+      "four_term": {
+        "B2_composite": 0.6842366105698011,
+        "B3_composite": 0.75354724643398,
+        "B4_composite": 0.7864757448568123,
+        "margin_vs_B2": 0.10223913428701115,
+        "margin_vs_B3": 0.0329284984228323,
+        "supported": false
+      }
+    },
+    "L3": {
+      "B2_composite": 0.38416166949395886,
+      "B3_composite": 0.46223196806699074,
+      "B4_composite": 0.6315195953130592,
+      "margin_vs_B2": 0.24735792581910038,
+      "margin_vs_B3": 0.1692876272460685,
+      "supported": true,
+      "four_term": {
+        "B2_composite": 0.5381212521204691,
+        "B3_composite": 0.5966739760502431,
+        "B4_composite": 0.7236396964847944,
+        "margin_vs_B2": 0.1855184443643253,
+        "margin_vs_B3": 0.12696572043455134,
+        "supported": true
+      }
+    }
+  },
+  "note": "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 composite points on both L2 and L3.",
+  "diagnostics": {
+    "about": "Diagnostic only. B3.5 is B4 with the call-graph and reference tools disabled and everything else identical. These margins decompose B4 - B3 into a graph term and an agent-loop term; they do not enter the H1 decision.",
+    "per_taxonomy": {
+      "L2": {
+        "B3_composite": 0.67139632857864,
+        "B3.5_composite": 0.6934536655404782,
+        "B4_composite": 0.7153009931424164,
+        "graph_margin_B4_vs_B3.5": 0.021847327601938193,
+        "agent_loop_margin_B3.5_vs_B3": 0.022057336961838203
+      },
+      "L3": {
+        "B3_composite": 0.46223196806699074,
+        "B3.5_composite": 0.6088806996070799,
+        "B4_composite": 0.6315195953130592,
+        "graph_margin_B4_vs_B3.5": 0.022638895705979323,
+        "agent_loop_margin_B3.5_vs_B3": 0.14664873154008917
+      }
+    }
+  },
+  "repeats": 3,
+  "aggregation": "per-question metrics averaged across repeats, then aggregated; each repeat's independent verdict is listed under per_repeat",
+  "per_repeat": [
+    {
+      "repeat": 1,
+      "decision": "unsupported",
+      "comparisons": {
+        "L2": {
+          "margin_vs_B2": 0.14563925000590972,
+          "margin_vs_B3": 0.0376010164973648,
+          "supported": false
+        },
+        "L3": {
+          "margin_vs_B2": 0.23672273041814884,
+          "margin_vs_B3": 0.13163111864299415,
+          "supported": true
+        }
+      }
+    },
+    {
+      "repeat": 2,
+      "decision": "unsupported",
+      "comparisons": {
+        "L2": {
+          "margin_vs_B2": 0.11700562670190517,
+          "margin_vs_B3": 0.005666266874163828,
+          "supported": false
+        },
+        "L3": {
+          "margin_vs_B2": 0.23501892614264153,
+          "margin_vs_B3": 0.17512679754643073,
+          "supported": true
+        }
+      }
+    },
+    {
+      "repeat": 3,
+      "decision": "supported",
+      "comparisons": {
+        "L2": {
+          "margin_vs_B2": 0.1463116604402297,
+          "margin_vs_B3": 0.08844671031980045,
+          "supported": true
+        },
+        "L3": {
+          "margin_vs_B2": 0.27033212089651054,
+          "margin_vs_B3": 0.20110496554878038,
+          "supported": true
+        }
+      }
+    }
+  ]
+}

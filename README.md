@@ -231,11 +231,13 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 > The current interaction path includes eleven tools, bilingual caller/callee
 > routing, bounded multi-turn follow-ups, server-owned citation IDs,
 > same-language answers, and KaTeX math rendering.
-> H1 has been measured on a **full real-model run** over 33 questions and the
-> recorded decision is **unsupported** — B4 cleared the bar on cross-file
-> questions and missed on architecture questions by 0.005. See
-> [Current Result](#current-result) for the numbers, the scoring rule the verdict
-> turns on, and how little of B4's margin the call graph accounts for.
+> H1 has been measured over 33 questions, five arms including a no-graph
+> ablation, and **three repeated runs**. The recorded decision is
+> **unsupported**: H1 is a conjunction of four comparisons and three of them
+> clear — architecture-level questions beat both rivals by 3.4× and 4.9× the
+> required margin, cross-file falls 0.006 short against hybrid+rerank. Across the
+> three repeats that margin ranged wider than the bar itself, so see
+> [Current Result](#current-result) before quoting any of it.
 > The default stack runs stub models; the real ones are host sidecars needing
 > three commands, not one (below). Status detail and what is unfinished:
 > [`docs/en/Final_Report.md`](docs/en/Final_Report.md).
@@ -368,30 +370,28 @@ Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/
 
 ### Current Result
 
-**Protocol:** B3 and B4 use the same Agent model, prompt, citation verifier, and
-groundedness path. Both start with the same hybrid search; B3 stops there, while
-B4 may add graph/structure evidence. The harness records candidate-search and
-final-evidence metrics side by side, and B4's official retrieval score uses its
-ordered verified final evidence while B2/B3 use their retrieved top-k. **The two
-arms are therefore scored by different rules, and the verdict turns on that** —
-see below.
+**Protocol:** every agent arm — B2, B3, B3.5, B4 — shares one model, prompt,
+citation verifier, groundedness path and step budget, and one scoring rule
+(`uniform_final_verified_evidence_v2`, on ordered verified final evidence). They
+differ only in retrieval mode and how far tool expansion is allowed to go. B1
+answers from a template and is a retrieval reference outside the decision.
 
-Measured on the full real-model run over 33 questions. Every figure below is
-generated from the results directory by `scripts/sync_eval_artifacts.py`, never
-transcribed.
+Measured over 33 questions, **averaged across three repeats**; each repeat's
+independent verdict is recorded. Every figure below is generated from the results
+directory by `scripts/sync_eval_artifacts.py`, never transcribed.
 
 <!-- BEGIN generated: eval-suite-metrics -->
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` BM25 sparse | 0.369 | 0.473 | 0.334 | 1.000 |
-| `B2` Dense RAG | 0.340 | 0.395 | 0.286 | 1.000 |
-| `B3` Hybrid + rerank | 0.401 | 0.634 | 0.418 | 1.000 |
-| `B4` Dcode (hybrid + call graph + agent) | 0.448 | 0.763 | 0.494 | 1.000 |
+| `B1` BM25 sparse | 0.390 | 0.563 | 0.376 | 1.000 |
+| `B2` Dense RAG | 0.489 | 0.702 | 0.524 | 1.000 |
+| `B3` Hybrid + rerank | 0.553 | 0.795 | 0.587 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.638 | 0.882 | 0.664 | 1.000 |
 
-Source: `results/eval-h1-l3x12-2026-07-31/` · verdict written 2026-07-31 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-h1-repeat3-2026-07-31/` · verdict written 2026-07-31 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
 
-The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-l3x12-2026-07-31/provenance.json`.
+The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-repeat3-2026-07-31/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 
@@ -403,32 +403,33 @@ H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composit
 
 | Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `L2` cross-file | 16 | 0.484 | 0.618 | 0.701 | +0.217 | +0.083 | yes |
-| `L3` architecture | 12 | 0.411 | 0.463 | 0.508 | +0.097 | +0.045 | no |
+| `L2` cross-file | 16 | 0.579 | 0.671 | 0.715 | +0.136 | +0.044 | no |
+| `L3` architecture | 12 | 0.384 | 0.462 | 0.632 | +0.247 | +0.169 | yes |
 
 <!-- END generated: eval-h1-verdict -->
 
 Four things a reader should take from that table, stated plainly:
 
-1. **H1 is unsupported, by 0.005 on one level.** B4 cleared the bar against both
-   rivals on cross-file questions — the first time it has cleared anything
-   against B3 — and missed on architecture questions. The threshold was fixed
-   before the run and has not moved. A near miss is a miss.
-2. **The verdict is protocol-sensitive.** B2/B3 are scored on retrieved top-k and
-   B4 on verified final evidence. Scoring B3 the same way as B4 moves L3 from
-   +0.045 to +0.051 and would return `supported`. **That rule is not adopted** —
-   choosing it after seeing that it flips the outcome is precisely what
-   pre-registration exists to prevent. It is published because omitting it would
-   be worse, and because the next run must fix one rule for every arm first.
-3. **The call graph accounts for very little of B4's margin.** Structural
-   evidence not already in the hybrid top-k produced 4 new ground-truth hits
-   across 3 of 33 questions. What separates B4 from B3 is mostly the agent's
-   multi-step evidence selection, and this run cannot tell the two apart — that
-   needs a `B3.5` ablation that does not exist yet.
-4. **B1 and B2 answer from a template**, so their groundedness `1.000` is a
-   constant, not a measurement. Groundedness is a quarter of the composite, so a
-   quarter of B2's score is awarded rather than earned, and every `B4 vs B2`
-   margin inherits that.
+1. **H1 is unsupported because it is a conjunction, and three of its four
+   comparisons clear.** Architecture questions beat both rivals — 3.4× the bar
+   against hybrid+rerank, 4.9× against dense RAG — in all three repeats.
+   Cross-file beats dense RAG by 2.7× and falls 0.006 short against
+   hybrid+rerank. Four of four is required, so the verdict is `unsupported`.
+2. **The margin is less stable than the bar it is measured against.** Across
+   three identical repeats the cross-file margin was +0.038, +0.006 and +0.088 —
+   a range of 0.083 — and **repeat 3 returned `supported` by itself**. Every
+   single-run "near miss" in this repository's history sits inside that range.
+   Resolving a 0.006 difference by repetition would take runs in the order of
+   100; the remedy is more L2 questions, not more runs and not more tuning.
+3. **The call graph works and is not what carries the result.** The `B3.5` arm —
+   the full agent with graph tools disabled, everything else identical — puts the
+   graph at +0.022 / +0.023 and the agent's multi-step evidence gathering at
+   +0.147 on architecture questions. Without that ablation the +0.147 would have
+   been reported as the graph's.
+4. **The composite has three terms, and that is a lowered bar.** Groundedness was
+   removed after four runs had missed the four-term version. It is 1.000 for
+   every arm, so removing it multiplies margins by 4/3 — the same as a 0.0375
+   threshold. Both readings live in `h1_report.json`; both return `unsupported`.
 
 Full reasoning, including the pre-registered prediction this run falsified:
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md).

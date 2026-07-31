@@ -45,14 +45,15 @@ describe('MethodologyPage', () => {
     expect(screen.getByText(/scored on the evidence it ends up citing/i)).toBeInTheDocument();
   });
 
-  it('keeps L3 flagged as fragile relative to the margin it missed', () => {
-    // n grew 3 -> 12, so "significance isn't computable" no longer applies.
-    // What still does: one question outweighs the gap to the bar.
-    const n = h1Report.comparisons.L3.questions;
-    expect(n).toBe(12);
-    expect(1 / n).toBeGreaterThan(Math.abs(h1Report.threshold - h1Report.comparisons.L3.marginVsB3));
+  it('states each level\'s single-question weight, whether or not it cleared', () => {
+    // L3 now clears, so "it missed by less than one question" no longer applies
+    // to it. The weight is still what a reader needs to judge either level, and
+    // it is still larger than the bar on both.
+    for (const level of ['L2', 'L3'] as const) {
+      expect(1 / h1Report.comparisons[level].questions).toBeGreaterThan(h1Report.threshold);
+    }
     renderMethodology();
-    expect(screen.getByText(/one question still moves this level by up to/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/one question moves this level by up to/i).length).toBe(2);
   });
 
   it('states the graph contribution as measured and small, not as unmeasured', () => {
@@ -62,23 +63,26 @@ describe('MethodologyPage', () => {
     renderMethodology();
     expect(screen.queryByText('unmeasured')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/4 new ground-truth hits, across 3 of the 33 questions/i)
+      screen.getByText(/14 new ground-truth hits across 10 of the 33 questions/i)
     ).toBeInTheDocument();
+    // The ablation now exists, so the page must attribute the split rather than
+    // decline to. Claiming the whole B4-B3 gap for the graph is the easy lie
+    // here, and B3.5 is what makes it a checkable one.
     expect(
-      screen.getByText(/The ablation that would separate them does not exist yet/i)
+      screen.getByText(/Without that ablation the \+0\.147 would have been reported/i)
     ).toBeInTheDocument();
   });
 
-  it('reports the non-monotonic ladder instead of smoothing it', () => {
-    // Sparse now out-recalls hybrid on both H1 levels, on 33 questions rather
-    // than 3 — it can no longer be waved away as one lucky lexical hit.
+  it('reports the surviving ladder inversion instead of smoothing it', () => {
+    // The ladder climbs on L2 now. It did not before test code was excluded,
+    // and one inversion is left on L3 — sparse still edges dense. Reporting the
+    // fixed ordering while quietly dropping the leftover would be the tidy lie.
     const { L2, L3 } = levelSummary;
-    expect(L2.B1.recallAtK).toBeGreaterThan(L2.B3.recallAtK);
-    expect(L3.B1.recallAtK).toBeGreaterThan(L3.B3.recallAtK);
+    expect(L2.B1.recallAtK).toBeLessThan(L2.B3.recallAtK);
+    expect(L3.B1.recallAtK).toBeGreaterThan(L3.B2.recallAtK);
     renderMethodology();
     expect(screen.getByText(/The BM25 rerun/i)).toBeInTheDocument();
-    expect(screen.getByText(/ordering is not monotonic/i)).toBeInTheDocument();
-    expect(screen.getByText(/stopped being explainable as/i)).toBeInTheDocument();
+    expect(screen.getByText(/One inversion survives/i)).toBeInTheDocument();
   });
 
   it('publishes that the verdict depends on the scoring rule', () => {
