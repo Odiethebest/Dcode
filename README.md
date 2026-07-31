@@ -225,15 +225,17 @@ Full request / response contracts and error semantics: [`docs/en/Technical_Desig
 
 ## Getting Started
 
-> **Status (2026-07-30)**: the full path — indexing, retrieval, agent SSE, the
+> **Status (2026-07-31)**: the full path — indexing, retrieval, agent SSE, the
 > workbench frontend, the evaluation harness, production packaging — is implemented
 > and running; `make check`, `make frontend-build`, and `make eval-smoke` pass.
 > The current interaction path includes ten tools, bilingual caller/callee
 > routing, bounded multi-turn follow-ups, server-owned citation IDs,
 > same-language answers, and KaTeX math rendering.
-> H1 has been measured on a **full real-model run** and the recorded decision is
-> **unsupported**: see [Current Result](#current-result) for the numbers and why
-> the call graph's contribution is unmeasured rather than absent.
+> H1 has been measured on a **full real-model run** over 33 questions and the
+> recorded decision is **unsupported** — B4 cleared the bar on cross-file
+> questions and missed on architecture questions by 0.005. See
+> [Current Result](#current-result) for the numbers, the scoring rule the verdict
+> turns on, and how little of B4's margin the call graph accounts for.
 > The default stack runs stub models; the real ones are host sidecars needing
 > three commands, not one (below). Status detail and what is unfinished:
 > [`docs/en/Final_Report.md`](docs/en/Final_Report.md).
@@ -349,7 +351,7 @@ The harness runs five baselines on the same question set and reports stratified 
 | L2 | Cross file structural | **Primary H1 check** |
 | L3 | Architecture level | **Primary H1 check** |
 
-H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. The checked-in suite still has only **n=3** L3 questions, small enough that one question moves the average — see the Final Report before reading it in either direction.
+H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. The checked-in suite has **L1 5 / L2 16 / L3 12** — 33 questions after the 2026-07-31 expansion. At n=12, one L3 question still moves the level composite by up to 0.083, which is larger than the 0.005 by which L3 missed the bar; a single question's weight only drops below the 0.05 decision margin at n > 20. Three pre-existing L2/L3 pairs also share ground truth (1.00 / 0.75 / 0.50), so the two levels are not independent samples. See the Final Report before reading either level in either direction.
 
 ### Acceptance Thresholds
 
@@ -366,29 +368,30 @@ Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/
 
 ### Current Result
 
-**Protocol status on this branch:** B3 and B4 now use the same Agent model,
-prompt, citation verifier, and groundedness path. Both start with the same hybrid
-search; B3 stops there, while B4 may add graph/structure evidence. The harness
-records candidate-search and final-evidence metrics side by side and uses B4's
-ordered, verified final evidence for its official retrieval score. No complete
-suite has been re-run under that protocol yet, so the generated tables below
-remain the last committed result rather than evidence for the new code.
+**Protocol:** B3 and B4 use the same Agent model, prompt, citation verifier, and
+groundedness path. Both start with the same hybrid search; B3 stops there, while
+B4 may add graph/structure evidence. The harness records candidate-search and
+final-evidence metrics side by side, and B4's official retrieval score uses its
+ordered verified final evidence while B2/B3 use their retrieved top-k. **The two
+arms are therefore scored by different rules, and the verdict turns on that** —
+see below.
 
-Measured on the full real-model run. Every figure below is generated from the
-results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
+Measured on the full real-model run over 33 questions. Every figure below is
+generated from the results directory by `scripts/sync_eval_artifacts.py`, never
+transcribed.
 
 <!-- BEGIN generated: eval-suite-metrics -->
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` BM25 sparse | 0.396 | 0.361 | 0.311 | 1.000 |
-| `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
-| `B3` Hybrid + rerank | 0.526 | 0.625 | 0.519 | 1.000 |
-| `B4` Dcode (hybrid + call graph + agent) | 0.526 | 0.625 | 0.519 | 1.000 |
+| `B1` BM25 sparse | 0.369 | 0.473 | 0.334 | 1.000 |
+| `B2` Dense RAG | 0.340 | 0.395 | 0.286 | 1.000 |
+| `B3` Hybrid + rerank | 0.401 | 0.634 | 0.418 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.448 | 0.763 | 0.494 | 1.000 |
 
-Source: `results/eval-h1-bm25-2026-07-30/` · verdict written 2026-07-30 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-h1-l3x12-2026-07-31/` · verdict written 2026-07-31 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
 
-The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-bm25-2026-07-30/provenance.json`.
+The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-l3x12-2026-07-31/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 
@@ -400,34 +403,34 @@ H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composit
 
 | Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `L2` cross-file | 8 | 0.448 | 0.623 | 0.623 | +0.174 | +0.000 | no |
-| `L3` architecture | 3 | 0.315 | 0.306 | 0.306 | −0.009 | +0.000 | no |
+| `L2` cross-file | 16 | 0.484 | 0.618 | 0.701 | +0.217 | +0.083 | yes |
+| `L3` architecture | 12 | 0.411 | 0.463 | 0.508 | +0.097 | +0.045 | no |
 
 <!-- END generated: eval-h1-verdict -->
 
-Three things a reader should take from that table, stated plainly:
+Four things a reader should take from that table, stated plainly:
 
-1. **H1 is unsupported.** B4 clears the bar against dense RAG on cross-file
-   questions and against nothing else. The threshold was fixed before the run
-   and has not moved.
-2. **This run exercises the corrected BM25 path.** B1 improves substantially
-   over the retained legacy snapshot, and B3 is the strongest aggregate
-   retrieval rung. The per-level ladder is not monotonic: on the three L3
-   questions, sparse B1 posts the highest recall. That small row is reported,
-   not generalized into an architecture claim.
-3. **B4 clears the groundedness guardrail on this run.** Every B4 answer in the
-   suite contains verified citations and none contains a redaction marker. The score still
-   measures the draft before redaction; the metric was not relaxed to obtain
-   the improvement.
+1. **H1 is unsupported, by 0.005 on one level.** B4 cleared the bar against both
+   rivals on cross-file questions — the first time it has cleared anything
+   against B3 — and missed on architecture questions. The threshold was fixed
+   before the run and has not moved. A near miss is a miss.
+2. **The verdict is protocol-sensitive.** B2/B3 are scored on retrieved top-k and
+   B4 on verified final evidence. Scoring B3 the same way as B4 moves L3 from
+   +0.045 to +0.051 and would return `supported`. **That rule is not adopted** —
+   choosing it after seeing that it flips the outcome is precisely what
+   pre-registration exists to prevent. It is published because omitting it would
+   be worse, and because the next run must fix one rule for every arm first.
+3. **The call graph accounts for very little of B4's margin.** Structural
+   evidence not already in the hybrid top-k produced 4 new ground-truth hits
+   across 3 of 33 questions. What separates B4 from B3 is mostly the agent's
+   multi-step evidence selection, and this run cannot tell the two apart — that
+   needs a `B3.5` ablation that does not exist yet.
+4. **B1 and B2 answer from a template**, so their groundedness `1.000` is a
+   constant, not a measurement. Groundedness is a quarter of the composite, so a
+   quarter of B2's score is awarded rather than earned, and every `B4 vs B2`
+   margin inherits that.
 
-**Why B4 could not beat B3 in the recorded run:** B4's *scored* retrieval in
-that snapshot was the same hybrid search as B3's, so the two rows match to the
-digit. The call-graph tools fired later, inside the agent's answer, which that
-protocol did not score. The graph's contribution in the recorded result was
-therefore **unmeasured** — a diagnosed limitation of the evaluation design, not
-evidence that the graph does not work. The current branch implements the
-corrected measurement, but a fresh, pre-registered suite is still required.
-Full reasoning:
+Full reasoning, including the pre-registered prediction this run falsified:
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md).
 
 `results/eval-suite/` is an **earlier stub-model run**, kept for history and

@@ -9,7 +9,7 @@ Dcode is a structure-aware code understanding stack built around four runtime su
 - SSE-based agent answers with grounded citations
 - an evaluation harness and comparison UI
 
-As of **2026-07-30**, the repository delivers a complete local vertical slice:
+As of **2026-07-31**, the repository delivers a complete local vertical slice:
 
 - a real indexing pipeline for Python repositories
 - retrieval and graph lookup endpoints
@@ -22,14 +22,18 @@ As of **2026-07-30**, the repository delivers a complete local vertical slice:
 - a production-shaped Docker Compose package with static frontend serving
 
 **Read this report for the verdict.** H1 is recorded **unsupported** on the
-real-model run; the evaluation section below gives the numbers, why the call
-graph's contribution is unmeasured rather than absent, and what would re-open the
-question. The claim this project cares about most is not that H1 passed — it is
-that the answer is honest and checkable.
+real-model run. B4 cleared the bar against both rivals on cross-file questions
+and missed on architecture questions by 0.005. The evaluation section below gives
+the numbers, the scoring rule the verdict turns on, how much of B4's margin the
+call graph actually accounts for (little), and what would re-open the question.
+The claim this project cares about most is not that H1 passed — it is that the
+answer is honest and checkable.
 
-The current recorded run includes corrected Okapi BM25 and the server-owned
-evidence-ID path. The suite is still English, single-turn, and non-mathematical,
-so it does not replace the dedicated bilingual, multi-turn, or KaTeX tests.
+The current recorded run uses the 33-question suite (`L3` expanded from 3 to 12),
+corrected Okapi BM25, the server-owned evidence-ID path, and a shared agent
+synthesis path for B3 and B4. The suite is still English, single-turn,
+non-mathematical, and drawn from one repository, so it does not replace the
+dedicated bilingual, multi-turn, or KaTeX tests and it generalises to nothing.
 
 ## Implemented System
 
@@ -78,10 +82,16 @@ so it does not replace the dedicated bilingual, multi-turn, or KaTeX tests.
 
 ## Evaluation Snapshot
 
-The recorded suite uses 16 manually curated `requests` questions, measured on a
-full real-model run. Every figure in this section is generated from the results
-directory by `scripts/sync_eval_artifacts.py` and is not transcribed by hand;
-`make check` fails if the two diverge.
+The recorded suite uses 33 `requests` questions — 16 manually curated plus a
+17-question `graph_reverse` expansion — measured on a full real-model run. Every
+figure in this section is generated from the results directory by
+`scripts/sync_eval_artifacts.py` and is not transcribed by hand; `make check`
+fails if the two diverge.
+
+`B2` and `B3` are scored on their retrieved top-`k`; `B4` is scored on its
+ordered verified final evidence. That difference is the protocol
+`final_verified_evidence_v1`, and the verdict turns on it — see *Reading the
+result honestly* immediately below the tables.
 
 Aggregate metrics:
 
@@ -89,14 +99,14 @@ Aggregate metrics:
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` BM25 sparse | 0.396 | 0.361 | 0.311 | 1.000 |
-| `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
-| `B3` Hybrid + rerank | 0.526 | 0.625 | 0.519 | 1.000 |
-| `B4` Dcode (hybrid + call graph + agent) | 0.526 | 0.625 | 0.519 | 1.000 |
+| `B1` BM25 sparse | 0.369 | 0.473 | 0.334 | 1.000 |
+| `B2` Dense RAG | 0.340 | 0.395 | 0.286 | 1.000 |
+| `B3` Hybrid + rerank | 0.401 | 0.634 | 0.418 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.448 | 0.763 | 0.494 | 1.000 |
 
-Source: `results/eval-h1-bm25-2026-07-30/` · verdict written 2026-07-30 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-h1-l3x12-2026-07-31/` · verdict written 2026-07-31 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
 
-The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-bm25-2026-07-30/provenance.json`.
+The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-l3x12-2026-07-31/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 
@@ -110,8 +120,8 @@ H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composit
 
 | Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `L2` cross-file | 8 | 0.448 | 0.623 | 0.623 | +0.174 | +0.000 | no |
-| `L3` architecture | 3 | 0.315 | 0.306 | 0.306 | −0.009 | +0.000 | no |
+| `L2` cross-file | 16 | 0.484 | 0.618 | 0.701 | +0.217 | +0.083 | yes |
+| `L3` architecture | 12 | 0.411 | 0.463 | 0.508 | +0.097 | +0.045 | no |
 
 <!-- END generated: eval-h1-verdict -->
 
@@ -122,60 +132,78 @@ Recall by question level — the ladder that did hold up:
 | Level | n | `B1` Recall@5 | `B2` Recall@5 | `B3` Recall@5 | `B4` Recall@5 |
 |---|---:|---:|---:|---:|---:|
 | `L1` single-hop | 5 | 0.600 | 1.000 | 1.000 | 1.000 |
-| `L2` cross-file | 8 | 0.354 | 0.292 | 0.396 | 0.396 |
-| `L3` architecture | 3 | 0.167 | 0.083 | 0.083 | 0.083 |
+| `L2` cross-file | 16 | 0.376 | 0.293 | 0.367 | 0.450 |
+| `L3` architecture | 12 | 0.263 | 0.129 | 0.196 | 0.217 |
 
 <!-- END generated: eval-level-ladder -->
 
 ### Reading the result honestly
 
-**H1 is unsupported.** B4 clears the +0.05 bar against dense RAG on cross-file
-questions and against nothing else. The threshold, the question set, and the
-metric definitions were fixed before the run and have not been touched since.
+**H1 is unsupported, by 0.005 on one level.** B4 now clears the +0.05 bar against
+both B2 and B3 on cross-file questions — the first run in which it has cleared
+anything against B3 — and misses on architecture questions with a margin of
++0.045 where +0.050 was required. The threshold, the question set, and the metric
+definitions were fixed before the run and have not been touched since.
 
-**The current verdict does not depend on synthesis noise.** B3 and B4 receive
-identical scored retrieval lists, and both clear groundedness at the ceiling in
-this run, so their composites tie. Since groundedness cannot exceed that ceiling,
-B4 cannot create the required positive margin against B3 under this scoring even
-with a different stochastic answer. The earlier nine-run citation experiment is
-still retained as protocol history, but its pre-evidence-ID groundedness spread
-is not used to justify this current verdict:
-[`results/b4-citation-fix-experiment.md`](../../results/b4-citation-fix-experiment.md).
+A near miss is still a miss. It is not "effectively supported", and the honest
+summary of this run is not that H1 nearly passed but that **H1 is not resolved at
+this precision**, for the three reasons below.
 
-**The corrected BM25 path is now measured.** The current run records the formula,
-tokenizer, document fields, parameters, and corpus revision. B1 improves over the
-superseded legacy lexical snapshot, while hybrid retrieval is strongest on the
-whole suite and on L2. The ordering is not monotonic on every level.
+**The verdict is protocol-sensitive, and the alternative rule flips it.** Under
+the pre-registered `final_verified_evidence_v1`, B2 and B3 are scored on their
+retrieved top-k while B4 is scored on its ordered verified final evidence — two
+different rules. The harness also computes B3's own final-evidence score, so the
+symmetric comparison is available:
 
-**B4 clears the 0.95 groundedness guardrail on this run.** The current
-server-owned evidence-ID contract produced cited answers without redaction
-markers, while the score still measures the draft **before** redaction. The
-metric was not relaxed. This single run establishes the recorded snapshot, not a
-guarantee that future synthesis will always clear the bar.
+| Level | B4 − B3, official (mixed) | B4 − B3, symmetric (both on final evidence) |
+|---|---:|---:|
+| `L2` | +0.083 ✅ | +0.057 ✅ |
+| `L3` | +0.045 ❌ | +0.051 ✅ |
 
-**L3 is statistically fragile.** With n=3, one question moves the average and
-significance is not computable. Sparse `B1` posts the *highest* L3 recall of any
-rung, which on three questions is almost certainly one lucky lexical hit rather
-than evidence that BM25 understands architecture. L3 should not be read in
-either direction. Expanding it is a precondition of the next run.
+Symmetric scoring would return `supported`. **It is not adopted, and it is not
+the verdict.** Choosing a scoring rule after seeing that it changes the outcome is
+the exact failure this project pre-registers against. The pre-registered rule
+reports `unsupported` and that is what stands. The alternative is published
+because a reader who found it independently would rightly ask why it was missing,
+and because the next run must pre-register **one** rule for every arm.
 
-### Why B4 could not beat B3 in the recorded run
+**The pre-registered justification for that asymmetry is falsified by this run.**
+Criteria set 2 argued the rule "handicaps B4 deliberately", because B4's evidence
+set is usually smaller than five and therefore gets fewer shots at the ground
+truth. The data says the opposite: B4's verified final evidence scored *higher*
+than its own candidate top-5 — recall 0.448 against 0.401, MRR 0.763 against
+0.634. Selecting evidence precisely is worth more than having five slots. The
+rule helped B4. That reasoning was wrong, it was wrong in the direction that
+flatters us, and it is corrected here rather than quietly dropped.
 
-**B4's scored retrieval was identical to B3's by construction.** The
-`retrieve()` call measured by the 2026-07-30 protocol was the same hybrid search
-in both rungs — which is why every retrieval cell in those two rows matches to
-the digit. The call-graph tools fired later, *inside the agent's answer*, while
-that harness scored only the earlier retrieval. The differentiator was therefore
-invisible to Recall, MRR and nDCG, leaving groundedness as the only channel where
-B4 could differ from B3 — and B4's groundedness also tied B3 at the ceiling in
-that run.
+**The call graph's own contribution is small, and is now measured rather than
+inferred.** Structural evidence — graph or outline results not already present in
+the hybrid top-k — produced **4 new ground-truth hits across 3 of 33 questions**.
+B4's margin over B3 therefore cannot be attributed to the call graph. What
+separates the two arms is mostly the agent's multi-step evidence *selection*, and
+nothing in this run distinguishes that from the graph itself. The ablation that
+would separate them (`B3.5`: same agent and `read_file` loop, call-graph and
+reference tools disabled) does not exist yet.
 
-Under that scoring **B4 could not beat B3 no matter how well the graph worked.**
+**The corrected BM25 path stays measured.** The run records the formula,
+tokenizer, document fields, parameters, and corpus revision. Sparse `B1` again
+posts a higher MRR than dense `B2` (0.473 against 0.395) and a higher L3 recall
+than any other rung, which is a real property of this corpus and not an artefact
+of a small L3 any more.
 
-The precise claim is that the graph's contribution is **unmeasured**. Not
-"invisible", not "unvalidated", not "it did not work" — the harness never looked
-at the output the graph contributes to. Claiming either more or less than that
-would be inaccurate.
+**Groundedness is at the ceiling for every arm, and for two of them that is not a
+measurement.** `B1` and `B2` answer from a template whose groundedness is the
+constant `1.0`; only `B3` and `B4` run the real verifier. Since groundedness is
+one of the four equally weighted composite terms, a quarter of B2's composite is
+awarded rather than earned, and every `B4 vs B2` margin in the table above
+inherits that. Closing it needs a `dense_only` agent mode so B2 shares the
+synthesis and citation path; until then the B2 column should be read as a
+retrieval comparison with a constant attached.
+
+**L3 is less fragile than it was, and still fragile.** At n=12 one question moves
+the level composite by up to 0.083 — larger than the 0.005 by which L3 missed.
+`q-033` alone scored −0.156 for B4 against B3. Getting a single question's weight
+below the 0.05 decision margin requires n > 20.
 
 ## What Worked
 
@@ -191,6 +219,11 @@ would be inaccurate.
 - Every number a user or reviewer sees is generated from the results directory.
   The UI, this report, and the README cannot disagree without `make check`
   failing.
+- The hypothesis is finally *measurable*. Three consecutive runs failed for three
+  different reasons — stub models made the arms identical, then the harness
+  scored a list the graph never touched, and only now can the graph's own
+  contribution be counted at all. That the count came out small is a result;
+  being unable to count it was not.
 
 ## Iteration History
 
@@ -216,65 +249,115 @@ set of criteria is what made the real obstacle legible.
 
 **Criteria set 1b (met on 2026-07-30).** Replace the legacy sparse heuristic with
 recorded Okapi BM25, run the full B1–B4 suite through the server-owned evidence-ID
-protocol, and keep the metric definitions fixed. That rerun is the current
-snapshot. It improves B1 retrieval and brings B4 above the groundedness
-guardrail, while H1 remains unsupported because B4's scored retrieval still ties
-B3 by construction.
+protocol, and keep the metric definitions fixed. It improved B1 retrieval and
+brought B4 above the groundedness guardrail, while H1 remained unsupported
+because B4's scored retrieval still tied B3 by construction. That snapshot is
+retained at `results/eval-h1-bm25-2026-07-30/` and is now superseded.
+
+**Criteria set 2 (met on 2026-07-31).** Score B4 on its verified final evidence,
+give B3 the same agent synthesis path, and expand L3 from 3 to 12. That is the
+current run.
+
+**What that run showed.** The obstacle the previous run diagnosed is gone: B4's
+scored evidence is no longer B3's retrieval list, so the graph could finally
+reach the metrics. B4 cleared L2 against both rivals and missed L3 by 0.005 — and
+three things became visible that no earlier run could have shown.
+
+The first is that **the correction's own justification was wrong.** Scoring B4 on
+its smaller evidence set was pre-registered as a handicap; measured, it is an
+advantage, because precise selection beats having five slots.
+
+The second is that **the graph is not what is producing B4's margin.** Now that
+structural evidence is tracked by origin, it can be counted: 4 new ground-truth
+hits across 3 of 33 questions. The hypothesis under test is finally measurable
+and its measured effect is small.
+
+The third is that **the verdict depends on a scoring rule that was only ever
+pre-registered for one arm.** Applying the same rule to B3 flips L3 from fail to
+pass. Fixing that is now the top item for the next run, and it must be fixed
+*before* the run, not chosen after.
 
 ## H1 Decision
 
 **H1 remains unsupported** on the full real-model run — see the generated verdict
-table above for the margins, read straight from `h1_report.json`.
+table above for the margins, read straight from `h1_report.json`. L2 cleared, L3
+missed by 0.005.
 
-The decision is no longer scoped to a muted baseline. Real embeddings and a real
-reranker were used, the baselines separated as they should, and B4 still did not
-clear the bar. What changed is the *reason*: the obstacle is now a diagnosed gap
-in what the harness measures, not an artefact of stub models.
+The decision is no longer scoped to a muted baseline, and no longer scoped to an
+unmeasurable comparison. Real embeddings, a real reranker, a shared synthesis
+path for B3 and B4, and a scoring rule that reaches the graph's output were all
+in place, and B4 still did not clear both levels. What changed is the *reason*
+again: the obstacle is no longer "the harness cannot see the graph" but "the
+graph contributes little, and what margin exists is partly an artefact of scoring
+the two arms by different rules."
 
-### Criteria set 2 — to re-open H1
+### Criteria set 2 — outcome
 
-Approved and now partially implemented. Item 1 and the shared B3/B4 synthesis
-control are implemented on the current branch; item 2 remains deliberately
-unfinished pending human review. No complete H1 suite has been run with these
-changes, so the recorded verdict above remains authoritative.
+Recorded as tested, not as intended.
 
-1. **Implemented — score B4 on its final evidence set.** Define it as the **verified**
-   citations attached to the final answer — the evidence the system actually
-   stands behind after the graph walk. The groundedness verifier now attaches
-   the resolved chunk ID and evidence origin to each citation event. The harness
-   filters to verified citations with a server-resolved chunk ID, dedupes by
-   chunk while preserving answer order, and feeds that list into the **same**
-   metric functions, same ground truth, same `k`, and same threshold. It logs
-   candidate, final-evidence, and official scorings side by side per question,
-   plus the structural evidence and any new structural ground-truth hits. The
-   official list is explicitly capped at `k` before MRR as well as Recall/nDCG,
-   so a sixth citation cannot earn credit that B3's top-5 was never allowed.
+1. **Score B4 on its final evidence set — done, and the reasoning behind it was
+   falsified.** The groundedness verifier attaches the resolved chunk ID and
+   evidence origin to each citation event. The harness filters to verified
+   citations with a server-resolved chunk ID, dedupes by chunk while preserving
+   answer order, and feeds that list into the **same** metric functions, same
+   ground truth, same `k`, same threshold, capped at `k` before MRR as well as
+   Recall/nDCG. Candidate, final-evidence and official scorings are logged side
+   by side per question, with structural origins and new structural GT hits.
 
-   B2 and B3 keep their full top-5, which is their best case. B4's evidence set
-   is often smaller than 5, so it gets **fewer** shots at the ground truth than
-   B3. The asymmetry handicaps B4 deliberately: it can then only win by
-   surfacing ground-truth evidence more precisely or earlier via the graph,
-   which is exactly the capability under test. The correction was chosen in the
-   direction that makes it harder for us, because that is the truthful one.
+   The pre-registration said: "B2 and B3 keep their full top-5, which is their
+   best case … the asymmetry handicaps B4 deliberately." **That was wrong.** B4's
+   final evidence outscored its own top-5 on every retrieval metric, so the rule
+   was an advantage. The prediction is left visible here rather than edited out,
+   because a pre-registration you are allowed to silently revise is not one.
 
-2. **Pending — expand L3** from 3 to roughly 12 architecture-level questions on distinct
-   cross-module flows, ground truth derived from code structure and verified to
-   resolve against the index, committed before the re-run. Human review of the
-   drafted questions is a required gate, and reviews for *fair architectural
-   coverage and honest code-derived ground truth* — explicitly **not** for
-   whether B4 can answer them.
+2. **Expand L3 — done.** 17 questions added (8 cross-file `L2`, 9 architecture
+   `L3`), suite now `L1` 5 / `L2` 16 / `L3` 12 = 33. Every anchor was verified to
+   resolve 1:1 against the live index using the resolver alone, before any
+   baseline ran; the file was frozen by commit `ae47419` with its sha256 recorded
+   in the run's `provenance.json`; the human review gate was held. Nothing was
+   removed, so the three pre-existing overlapping pairs still dilute the strata.
+   The batch is labelled `source: graph_reverse` because it was reverse-
+   constructed from this corpus's indexed call relationships — a construction
+   that cannot contain a flow the graph misses, and therefore favours B4. That
+   bias is recorded, not corrected.
 
-3. **Leave groundedness scoring exactly as it is.** The obvious "fix" here is a
-   trap. Counting only post-redaction citations would score a verified-by-
+3. **Leave groundedness scoring exactly as it is — held.** The obvious "fix" here
+   is a trap. Counting only post-redaction citations would score a verified-by-
    construction set, push groundedness to ≈1.0 trivially, inflate B4's composite,
-   and could flip H1 for a purely cosmetic reason. That is p-hacking in a
-   bug-fix costume. Tightening the *synthesis prompt* so the model cites only
-   from the allowed list is legitimate — it changes the system, not the metric —
-   and the current rerun records that system change explicitly through the
-   evidence-ID protocol. The scoring rule itself remains unchanged.
+   and could flip H1 for a purely cosmetic reason. That is p-hacking in a bug-fix
+   costume. The scoring rule was not touched.
 
-Expanding the question set makes the next run a **fresh pre-registration**:
-expanded suite and corrected scoring both fixed before any number is seen.
+### Criteria set 3 — to re-open H1
+
+Fixed here, before the next run, in the same spirit as the sets above.
+
+1. **▲ One scoring rule for every arm.** Pre-register whether the official metric
+   is candidate top-k or verified final evidence, and apply it identically to B2,
+   B3 and B4. This is a prerequisite because the current run's verdict changes
+   depending on the answer, so leaving it open means the next run cannot conclude
+   anything either.
+2. **▲ A `dense_only` agent mode for B2.** Without it B2 cannot produce final
+   evidence at all, so item 1 is impossible and B2's groundedness stays a
+   constant `1.0` that is a quarter of its composite.
+3. **▲ `B3.5` as a diagnostic arm** — same agent and `read_file` loop, call-graph
+   and reference tools disabled. `B4 − B3` measures the whole agent system;
+   `B4 − B3.5` measures the call graph on its own, which is the actual
+   hypothesis. **Diagnostic only: it does not enter the pass criteria**, because
+   adding an arm to the decision rule would be changing the pass criteria.
+4. **Unify evidence ordering across sources.** Hybrid chunks carry reranker
+   scores; graph results enter the context in tool-return order. Score the union
+   with one query-aware ranking, with a shared context budget and a shared `k`
+   for both arms, and keep `graph_distance` as a recorded diagnostic that does
+   **not** enter the ranking — a tunable graph prior would be a hyper-parameter
+   fitted on the evaluation set.
+5. **Raise `L3` toward n ≈ 22** so one question's weight falls below the 0.05
+   decision margin. Do this with a **second corpus** — the indexed
+   `encode/httpx` — not with more Requests questions, which restate the same
+   flows. This needs per-question repository binding first: the harness records a
+   single `repo_id_override` and reads one `index_revision`.
+6. **Raise `max_steps` or narrow the expansion.** B4 saturates the 8-step budget,
+   so `get_file_outline` is effectively unreachable and the walk is truncated by
+   the cap rather than by the planner.
 
 ### Standing commitments
 
@@ -282,9 +365,11 @@ expanded suite and corrected scoring both fixed before any number is seen.
   untouched afterwards.
 - We change **what gets measured** when it is objectively the wrong output. We
   do not change the pass criteria.
-- Either outcome gets published. If corrected scoring clears the bar, that is a
-  win earned by measuring the right thing. If it does not, this document will
-  say "even counting the graph's contribution, B4 does not clear the bar."
+- Either outcome gets published, and so does a pre-registered prediction that
+  turns out to be wrong. This run falsified one of ours and it is recorded above.
+- When two defensible scoring rules disagree, the pre-registered one is the
+  verdict and the other is published beside it. Picking the winner afterwards is
+  not an option that exists.
 - The goal is a true verdict, not a passing one. An honest null result with a
   diagnosed cause and precise re-open criteria is a stronger result than a tuned
   pass.
@@ -298,13 +383,28 @@ graph-sensitive H1 re-run; everything else is independent of it.
 
 ### Evaluation
 
-- ~~Score B4 on its final verified evidence set~~ **— implemented, awaiting a
-  fresh suite.** The harness keeps the old candidate scores for audit, uses
-  ordered verified final evidence for B4's official Recall/MRR/nDCG, and records
-  structural origins and new GT hits. Every official metric is capped to the
-  same `k`.
-- **▲ Expand L3 beyond n=3** (target ~12), human-reviewed and committed before
-  the re-run.
+- ~~Score B4 on its final verified evidence set~~ **— done and measured.** See
+  criteria set 2 above: it worked, and the pre-registered claim that it would
+  handicap B4 was falsified by the result.
+- ~~Expand L3 beyond n=3~~ **— done, n=12.** Human-reviewed, resolver-verified,
+  and frozen with a checksum before any baseline ran.
+- **▲ One scoring rule for every arm.** B2/B3 are scored on retrieved top-k and
+  B4 on verified final evidence. Applying the same rule to B3 moves L3 from
+  +0.045 to +0.051 and flips the verdict, so this is not a refinement — it is the
+  thing the current answer hinges on. Criteria set 3 item 1.
+- **▲ `dense_only` agent mode for B2.** B1 and B2 answer from a template, so
+  their groundedness `1.000` is a constant and their final-evidence metrics are
+  `0.0`. A quarter of B2's composite is therefore awarded rather than measured,
+  and no symmetric scoring rule can include B2 until this exists.
+- **▲ `B3.5` diagnostic arm.** Structural evidence produced only 4 new GT hits
+  across 3 of 33 questions, so B4's margin over B3 is mostly *not* the call
+  graph. Nothing currently separates graph gain from multi-step agent evidence
+  selection. Diagnostic only — it must not enter the pass criteria.
+- **Unify evidence ordering across sources**, with `graph_distance` recorded but
+  excluded from the ranking. Criteria set 3 item 4.
+- **`max_steps = 8` is saturated by B4's expansion**, so `get_file_outline` is
+  effectively unreachable and the walk ends at the cap rather than at the
+  planner's decision.
 - **Judge / pairwise scoring is a stub.** Pairwise win-rate is `null` throughout,
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
 - **B0 is not measured** — it needs an API token. Either produce it or keep
@@ -338,13 +438,29 @@ graph-sensitive H1 re-run; everything else is independent of it.
   (`da2b6bc`) scored *worst* of the three arms once uncited answers stopped scoring
   perfectly, and only looked best while both errors were in place. Full record:
   `results/b4-citation-fix-experiment.md`.
-- **A stochastic answer metric from one run should not be generalized.** The
-  current run's H1 failure is structurally fixed by the B3/B4 retrieval tie, but
-  any future graph-sensitive run reporting a nonzero margin should state how
-  many repeats it averages. The repeat count is itself a pre-registration
+- **▲ This run's margins are single-run and stochastic, and that now matters.**
+  The previous verdict was structurally fixed by the B3/B4 retrieval tie, so
+  repeats could not have changed it. This one turns on 0.005 with LLM synthesis
+  in the loop and no repeats, so the margin's own noise is unmeasured and could
+  exceed the gap. Any future run reporting a nonzero margin must state how many
+  repeats it averages, and the repeat count is itself a pre-registration
   decision.
-- **A second corpus.** One repository, 16 questions. Nothing here generalises,
-  and no wording in this document should imply otherwise.
+- **The suite's strata are not independent.** Three pre-existing pairs share
+  ground truth at 1.00, 0.75 and 0.50 (`q-006`/`q-014`, `q-009`/`q-016`,
+  `q-010`/`q-015`), so every L3 question in the original set restates an L2
+  question. "Cleared on both L2 and L3" is therefore weaker than two independent
+  tests. The 17 new questions do not add to this — their maximum overlap is 0.33
+  both internally and against the original set — but they dilute it rather than
+  remove it.
+- **17 of 33 questions were reverse-constructed from the indexed call graph**
+  (`source: graph_reverse`). A suite built from the system's own graph output
+  cannot contain a flow that graph misses, so the documented blind spots — no
+  type inference, unresolved inherited `self.method()` calls — are absent by
+  construction, which favours B4. Recorded rather than corrected; a future batch
+  should deliberately include chains that traverse those blind spots.
+- **A second corpus.** One repository, 33 questions. Nothing here generalises,
+  and no wording in this document should imply otherwise. `encode/httpx` is
+  already indexed; per-question repository binding is the blocker.
 
 ### Retrieval and indexing
 
@@ -396,6 +512,12 @@ Read these as scope, not as defects.
 - The agent planner is rule-based. Only answer synthesis is LLM-backed, and it is
   opt-in.
 - The H1 decision includes no judge or pairwise metric.
+- `B1` and `B2` answer from a template, so their groundedness is the constant
+  `1.0` rather than a measurement, and they emit no citation events. This is
+  scope, but it is load-bearing scope: groundedness is a quarter of the composite
+  the H1 decision is computed from.
+- The two levels the H1 rule conjoins are not independent samples; see the
+  ground-truth overlap entry under Outstanding Work.
 - Skipped-file warnings live only in Redis on a 7-day TTL, so an older index
   honestly reports none rather than a stale count.
 
@@ -406,12 +528,21 @@ Python and frontend test suites, plus the evaluation-artifact drift check),
 `make frontend-build`, `make eval-smoke`, and a real-sidecar integration smoke
 against a live stack.
 
-On 2026-07-30, the current Docker stack and both host model sidecars were healthy.
-A live `Who calls send?` request exercised the caller route and current
-server-owned citation path, returning two verified source locations with
-groundedness `1.0`. This is an integration smoke for one question, not an
-evaluation result and not evidence that the 0.95 suite-level guardrail now
-passes.
+On 2026-07-31, immediately around the recorded run, the Docker stack and both
+host model sidecars were healthy: the embedding sidecar returned a 768-dimension
+vector for a one-text request, and the reranker returned two clearly separated
+scores for a two-passage request. The harness logged zero API or agent errors
+across all four baselines. A direct two-mode probe against `/internal/query`
+confirmed the B3/B4 control actually differentiates — `hybrid_only` issued one
+tool call, `full` issued eight — rather than being a flag the agent ignores.
+
+An earlier attempt at the same run was aborted during B3 and its partial output
+deleted: Redis still held agent tool-result entries written about two hours
+earlier, before the current agent code existed, and those could have supplied
+graph results lacking the `chunk_id` the new scoring protocol reads. The cache
+was flushed and the whole suite rerun from B1. The recorded directory contains
+only the complete rerun. This is in `provenance.json` too, because a reader
+reproducing the run needs to know the cache state it assumed.
 
 Not verified: visual appearance and interaction were never machine-checked —
 headless screenshots do not work in the development sandbox, so the UI's
