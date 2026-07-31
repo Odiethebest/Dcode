@@ -28,9 +28,11 @@ its numbers are generated rather than translated.
 
 ## 1. Two standing constraints
 
-1. **Do not resume the H1 re-run.** It is paused for environment reasons (§5).
-   Criteria set 2 in `docs/en/Final_Report.md` is approved and unimplemented; it
-   stays that way until someone runs it deliberately.
+1. **Do not start the next full H1 re-run yet.** Criteria set 2 item 1 and the
+   shared B3/B4 synthesis control are implemented, but the pre-registered L3
+   expansion and human review are still pending. The committed 2026-07-30 result
+   remains current until that gate is complete and someone runs the suite
+   deliberately.
 2. **Avoid bulk-reading or restating credential-related source symbols from the
    indexed corpus.** That keyword density repeatedly false-tripped the
    environment's cyber safeguard and killed a session three times in a row.

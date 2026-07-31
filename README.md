@@ -338,8 +338,8 @@ The harness runs five baselines on the same question set and reports stratified 
 | B0 | GitHub Search | Industry standard keyword baseline |
 | B1 | BM25 | Sparse retrieval reference |
 | B2 | Vanilla Dense RAG | Single path vector retrieval |
-| B3 | Hybrid RAG | Dense + sparse + rerank |
-| B4 | **Dcode** (hybrid + call graph + agent) | Full system |
+| B3 | Hybrid RAG | Dense + sparse + rerank, then the shared Agent synthesis path with structural expansion disabled |
+| B4 | **Dcode** (hybrid + call graph + agent) | The same hybrid start and synthesis path, plus bounded structural expansion |
 
 ### Question Taxonomy
 
@@ -349,7 +349,7 @@ The harness runs five baselines on the same question set and reports stratified 
 | L2 | Cross file structural | **Primary H1 check** |
 | L3 | Architecture level | **Primary H1 check** |
 
-H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. L3 currently has **n=3**, small enough that one question moves the average — see the Final Report before reading it in either direction.
+H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. The checked-in suite still has only **n=3** L3 questions, small enough that one question moves the average — see the Final Report before reading it in either direction.
 
 ### Acceptance Thresholds
 
@@ -365,6 +365,14 @@ additional product-quality gates tracked beside it:
 Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
 ### Current Result
+
+**Protocol status on this branch:** B3 and B4 now use the same Agent model,
+prompt, citation verifier, and groundedness path. Both start with the same hybrid
+search; B3 stops there, while B4 may add graph/structure evidence. The harness
+records candidate-search and final-evidence metrics side by side and uses B4's
+ordered, verified final evidence for its official retrieval score. No complete
+suite has been re-run under that protocol yet, so the generated tables below
+remain the last committed result rather than evidence for the new code.
 
 Measured on the full real-model run. Every figure below is generated from the
 results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
@@ -412,12 +420,14 @@ Three things a reader should take from that table, stated plainly:
    measures the draft before redaction; the metric was not relaxed to obtain
    the improvement.
 
-**Why B4 cannot currently beat B3:** B4's *scored* retrieval is the same hybrid
-search as B3's, so the two rows match to the digit. The call-graph tools fire
-later, inside the agent's answer, which this harness does not score. The graph's
-contribution is therefore **unmeasured** — a diagnosed limitation of the
-evaluation design, not evidence that the graph does not work. Full reasoning,
-including the corrected scoring that would re-open H1:
+**Why B4 could not beat B3 in the recorded run:** B4's *scored* retrieval in
+that snapshot was the same hybrid search as B3's, so the two rows match to the
+digit. The call-graph tools fired later, inside the agent's answer, which that
+protocol did not score. The graph's contribution in the recorded result was
+therefore **unmeasured** — a diagnosed limitation of the evaluation design, not
+evidence that the graph does not work. The current branch implements the
+corrected measurement, but a fresh, pre-registered suite is still required.
+Full reasoning:
 [`docs/en/Final_Report.md`](docs/en/Final_Report.md).
 
 `results/eval-suite/` is an **earlier stub-model run**, kept for history and

@@ -292,8 +292,8 @@ The harness exposes five baseline tiers:
 | B0 | External code search; requires a provider token and is unmeasured in the recorded run |
 | B1 | Application-side Okapi BM25 over the complete chunk corpus |
 | B2 | Dense retrieval plus answer synthesis |
-| B3 | Weighted BM25 + dense RRF, reranking, and answer synthesis |
-| B4 | B3 retrieval plus graph tools and the bounded agent |
+| B3 | Weighted BM25 + dense RRF and reranking, followed by the shared Agent synthesis/groundedness path in `hybrid_only` mode |
+| B4 | The same hybrid start and Agent path as B3, followed by bounded graph/structure expansion in `full` mode |
 
 The current `results/eval-h1-bm25-2026-07-30/` snapshot exercises
 `okapi_bm25_v1` in B1 and in the sparse component of B3/B4. The previous
@@ -303,7 +303,14 @@ as a superseded historical snapshot.
 Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
 per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
 record the formula, tokenizer, document fields, `k1`, `b`, and corpus revision,
-and reject the result if that revision changes during execution.
+and reject the result if that revision changes during execution. The current
+scoring protocol, `final_verified_evidence_v1`, records three auditable views per
+question: the initial candidate list, the verified final evidence list, and the
+list used for the official metric. B2/B3 retain their retrieved top-k as their
+official list; B4 uses its ordered final verified chunk IDs. Structural origins
+are retained so a row can show whether a new ground-truth hit came from a graph
+or outline tool. All three metrics see at most the first `k` IDs, including MRR;
+the complete final-evidence list is retained separately for audit.
 
 ### H1 decision and additional gates
 
@@ -320,11 +327,12 @@ executable decision:
 - programmatic groundedness should reach 95%; the current B4 run clears that
   guardrail.
 
-The current B4 retrieval metric also does not score the final verified evidence
-set produced after graph/tool use, so the graph contribution remains
-unmeasured. Correcting that measurement and expanding L3 are prerequisites for
-the next graph-sensitive H1 run; the fixed re-run criteria live in
-[Final_Report.md](Final_Report.md).
+The committed `results/eval-h1-bm25-2026-07-30/` snapshot predates
+`final_verified_evidence_v1`, so the graph contribution remains unmeasured **in
+that result**. The current branch implements the corrected measurement, but it
+does not retroactively change the recorded verdict. Expanding and independently
+reviewing L3 before a fresh run remains the outstanding pre-registration gate;
+the fixed re-run criteria live in [Final_Report.md](Final_Report.md).
 
 ## Non-Functional Requirements
 

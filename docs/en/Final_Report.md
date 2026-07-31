@@ -159,17 +159,18 @@ rung, which on three questions is almost certainly one lucky lexical hit rather
 than evidence that BM25 understands architecture. L3 should not be read in
 either direction. Expanding it is a precondition of the next run.
 
-### Why B4 cannot currently beat B3
+### Why B4 could not beat B3 in the recorded run
 
-**B4's scored retrieval is identical to B3's by construction.** The `retrieve()`
-call the harness measures is the same hybrid search in both rungs — which is why
-every retrieval cell in those two rows matches to the digit. The call-graph
-tools fire later, *inside the agent's answer*, and the harness scores retrieval,
-not the answer. The differentiator is therefore invisible to Recall, MRR and
-nDCG, leaving groundedness as the only channel where B4 can differ from B3 — and
-B4's groundedness also ties B3 at the ceiling in this run.
+**B4's scored retrieval was identical to B3's by construction.** The
+`retrieve()` call measured by the 2026-07-30 protocol was the same hybrid search
+in both rungs — which is why every retrieval cell in those two rows matches to
+the digit. The call-graph tools fired later, *inside the agent's answer*, while
+that harness scored only the earlier retrieval. The differentiator was therefore
+invisible to Recall, MRR and nDCG, leaving groundedness as the only channel where
+B4 could differ from B3 — and B4's groundedness also tied B3 at the ceiling in
+that run.
 
-Under this scoring **B4 cannot beat B3 no matter how well the graph works.**
+Under that scoring **B4 could not beat B3 no matter how well the graph worked.**
 
 The precise claim is that the graph's contribution is **unmeasured**. Not
 "invisible", not "unvalidated", not "it did not work" — the harness never looked
@@ -232,17 +233,22 @@ in what the harness measures, not an artefact of stub models.
 
 ### Criteria set 2 — to re-open H1
 
-Approved, not yet implemented. Numbered so a later run can be checked against them.
+Approved and now partially implemented. Item 1 and the shared B3/B4 synthesis
+control are implemented on the current branch; item 2 remains deliberately
+unfinished pending human review. No complete H1 suite has been run with these
+changes, so the recorded verdict above remains authoritative.
 
-1. **Score B4 on its final evidence set.** Define it as the **verified**
+1. **Implemented — score B4 on its final evidence set.** Define it as the **verified**
    citations attached to the final answer — the evidence the system actually
-   stands behind after the graph walk. Extract the ordered
-   `(file_path, line, verified)` triples from the citation events, filter to
-   verified, dedupe preserving first occurrence, map each to a chunk id by the
-   **same line-containment rule** ground truth uses, and feed that ordered list
-   into the **same** metric functions, same ground truth, same `k`, same
-   threshold. Log both scorings side by side per question, plus the mapped chunk
-   ids, so the change is auditable.
+   stands behind after the graph walk. The groundedness verifier now attaches
+   the resolved chunk ID and evidence origin to each citation event. The harness
+   filters to verified citations with a server-resolved chunk ID, dedupes by
+   chunk while preserving answer order, and feeds that list into the **same**
+   metric functions, same ground truth, same `k`, and same threshold. It logs
+   candidate, final-evidence, and official scorings side by side per question,
+   plus the structural evidence and any new structural ground-truth hits. The
+   official list is explicitly capped at `k` before MRR as well as Recall/nDCG,
+   so a sixth citation cannot earn credit that B3's top-5 was never allowed.
 
    B2 and B3 keep their full top-5, which is their best case. B4's evidence set
    is often smaller than 5, so it gets **fewer** shots at the ground truth than
@@ -251,7 +257,7 @@ Approved, not yet implemented. Numbered so a later run can be checked against th
    which is exactly the capability under test. The correction was chosen in the
    direction that makes it harder for us, because that is the truthful one.
 
-2. **Expand L3** from 3 to roughly 12 architecture-level questions on distinct
+2. **Pending — expand L3** from 3 to roughly 12 architecture-level questions on distinct
    cross-module flows, ground truth derived from code structure and verified to
    resolve against the index, committed before the re-run. Human review of the
    drafted questions is a required gate, and reviews for *fair architectural
@@ -292,8 +298,11 @@ graph-sensitive H1 re-run; everything else is independent of it.
 
 ### Evaluation
 
-- **▲ Score B4 on its final verified evidence set.** Criteria set 2, item 1 above.
-  Without it the call graph cannot reach the metrics at all.
+- ~~Score B4 on its final verified evidence set~~ **— implemented, awaiting a
+  fresh suite.** The harness keeps the old candidate scores for audit, uses
+  ordered verified final evidence for B4's official Recall/MRR/nDCG, and records
+  structural origins and new GT hits. Every official metric is capped to the
+  same `k`.
 - **▲ Expand L3 beyond n=3** (target ~12), human-reviewed and committed before
   the re-run.
 - **Judge / pairwise scoring is a stub.** Pairwise win-rate is `null` throughout,

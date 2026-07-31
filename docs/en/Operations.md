@@ -355,9 +355,11 @@ Once the smoke passes:
    report whichever way it lands.
 
 Before a graph-sensitive re-run intended to re-open H1, read the criteria-set-2
-items in `Final_Report.md`. Scoring B4 on its verified evidence set and expanding
-L3 have to be implemented *first*; re-running the current protocol reproduces
-the same unmeasurable B3/B4 comparison.
+items in `Final_Report.md`. The current branch implements B3/B4's shared Agent
+control and B4 final-evidence scoring under
+`final_verified_evidence_v1`. The remaining pre-registration gate is to expand
+and human-review L3 before running the suite. Until that happens, the committed
+2026-07-30 snapshot remains the current verdict.
 
 ## Verified Run — 2026-07-27
 
