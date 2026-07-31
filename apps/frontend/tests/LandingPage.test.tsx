@@ -119,37 +119,29 @@ describe('LandingPage baseline ladder', () => {
 
 /**
  * The pipeline section used to assert "the guardrail holds it at ≥ 95%" and tag a
- * principle `groundedness ≥ 95%`, while the recorded run came in under that bar —
- * and while the ladder further down this same page reported the dip. A
- * pre-registered threshold is only worth stating if it is allowed to fail, so the
- * copy states the commitment and the miss instead of the guarantee.
+ * principle `groundedness ≥ 95%`, turning a threshold into a guarantee. The
+ * current run clears that bar, but the copy still states the measured outcome
+ * rather than promising that every future run must do so.
  */
 describe('LandingPage groundedness guardrail claim', () => {
   beforeEach(() => mockReducedMotion());
 
-  it('never claims the pre-registered bar was met', () => {
-    // The assertions below only mean something while the run is actually under
-    // the bar; pin that precondition rather than assuming it.
-    expect(suiteSummary.B4.groundedness).toBeLessThan(RUN_GROUNDEDNESS_BAR);
+  it('reports that the current run cleared the pre-registered bar', () => {
+    expect(suiteSummary.B4.groundedness).toBeGreaterThanOrEqual(RUN_GROUNDEDNESS_BAR);
 
     const { container } = renderLanding();
     const copy = container.textContent ?? '';
     expect(copy).not.toMatch(/guardrail holds it at/i);
     expect(copy).not.toMatch(/groundedness\s*≥\s*95\s*%/i);
-    // The bar is named as a pre-registered commitment, and the miss is stated.
+    // The bar is named as a pre-registered commitment, and this run's outcome is stated.
     expect(copy).toContain(`fixed at ${RUN_GROUNDEDNESS_BAR.toFixed(2)} before the run`);
-    expect(copy).toMatch(/came in under it/i);
+    expect(copy).toMatch(/cleared it/i);
   });
 
-  it('reads the missed value from the snapshot rather than restating it', () => {
-    // An earlier pass pointed at the ladder instead of naming the number. A
-    // sentence that points at a location is a copy of the page layout and rots
-    // in silence, so the value is bound. Pin the binding, not the digits: a
-    // hand-typed literal here would survive a re-run and quietly disagree with
-    // the ladder in the same card.
+  it('reads the measured value from the snapshot rather than restating it', () => {
     const { container } = renderLanding();
     expect(container.textContent ?? '').toContain(
-      `came in under it at ${suiteSummary.B4.groundedness.toFixed(3)}`
+      `cleared it at ${suiteSummary.B4.groundedness.toFixed(3)}`
     );
   });
 });

@@ -146,15 +146,13 @@ Measured before redaction, the number answers a real question: **how clean was
 the model's draft?** A heavily-redacted answer scores low, which is correct — the
 user got safe output, but the model needed a lot of correcting to produce it.
 
-The consequence is that this guardrail can visibly fail. On the recorded run B4
-scores 0.916 against a pre-registered floor of 0.95, and that is reported as a
-failure rather than explained away. Tightening the synthesis prompt so the model
-cites only server-owned evidence IDs is a legitimate class of fix — it changes
-the system, not the metric — and it has to be reported as its own change. The
-recorded three-arm experiment also showed why merely withdrawing valid symbol
-tokens was not sufficient: the durable remedy was one shared symbol-resolution
-rule. The implementation later moved to server-owned evidence IDs as a further
-contract hardening step; that newer path has not received a complete H1 re-run.
+The consequence is that this guardrail can visibly fail. The superseded
+`results/eval-real/` snapshot and the three-arm experiment did fail it, and that
+failure remains archived rather than explained away. Tightening the synthesis
+contract so the model cites only server-owned evidence IDs is a legitimate class
+of fix — it changes the system, not the metric — and it has to be reported as
+its own change. The current complete H1 rerun exercises that evidence-ID path
+and clears the guardrail without changing how groundedness is scored.
 
 ## 7. Markdown is rendered, never injected
 
@@ -206,7 +204,7 @@ The same applies to a failed index: show the reason, not just that it failed.
 ## 11. Displayed numbers are generated, never transcribed
 
 Every official H1 snapshot figure in the UI and in the generated documentation
-blocks comes from `results/eval-real/` through
+blocks comes from `results/eval-h1-bm25-2026-07-30/` through
 `scripts/sync_eval_artifacts.py`, and `make check` fails if any of those surfaces
 drifts. A separately labelled experiment report may contain figures derived
 from its own committed run directories; it must name that authority explicitly
@@ -220,8 +218,8 @@ the methodology page reported the hypothesis unsupported), and the README plus
 this document set (stub-run numbers left in place after the real-model run).
 
 Prose around the official snapshot is not generated, so it carries qualitative
-conclusions only — *H1 unsupported*, *the archived sparse baseline was not
-BM25*, *the graph's contribution is unmeasured*. Any specific official-snapshot
+conclusions only — *H1 unsupported*, *the current sparse path is BM25*, *the
+graph's contribution is unmeasured*. Any specific official-snapshot
 figure belongs inside a generated block. Experimental figures belong in their
 named experiment record; when a report cites one, it must state that exception
 and link the authority.
@@ -246,13 +244,14 @@ and "fixing" it by regenerating would have stamped the checkout date into the
 artifacts as though it were the run's. A gate that is permanently red gets
 routed around, and this one is the only thing holding the rule above in place.
 
-Metadata for an **archived** run may be a pinned literal, but it must live in a
-separate file from the harness's own output, and it must say **recovered**
-rather than **recorded**. The test is whether the copied value can still change,
-not whether it was typed by hand: a finished run's date will never move again,
-so pinning it is safe by construction, while a model name that a future run will
-choose differently is not. Keeping it out of `run_config.json` is what stops a
-hand-reconstructed value from reading as something the harness observed.
+Metadata for a finished run may be pinned, but it must live in a separate file
+from the harness's own output and state how it was obtained — for example,
+**recovered from surviving evidence** or **observed during the live run**, never
+merely "recorded" when the harness wrote no such field. The test is whether the
+copied value can still change, not whether it was typed by hand: a finished
+run's date will never move again, while a model choice for a future run can.
+Keeping external observations out of `run_config.json` is what stops them from
+reading as harness output.
 
 ## 12. A mock must be identifiable as a mock
 
@@ -271,8 +270,9 @@ The mock answer is plausible. `1.00` was the arithmetically correct score for it
 own two verified mock citations. Nothing was fabricated and no number was
 transcribed — so rule 11 had nothing to say, and neither did *never fabricate
 data*. And yet the card was indistinguishable from a screenshot of a real answer,
-and the first groundedness figure a visitor met on that page was a perfect one,
-two screens above the recorded value, which is under the bar.
+and the first groundedness figure a visitor met on that page looked like a
+measurement even though it was staged. The current recorded run also happens to
+clear the guardrail; that coincidence does not turn a mock into evidence.
 
 Every other rule here governs whether the interface says something false. This
 one governs whether it lets someone believe they are looking at a measurement.

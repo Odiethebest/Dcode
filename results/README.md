@@ -1,11 +1,12 @@
 # Evaluation results
 
-Seven directories live here and only one is the current conclusion. This file
+Eight result groups live here and only one is the current conclusion. This file
 says which, so nobody has to guess from timestamps.
 
 | Directory | Status | What it is |
 |---|---|---|
-| **`eval-real/`** | ✅ **current** | The full real-model run — Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini, `k=5`, the checked-in 16-question suite. **This is the recorded H1 verdict.** Its sparse arm was the legacy lexical heuristic, not BM25; generated surfaces label it accordingly. |
+| **`eval-h1-bm25-2026-07-30/`** | ✅ **current** | The complete B1–B4 real-model rerun — Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini, `k=5`, the checked-in 16-question suite, corrected Okapi BM25 sparse path, and server-owned evidence IDs. **This is the recorded H1 verdict.** |
+| `eval-real/` | superseded | The previous full real-model H1 snapshot. Its sparse arm was the legacy lexical heuristic rather than BM25 and its B4 answers predate server-owned evidence IDs. Retained unchanged as historical evidence. |
 | `eval-real-b0/` | partial | Config only. `B0` (external code search) needs an API token this environment did not have, so B0 is **not measured** — not scored zero. It has no bearing on the H1 verdict, which rests on B2/B3/B4. |
 | `eval-suite/` | superseded | An **early stub-model run**, kept deliberately. Not the current conclusion — see below. |
 | `eval-smoke/` | not a result | Output of `make eval-smoke`, a single-baseline harness smoke test. Proves the harness runs; measures nothing. |
@@ -13,13 +14,12 @@ says which, so nobody has to guess from timestamps.
 | `eval-real-b4-citation-fix/` | not a verdict | B4 only — run 1 of arm **A**, `da2b6bc` (tokens withdrawn). |
 | `b4-variance/` | not a verdict | The other six runs: `prefix-2/3`, `fix-2/3`, and `sharedrule-1/2/3` for arm **B**, `029b9de` (one shared symbol rule). |
 
-The recorded H1 snapshot and the nine-run citation experiment both predate the
-server-owned evidence-ID protocol, bounded multi-turn contextualization,
-same-language answer contract, and KaTeX presentation changes now on the branch.
-Those changes have unit and integration-smoke coverage, but no complete
-replacement evaluation. The committed `unsupported` verdict therefore remains
-the project result while being explicitly historical rather than a measurement
-of every current interaction behavior.
+The current H1 snapshot exercises corrected BM25 and the server-owned
+evidence-ID path. It does not evaluate multi-turn contextualization, Chinese
+questions, or KaTeX presentation because the fixed suite contains English,
+single-turn, non-mathematical questions. Those interaction contracts retain
+their unit and integration-smoke coverage rather than being inferred from this
+run.
 
 The last three hold **one experiment, not a result to cite** — nine single-baseline B4
 runs across three arms, which carry no H1 verdict. Read
@@ -66,11 +66,11 @@ follow the data, but the sentences around them do not.
 ## Layout of a run directory
 
 ```text
-eval-real/
+eval-h1-bm25-2026-07-30/
 ├── h1_report.json          the verdict: decision, threshold, per-level composites and margins
 ├── suite_summary.json      whole-suite metrics per baseline
 ├── run_config.json         baselines, question set path, k, repo_id; new runs also record BM25 config and corpus revision
-├── provenance.json         NOT harness output — hand-recovered metadata (see below)
+├── provenance.json         NOT harness output — externally observed metadata (see below)
 └── B1..B4/
     ├── metrics.json            that baseline's suite-level metrics
     ├── taxonomy_breakdown.json the same metrics split by L1/L2/L3
@@ -79,12 +79,12 @@ eval-real/
 
 `h1_report.json` is the file to read first, and it is reported verbatim.
 
-`provenance.json` is the one file here the harness did not write. The harness
-recorded neither a timestamp nor, for this archived run, the sparse
-implementation. Both facts were reconstructed and are kept out of
-`run_config.json` precisely so they cannot be mistaken for observations made by
-the run; every recovered field says so. Future runs write the BM25 formula,
-tokenizer, fields, parameters, and `corpus_revision` directly into
-`run_config.json`. The generator reads recovered metadata from committed bytes,
-never from a file mtime, which git does not preserve. See
+`provenance.json` is the one file here the harness did not write. The current
+harness records the BM25 formula, tokenizer, fields, parameters, and
+`corpus_revision` directly in `run_config.json`; it still writes no timestamp,
+model names, repo commit, or service health observations. Those externally
+observed facts stay in provenance precisely so they cannot be mistaken for
+harness output. The generator reads that metadata from committed bytes, never
+from a file mtime or the wall clock. The older `eval-real/` provenance also
+records the sparse implementation recovered for that historical run. See
 [`docs/en/Honesty_Constraints.md`](../docs/en/Honesty_Constraints.md) §11.

@@ -27,10 +27,9 @@ graph's contribution is unmeasured rather than absent, and what would re-open th
 question. The claim this project cares about most is not that H1 passed — it is
 that the answer is honest and checkable.
 
-The recorded run remains the project verdict, but it is a historical snapshot of
-the measured code path: it predates the corrected BM25 implementation and the
-later server-owned citation-ID, language, math-rendering, and multi-turn changes.
-Those changes have tests and live smoke coverage, not a replacement full H1 run.
+The current recorded run includes corrected Okapi BM25 and the server-owned
+evidence-ID path. The suite is still English, single-turn, and non-mathematical,
+so it does not replace the dedicated bilingual, multi-turn, or KaTeX tests.
 
 ## Implemented System
 
@@ -90,14 +89,14 @@ Aggregate metrics:
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` legacy lexical heuristic | 0.214 | 0.221 | 0.204 | 1.000 |
+| `B1` BM25 sparse | 0.396 | 0.361 | 0.311 | 1.000 |
 | `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
-| `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
-| `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
+| `B3` Hybrid + rerank | 0.526 | 0.625 | 0.519 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.526 | 0.625 | 0.519 | 1.000 |
 
-Source: `results/eval-real/` · verdict written 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-h1-bm25-2026-07-30/` · verdict written 2026-07-30 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
 
-The date is **recovered, not recorded** — the harness writes no timestamp. How it was reconstructed, and what it does not establish, is in `results/eval-real/provenance.json`.
+The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-bm25-2026-07-30/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 
@@ -111,8 +110,8 @@ H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composit
 
 | Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `L2` cross-file | 8 | 0.448 | 0.586 | 0.562 | +0.113 | −0.024 | no |
-| `L3` architecture | 3 | 0.315 | 0.371 | 0.324 | +0.009 | −0.047 | no |
+| `L2` cross-file | 8 | 0.448 | 0.623 | 0.623 | +0.174 | +0.000 | no |
+| `L3` architecture | 3 | 0.315 | 0.306 | 0.306 | −0.009 | +0.000 | no |
 
 <!-- END generated: eval-h1-verdict -->
 
@@ -122,9 +121,9 @@ Recall by question level — the ladder that did hold up:
 
 | Level | n | `B1` Recall@5 | `B2` Recall@5 | `B3` Recall@5 | `B4` Recall@5 |
 |---|---:|---:|---:|---:|---:|
-| `L1` single-hop | 5 | 0.200 | 1.000 | 1.000 | 1.000 |
-| `L2` cross-file | 8 | 0.208 | 0.292 | 0.396 | 0.396 |
-| `L3` architecture | 3 | 0.250 | 0.083 | 0.167 | 0.167 |
+| `L1` single-hop | 5 | 0.600 | 1.000 | 1.000 | 1.000 |
+| `L2` cross-file | 8 | 0.354 | 0.292 | 0.396 | 0.396 |
+| `L3` architecture | 3 | 0.167 | 0.083 | 0.083 | 0.083 |
 
 <!-- END generated: eval-level-ladder -->
 
@@ -134,54 +133,30 @@ Recall by question level — the ladder that did hold up:
 questions and against nothing else. The threshold, the question set, and the
 metric definitions were fixed before the run and have not been touched since.
 
-**The verdict survives run-to-run noise, which it had never been tested against.**
-Answer synthesis is stochastic, and every figure above comes from a single run. Six
-further B4 runs — three on this exact synthesis code, three with a changed citation
-prompt, all in one session against this index — bound what a repeat costs. Recall@5,
-MRR and nDCG@5 came back byte-identical in all six, and B3's groundedness is 1.000 on
-every question, so the entire margin distribution comes from B4's synthesis and works
-out to exactly a quarter of its level's groundedness spread. Measured that way, the
-distance from the +0.05 bar is **at least 6.9 standard deviations at the least
-favourable of the four arm-and-level combinations, and 21.6 at the most.** Nothing in
-synthesis variability reaches that, so `unsupported` is not an artefact of having
-measured once. Design, criteria fixed before the numbers were seen, and every per-run
-figure: [`results/b4-citation-fix-experiment.md`](../../results/b4-citation-fix-experiment.md).
-Those runs are outside `results/eval-real/`, so the two ratios quoted here are the one
-place in this document carrying a figure the artifact drift check does not cover — that
-file is their authority.
+**The current verdict does not depend on synthesis noise.** B3 and B4 receive
+identical scored retrieval lists, and both clear groundedness at the ceiling in
+this run, so their composites tie. Since groundedness cannot exceed that ceiling,
+B4 cannot create the required positive margin against B3 under this scoring even
+with a different stochastic answer. The earlier nine-run citation experiment is
+still retained as protocol history, but its pre-evidence-ID groundedness spread
+is not used to justify this current verdict:
+[`results/b4-citation-fix-experiment.md`](../../results/b4-citation-fix-experiment.md).
 
-**The archived ladder is not a BM25 validation.** It shows a monotonic
-legacy-lexical → dense → hybrid+rerank ordering on the single-hop and cross-file
-levels, but its B1 was the old `ILIKE` plus fixed substring bonuses rather than
-BM25. Because B3 and B4 used that same sparse component, the corrected BM25 path
-must be run across B1–B4 before making the stronger hybrid-ablation claim.
+**The corrected BM25 path is now measured.** The current run records the formula,
+tokenizer, document fields, parameters, and corpus revision. B1 improves over the
+superseded legacy lexical snapshot, while hybrid retrieval is strongest on the
+whole suite and on L2. The ordering is not monotonic on every level.
 
-**B4's groundedness sits below the 0.95 guardrail.** This is the one number in
-this report that an earlier version stated too favourably — it was written as
-`0.95` and described as "at the threshold floor", when the real value is under
-the bar. The agent sometimes emits a citation that fails verification.
-Unverifiable references are stripped from the delivered answer, so what a user
-reads stays verified; the *score* deliberately counts the draft **before**
-redaction, so a heavily-redacted answer still scores low. That is the honest
-measure of how clean the draft was, and the dip is a real failure against a
-pre-registered guardrail.
-
-One qualification on that number, not on the finding. Four runs of this same synthesis
-code — the archived suite run plus three repeats — all came in under the bar, and the
-recorded figure is the **highest** of the four; their mean sits further below the
-guardrail than the value this report displays. The direction is therefore solid, and if
-anything understated. The magnitude is not: the shortfall the recorded figure implies is
-about the same size as the spread between repeats. **No sentence here quantifies how far
-under the bar the system sits**, because one 16-question run cannot support it. Note the
-narrowness of that retraction: *this run came in at the recorded figure* stays exactly
-true and is what the generated blocks and the UI state. What is withdrawn is reading
-that figure as where the system sits, which is a different claim and the one a reader
-takes away.
+**B4 clears the 0.95 groundedness guardrail on this run.** The current
+server-owned evidence-ID contract produced cited answers without redaction
+markers, while the score still measures the draft **before** redaction. The
+metric was not relaxed. This single run establishes the recorded snapshot, not a
+guarantee that future synthesis will always clear the bar.
 
 **L3 is statistically fragile.** With n=3, one question moves the average and
 significance is not computable. Sparse `B1` posts the *highest* L3 recall of any
 rung, which on three questions is almost certainly one lucky lexical hit rather
-than evidence that the legacy heuristic understands architecture. L3 should not be read in
+than evidence that BM25 understands architecture. L3 should not be read in
 either direction. Expanding it is a precondition of the next run.
 
 ### Why B4 cannot currently beat B3
@@ -192,7 +167,7 @@ every retrieval cell in those two rows matches to the digit. The call-graph
 tools fire later, *inside the agent's answer*, and the harness scores retrieval,
 not the answer. The differentiator is therefore invisible to Recall, MRR and
 nDCG, leaving groundedness as the only channel where B4 can differ from B3 — and
-B4's groundedness dipped.
+B4's groundedness also ties B3 at the ceiling in this run.
 
 Under this scoring **B4 cannot beat B3 no matter how well the graph works.**
 
@@ -209,10 +184,9 @@ would be inaccurate.
 - `repo_id` isolation, caches, and internal-route protection are enforced in code and tests.
 - The production packaging path is now explicit and locally smoke-tested.
 - Citation verification demonstrably does work: it catches unverifiable
-  references and strips them from delivered answers. That is also *why* B4's
-  groundedness reads below the guardrail — the score counts the draft before
-  redaction, so the guardrail failing is the mechanism reporting itself
-  honestly rather than the mechanism being absent.
+  references and strips them from delivered answers. The current evidence-ID
+  run clears the guardrail without changing the pre-redaction scoring rule,
+  while the superseded failures remain archived rather than erased.
 - Every number a user or reviewer sees is generated from the results directory.
   The UI, this report, and the README cannot disagree without `make check`
   failing.
@@ -238,6 +212,13 @@ visible that B4's *scored* retrieval is the same call as B3's, so the call graph
 the entire hypothesis — is never scored. The first run could not have revealed
 this, because B3 and B4 were identical for an unrelated reason. Meeting the first
 set of criteria is what made the real obstacle legible.
+
+**Criteria set 1b (met on 2026-07-30).** Replace the legacy sparse heuristic with
+recorded Okapi BM25, run the full B1–B4 suite through the server-owned evidence-ID
+protocol, and keep the metric definitions fixed. That rerun is the current
+snapshot. It improves B1 retrieval and brings B4 above the groundedness
+guardrail, while H1 remains unsupported because B4's scored retrieval still ties
+B3 by construction.
 
 ## H1 Decision
 
@@ -283,8 +264,8 @@ Approved, not yet implemented. Numbered so a later run can be checked against th
    and could flip H1 for a purely cosmetic reason. That is p-hacking in a
    bug-fix costume. Tightening the *synthesis prompt* so the model cites only
    from the allowed list is legitimate — it changes the system, not the metric —
-   but it moves B4's number and must be reported as its own change, never folded
-   silently into the H1 claim, and deliberately not bundled into the same run.
+   and the current rerun records that system change explicitly through the
+   evidence-ID protocol. The scoring rule itself remains unchanged.
 
 Expanding the question set makes the next run a **fresh pre-registration**:
 expanded suite and corrected scoring both fixed before any number is seen.
@@ -306,8 +287,8 @@ expanded suite and corrected scoring both fixed before any number is seen.
 
 ## Outstanding Work
 
-The single list of what is unfinished. Items marked **▲** block the H1 re-run;
-everything else is independent of it.
+The single list of what is unfinished. Items marked **▲** block the next
+graph-sensitive H1 re-run; everything else is independent of it.
 
 ### Evaluation
 
@@ -319,24 +300,21 @@ everything else is independent of it.
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
 - **B0 is not measured** — it needs an API token. Either produce it or keep
   reporting it as unmeasured; it has no bearing on the H1 verdict.
-- **B4's groundedness dip was diagnosed on the pre-evidence-ID protocol.** The
+- ~~Re-run the evidence-ID protocol across B1–B4~~ **— completed.** The earlier
+  groundedness dip was diagnosed on the pre-evidence-ID protocol. The
   agent offered qualified names that the exact-match guardrail rejected;
   withdrawing those names (`da2b6bc`) treated the symptom and scored worst once
   uncited answers stopped scoring perfectly. The shared symbol rule (`029b9de`,
-  entry below) was the measured remedy. In that final measured arm, invented
-  `file:line` references made up the remaining 0.894-to-0.95 gap. The current
-  implementation subsequently replaced model-facing symbol tokens with
-  server-owned evidence IDs, so `0.894` is **not** a measurement of today's
-  agent and “only file:line remains” is a hypothesis to re-check, not a current
-  result. Do not address any remaining gap by changing the score upward
-  (criteria set 2, item 3). Nine-run record and its implementation boundary:
+  entry below) was the measured remedy. The server-owned evidence-ID path now
+  has a complete current run and clears the guardrail without changing the
+  score. The nine-run record remains the authority for the historical failure:
   `results/b4-citation-fix-experiment.md`.
 - ~~An answer with no citations scores groundedness `1.000`~~ **— fixed.** It now
   scores `0.0`, and `dcode_eval.run` reports `answers_without_citations` beside every
   groundedness figure, because `0.0` alone cannot separate *cited nothing* from *cited
-  things that all failed*. The recorded verdict does not move: all four baselines cited
-  on all 16 questions in `results/eval-real/`, so the branch never executed there. It
-  did fire in the variance runs, where it had been paying a free perfect score — and
+  things that all failed*. Both complete H1 snapshots have citations on every
+  question, so the branch does not affect either verdict. It did fire in the
+  variance runs, where it had been paying a free perfect score — and
   rescoring them **reverses the measured sign of the citation fix and erases its
   apparent variance reduction**, so neither is claimed. Both corrections are recorded in
   `results/b4-citation-fix-experiment.md`.
@@ -351,10 +329,11 @@ everything else is independent of it.
   (`da2b6bc`) scored *worst* of the three arms once uncited answers stopped scoring
   perfectly, and only looked best while both errors were in place. Full record:
   `results/b4-citation-fix-experiment.md`.
-- **A margin from one run should not be quoted to three decimals.** Repeat spread on
-  unchanged synthesis code is roughly the size of the guardrail shortfall itself. Any
-  future run reporting a margin should state how many repeats it averages, and how many
-  repeats is itself a pre-registration decision.
+- **A stochastic answer metric from one run should not be generalized.** The
+  current run's H1 failure is structurally fixed by the B3/B4 retrieval tie, but
+  any future graph-sensitive run reporting a nonzero margin should state how
+  many repeats it averages. The repeat count is itself a pre-registration
+  decision.
 - **A second corpus.** One repository, 16 questions. Nothing here generalises,
   and no wording in this document should imply otherwise.
 
@@ -374,15 +353,11 @@ everything else is independent of it.
 
 ### Frontend
 
-- **No surface states a single-run figure alongside its repeat spread.** The landing
-  page and `/methodology` now name the pre-registered bar and the miss, bound to the
-  generated snapshot and pinned by tests — the three earlier over-claims ("the guardrail
-  holds it at `≥ 95%`", a `groundedness ≥ 95%` principle tag, and a metric-shaped `1.00`
-  on the hero mock) are gone. What remains is smaller and real: both surfaces quote the
-  recorded groundedness to three decimals with nothing saying that a repeat of the same
-  code spans roughly ten times the last of those digits. Closing it means putting the
-  variance into the generated snapshot, since `sync_eval_artifacts.py` reads only
-  `results/eval-real/` and a hand-typed spread would be an unheld copy (§11).
+- **The UI reports one recorded run, not a universal guarantee.** Landing and
+  `/methodology` bind both the pre-registered bar and the measured outcome to the
+  generated snapshot. Repeat variance is not displayed because the historical
+  variance experiment used a different citation protocol; any future comparable
+  repeat series must be committed beside the official run before it is shown.
 - **Accessibility live regions are missing** — a regression against a previously
   closed item. A screen-reader user hears nothing as an answer streams. The
   unresolved design question is recorded in [`CLAUDE.md`](../../CLAUDE.md), since

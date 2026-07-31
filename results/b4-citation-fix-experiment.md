@@ -8,8 +8,8 @@ to that conclusion is the part worth reading — two mutually concealing errors 
 for a full round.
 
 **No run here is a verdict.** All nine are single-baseline B4 runs, which carry no H1
-decision. `results/eval-real/` remains the recorded H1 result and is untouched in every
-figure.
+decision. `results/eval-real/` was the recorded H1 result when this experiment ran and
+is untouched in every figure; `results/eval-h1-bm25-2026-07-30/` later superseded it.
 
 | Arm | symbol tokens offered | guardrail's symbol rule | runs |
 |---|---|---|---|
@@ -98,10 +98,10 @@ fraction moves.
 **The 0.95 guardrail is met by neither arm** — 0.8863 and 0.8946, not close. This
 route does not reach it.
 
-## What this says about the figure the UI displays
+## What this said about the figure the UI displayed at the time
 
-`0.916` is displayed to three decimals in the report, the landing page and
-`/methodology`, against a bar of `0.95`. Its run-to-run spread on unchanged code is
+`0.916` was displayed to three decimals in the report, the landing page and
+`/methodology`, against a bar of `0.95`. Its run-to-run spread on unchanged code was
 **0.0295, and had never been measured.** Of the three samples now in hand it is the
 highest.
 
@@ -219,7 +219,7 @@ on this evidence, and it is the one deliberately not taken here because it moves
 metric upward.
 
 `results/eval-real/` is unaffected in every figure: all four baselines had citations on
-all 16 questions, so the branch never executed and the recorded H1 verdict does not move.
+all 16 questions, so the branch never executed and the then-recorded H1 verdict did not move.
 
 ### What this does not measure
 
@@ -347,7 +347,8 @@ measured, but they do not measure the current citation protocol. In particular,
 `file:line` references are the remaining gap” is the last measured diagnosis
 rather than a current-system conclusion.
 
-The later evidence-ID path, exact-token redaction, same-language synthesis, and
-multi-turn contextualization are covered by tests and a one-question live smoke.
-Only a complete pre-registered B1–B4 run can supersede the recorded H1 result or
-establish the current suite-level groundedness.
+The later evidence-ID path and exact-token redaction now have a complete B1–B4
+measurement in `results/eval-h1-bm25-2026-07-30/`; that run supersedes the old H1
+snapshot and establishes the current suite-level groundedness. Same-language
+synthesis and multi-turn contextualization remain covered by dedicated tests and
+live smoke because the fixed H1 suite contains only English single-turn questions.

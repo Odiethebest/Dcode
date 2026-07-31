@@ -2,7 +2,13 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { demoCases, h1Report, levelSummary, suiteSummary } from '@/demo/evalSnapshot';
+import {
+  demoCases,
+  h1Report,
+  levelSummary,
+  snapshotSource,
+  suiteSummary,
+} from '@/demo/evalSnapshot';
 import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import MethodologyPage from '@/pages/MethodologyPage';
 
@@ -22,11 +28,11 @@ describe('MethodologyPage', () => {
     expect(screen.getAllByText(suiteSummary.B4.groundedness.toFixed(3)).length).toBeGreaterThan(0);
   });
 
-  it('discloses the B4 groundedness dip instead of burying it', () => {
+  it('reports that B4 clears the recorded groundedness guardrail', () => {
     renderMethodology();
-    // The real run put B4 under the 0.95 guardrail; the page has to say so.
-    expect(suiteSummary.B4.groundedness).toBeLessThan(RUN_GROUNDEDNESS_BAR);
-    expect(screen.getByText(/below bar/i)).toBeInTheDocument();
+    expect(suiteSummary.B4.groundedness).toBeGreaterThanOrEqual(RUN_GROUNDEDNESS_BAR);
+    expect(screen.queryByText(/below bar/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/every rung clears/i)).toBeInTheDocument();
   });
 
   it('names B3 as the retrieval leader, not B4', () => {
@@ -50,26 +56,28 @@ describe('MethodologyPage', () => {
     expect(screen.getByText(/diagnosed limitation of the measurement design/i)).toBeInTheDocument();
   });
 
-  it('shows the archived ladder but requires a corrected rerun', () => {
-    // The ordering is historical data; the page must not call legacy B1 BM25.
+  it('shows the corrected BM25 ladder without claiming monotonicity', () => {
     const l2 = levelSummary.L2;
-    expect(l2.B1.recallAtK).toBeLessThan(l2.B2.recallAtK);
-    expect(l2.B2.recallAtK).toBeLessThan(l2.B3.recallAtK);
+    expect(l2.B1.recallAtK).toBeGreaterThan(l2.B2.recallAtK);
+    expect(l2.B1.recallAtK).toBeLessThan(l2.B3.recallAtK);
     renderMethodology();
-    expect(screen.getByText(/why it needs a rerun/i)).toBeInTheDocument();
-    expect(screen.getByText(/not BM25/i)).toBeInTheDocument();
+    expect(screen.getByText(/The BM25 rerun/i)).toBeInTheDocument();
+    expect(screen.getByText(/ordering is not monotonic/i)).toBeInTheDocument();
   });
 
   it('does not claim the page matches an unarchived run', () => {
     renderMethodology();
     // The old copy said "the numbers here match the recorded run" while matching
     // no committed artifact. It now names the directory it was generated from.
-    expect(screen.getAllByText(/results\/eval-real\//).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(snapshotSource.path).length).toBeGreaterThan(0);
   });
 
   it('routes the demo CTA into the workbench', () => {
     renderMethodology();
-    expect(screen.getByRole('link', { name: /Open the demo/i })).toHaveAttribute('href', '/workbench');
+    expect(screen.getByRole('link', { name: /Open the demo/i })).toHaveAttribute(
+      'href',
+      '/workbench'
+    );
   });
 
   it('titles the transcripts with their real scope, not the whole suite', () => {

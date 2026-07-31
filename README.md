@@ -360,7 +360,7 @@ additional product-quality gates tracked beside it:
 |---|---|
 | **Recorded H1 decision** | On both L2 and L3, B4 must beat B2 and B3 by at least `0.05` composite points. The composite is the mean of Recall@k, MRR, nDCG@k, and groundedness. |
 | Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% — **unmeasured**, the judge is still a stub and this value is not part of the current `h1_report` decision |
-| Groundedness (programmatic) | ≥ 95% product guardrail — reported separately; the recorded B4 run misses it |
+| Groundedness (programmatic) | ≥ 95% product guardrail — reported separately; the current B4 run clears it |
 
 Question set construction, result schema, and the LLM-as-Judge protocol: [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md).
 
@@ -373,14 +373,14 @@ results directory by `scripts/sync_eval_artifacts.py`, never transcribed.
 
 | Baseline | Recall@5 | MRR | nDCG@5 | Groundedness |
 |---|---:|---:|---:|---|
-| `B1` legacy lexical heuristic | 0.214 | 0.221 | 0.204 | 1.000 |
+| `B1` BM25 sparse | 0.396 | 0.361 | 0.311 | 1.000 |
 | `B2` Dense RAG | 0.474 | 0.325 | 0.333 | 1.000 |
-| `B3` Hybrid + rerank | 0.542 | 0.596 | 0.508 | 1.000 |
-| `B4` Dcode (hybrid + call graph + agent) | 0.542 | 0.596 | 0.508 | **0.916** ⚠️ below the 0.95 guardrail |
+| `B3` Hybrid + rerank | 0.526 | 0.625 | 0.519 | 1.000 |
+| `B4` Dcode (hybrid + call graph + agent) | 0.526 | 0.625 | 0.519 | 1.000 |
 
-Source: `results/eval-real/` · verdict written 2026-07-28 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
+Source: `results/eval-h1-bm25-2026-07-30/` · verdict written 2026-07-30 · psf/requests · k=5 · embedding Jina v2-base-code (768-dim) · reranker BGE reranker v2-m3 · synthesis gpt-4o-mini
 
-The date is **recovered, not recorded** — the harness writes no timestamp. How it was reconstructed, and what it does not establish, is in `results/eval-real/provenance.json`.
+The date is **committed provenance, not harness output** — the harness writes no timestamp. Its observation basis and limits are recorded in `results/eval-h1-bm25-2026-07-30/provenance.json`.
 
 <!-- END generated: eval-suite-metrics -->
 
@@ -392,8 +392,8 @@ H1 is supported only if B4 beats **both** B2 and B3 by at least `0.050` composit
 
 | Level | n | B2 | B3 | B4 | B4 vs B2 | B4 vs B3 | Cleared |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `L2` cross-file | 8 | 0.448 | 0.586 | 0.562 | +0.113 | −0.024 | no |
-| `L3` architecture | 3 | 0.315 | 0.371 | 0.324 | +0.009 | −0.047 | no |
+| `L2` cross-file | 8 | 0.448 | 0.623 | 0.623 | +0.174 | +0.000 | no |
+| `L3` architecture | 3 | 0.315 | 0.306 | 0.306 | −0.009 | +0.000 | no |
 
 <!-- END generated: eval-h1-verdict -->
 
@@ -402,16 +402,15 @@ Three things a reader should take from that table, stated plainly:
 1. **H1 is unsupported.** B4 clears the bar against dense RAG on cross-file
    questions and against nothing else. The threshold was fixed before the run
    and has not moved.
-2. **The archived run does not validate a BM25 ladder.** Its `B1` was the legacy
-   substring heuristic now identified in the generated label. The observed
-   `B1 < B2 < B3` ordering remains historical data, but B1 and the sparse arm of
-   B3/B4 must be rerun with the new BM25 implementation before that comparison
-   can be claimed again.
-3. **B4's groundedness falls below the 0.95 guardrail.** The agent sometimes
-   emits a citation that fails verification. Unverifiable references are
-   stripped from the delivered answer, but the score deliberately counts the
-   draft *before* redaction, so a heavily-redacted answer still scores low.
-   That is a real dip in a pre-registered guardrail and it is reported as one.
+2. **This run exercises the corrected BM25 path.** B1 improves substantially
+   over the retained legacy snapshot, and B3 is the strongest aggregate
+   retrieval rung. The per-level ladder is not monotonic: on the three L3
+   questions, sparse B1 posts the highest recall. That small row is reported,
+   not generalized into an architecture claim.
+3. **B4 clears the groundedness guardrail on this run.** Every B4 answer in the
+   suite contains verified citations and none contains a redaction marker. The score still
+   measures the draft before redaction; the metric was not relaxed to obtain
+   the improvement.
 
 **Why B4 cannot currently beat B3:** B4's *scored* retrieval is the same hybrid
 search as B3's, so the two rows match to the digit. The call-graph tools fire
@@ -446,11 +445,13 @@ Code search needs exact symbol matching *and* semantic intent. Code-tokenized
 Okapi BM25 and dense retrieval run in parallel, fuse by Reciprocal Rank Fusion
 (`k=60`, dense:sparse weight `2:1` by default), then rerank through a cross
 encoder (`D-2.2.1`). The checked-in
-real-model run predates the BM25 implementation, so its ladder is retained as
-historical evidence and is not presented as validation of the corrected path.
+current real-model run records `okapi_bm25_v1`, its tokenizer, fields, `k1`,
+`b`, and corpus revision, so the corrected sparse path is now part of the
+measured baseline ladder. The earlier lexical snapshot remains under
+`results/eval-real/` as historical evidence.
 
 **Groundedness as a hard guardrail**
-Inventing a symbol that does not exist is the critical failure mode for code answers. The check (`D-2.3.1`) extracts every citation from a final answer, verifies it against the indexed symbol table, and strips what it cannot verify. It is deliberately scored on the draft **before** redaction, which is why the guardrail can visibly fail — and does, at 0.916. Counting only surviving citations would make the number meaningless: [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md).
+Inventing a symbol that does not exist is the critical failure mode for code answers. The check (`D-2.3.1`) extracts every citation from a final answer, verifies it against the indexed symbol table, and strips what it cannot verify. It is deliberately scored on the draft **before** redaction, which is why the guardrail can visibly fail. The current evidence-ID run clears it without changing that scoring rule; counting only surviving citations would make the number meaningless: [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md).
 
 **Async indexing supports the platform story**
 H1 could be evaluated with a simpler indexing script; the queue, worker, state machine, and cached embeddings exist to make this usable as a service. Priority order stayed strict regardless: H1-critical work first, infrastructure second.

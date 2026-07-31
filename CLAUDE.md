@@ -55,7 +55,7 @@ docs/en/         five authoritative documents (table above); docs/archive/ is hi
 
 **Official snapshot numbers are generated, never typed.** Every H1 snapshot
 figure in the UI and generated documentation blocks comes from
-`results/eval-real/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
+`results/eval-h1-bm25-2026-07-30/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
 if any of those surfaces drifts. A separately labelled experiment report may
 derive figures from its own committed run directories and must name that
 authority. Markdown targets use

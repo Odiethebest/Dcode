@@ -27,7 +27,7 @@ make migrate                            # Alembic upgrade head inside the api co
 make check                              # lint + typecheck + tests + eval-artifact drift check
 make frontend-build
 npm --prefix apps/frontend run dev      # → http://localhost:5173/
-python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-bm25-2026-07-30]
 make eval-smoke                         # single-baseline harness smoke
 ```
 
@@ -329,7 +329,8 @@ Expected checkpoints:
 Once the smoke passes:
 
 1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
-   results directory. Do not overwrite `results/eval-real/` — see
+   results directory. Do not overwrite any committed snapshot, including
+   `results/eval-h1-bm25-2026-07-30/` and `results/eval-real/` — see
    [`results/README.md`](../../results/README.md).
    Pass `--repo-id`; the harness then records the database's exact
    `corpus_revision` together with the BM25 formula, tokenizer, document fields,
@@ -340,9 +341,11 @@ Once the smoke passes:
 
    ```bash
    python3 scripts/sync_eval_artifacts.py results/<new-run>
-   npx prettier --write apps/frontend/src/demo/evalSnapshot.ts
    python3 scripts/sync_eval_artifacts.py --check
    ```
+
+   The generator formats the TypeScript snapshot through the frontend's locked
+   Prettier binary before comparing or writing it.
 
 3. **Re-read the prose.** Tests and the drift check follow the data; the narrative
    copy in the README, [`Final_Report.md`](Final_Report.md), and the
@@ -351,9 +354,10 @@ Once the smoke passes:
 4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
    report whichever way it lands.
 
-Before any re-run, read the criteria-set-2 items in `Final_Report.md`. Two of them
-(scoring B4 on its verified evidence set, expanding L3) have to be implemented
-*first* — re-running without them reproduces the same unmeasurable comparison.
+Before a graph-sensitive re-run intended to re-open H1, read the criteria-set-2
+items in `Final_Report.md`. Scoring B4 on its verified evidence set and expanding
+L3 have to be implemented *first*; re-running the current protocol reproduces
+the same unmeasurable B3/B4 comparison.
 
 ## Verified Run — 2026-07-27
 
@@ -398,5 +402,21 @@ and server-owned evidence-ID path, returning:
 - final groundedness `1.0`.
 
 This is a one-question integration smoke. It proves the current service path
-works end to end; it does not supersede `results/eval-real/`, validate the new
-BM25 ladder, or establish suite-level groundedness.
+works end to end; by itself it does not establish suite-level behavior.
+
+## Complete BM25 H1 Re-run — 2026-07-30
+
+The complete B1–B4 harness subsequently ran against repo
+`2543893e-0965-4be7-ac45-5a8e38600bc0`, commit
+`414f0513c33883adf6f2b46901d4f0b38a455851`, with all 726 chunks embedded at
+768 dimensions. Redis was flushed before the run; Jina v2-base-code, BGE
+reranker v2-m3, and `gpt-4o-mini` were healthy and active. The runner completed
+all 16 questions for each baseline, observed the same corpus revision before
+and after, and exited successfully.
+
+The recorded output is `results/eval-h1-bm25-2026-07-30/`. It validates the
+corrected Okapi BM25 path and the evidence-ID groundedness path. H1 remains
+`unsupported`: B4 beats B2 on L2, loses slightly on L3, and ties B3 on both
+levels because the harness gives B3 and B4 the same scored retrieval list. Read
+`h1_report.json` and the generated blocks in `Final_Report.md` for the exact
+figures.

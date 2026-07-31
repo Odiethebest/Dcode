@@ -63,7 +63,7 @@ user's task — nobody hand-copies a repository UUID between pages.
 | `src/components/ui/` | Six shared primitives, consuming design tokens only |
 | `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
 | `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
-| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-real/` — do not edit |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-bm25-2026-07-30/` — do not edit |
 | `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Runtime Architecture
@@ -295,10 +295,10 @@ The harness exposes five baseline tiers:
 | B3 | Weighted BM25 + dense RRF, reranking, and answer synthesis |
 | B4 | B3 retrieval plus graph tools and the bounded agent |
 
-The checked-in `results/eval-real/` run predates the BM25 implementation, so its
-B1 and the sparse component of B3/B4 are explicitly labelled as the legacy
-lexical heuristic. It remains the recorded H1 snapshot until a complete new run
-supersedes it; it is not evidence for the corrected BM25 ladder.
+The current `results/eval-h1-bm25-2026-07-30/` snapshot exercises
+`okapi_bm25_v1` in B1 and in the sparse component of B3/B4. The previous
+`results/eval-real/` run used the legacy lexical heuristic and remains available
+as a superseded historical snapshot.
 
 Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
 per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
@@ -317,13 +317,13 @@ executable decision:
 
 - pairwise win rate against B2 should exceed 60%, but the judge is currently a
   stub and the metric is unmeasured;
-- programmatic groundedness should reach 95%; the recorded B4 run misses that
+- programmatic groundedness should reach 95%; the current B4 run clears that
   guardrail.
 
 The current B4 retrieval metric also does not score the final verified evidence
 set produced after graph/tool use, so the graph contribution remains
 unmeasured. Correcting that measurement and expanding L3 are prerequisites for
-the next full H1 run; the fixed re-run criteria live in
+the next graph-sensitive H1 run; the fixed re-run criteria live in
 [Final_Report.md](Final_Report.md).
 
 ## Non-Functional Requirements

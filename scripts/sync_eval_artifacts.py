@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate every artifact that restates the evaluation numbers.
 
-    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-bm25-2026-07-30]
 
 Targets:
   - apps/frontend/src/demo/evalSnapshot.ts   (read by /methodology and the landing ladder)
@@ -16,9 +16,9 @@ state what we can prove" cannot restate its own numbers by hand.
 
 So every figure lives in exactly one place — the results directory — and
 everything that displays it is generated from there. Prose carries qualitative
-conclusions only ("H1 unsupported", "the archived sparse baseline was not
-BM25", "the graph's contribution is unmeasured"); specific numbers belong
-inside a generated block.
+conclusions only ("H1 unsupported", "the corrected BM25 path is measured",
+"the graph's contribution is unmeasured"); specific numbers belong inside a
+generated block.
 
 That claim only holds while this script is a pure function of the bytes under
 the run directory. Taking a value from an mtime, the wall clock, or a constant
@@ -43,9 +43,11 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+DEFAULT_RUN = "results/eval-h1-bm25-2026-07-30"
 TS_OUT = ROOT / "apps/frontend/src/demo/evalSnapshot.ts"
 DOC_TARGETS = [
     ROOT / "README.md",
@@ -60,16 +62,6 @@ H1_LEVELS = ["L2", "L3"]
 # vocabulary (see CLAUDE.md on the environment's cyber safeguard).
 DEMO_QUESTIONS = ["q-008", "q-010", "q-015", "q-016"]
 
-# The pre-registered groundedness guardrail. A baseline under it is disclosed in
-# the generated table rather than left for a reader to notice on their own.
-GUARDRAIL = 0.95
-
-CORPUS = "psf/requests"
-MODELS = {
-    "embedding": "Jina v2-base-code (768-dim)",
-    "reranker": "BGE reranker v2-m3",
-    "synthesis": "gpt-4o-mini",
-}
 TS_BASELINE_LABELS = {
     "B2": "Dense RAG",
     "B3": "Hybrid + rerank",
@@ -105,9 +97,9 @@ LABELS = {
         # writes no timestamp at all, so the date is reconstructed. Markdown has
         # room to say where from; the TypeScript snapshot keeps it to one line.
         "recovered": (
-            "The date is **recovered, not recorded** — the harness writes no "
-            "timestamp. How it was reconstructed, and what it does not establish, "
-            "is in `{path}provenance.json`."
+            "The date is **committed provenance, not harness output** — the harness "
+            "writes no timestamp. Its observation basis and limits are recorded in "
+            "`{path}provenance.json`."
         ),
     },
     "ch": {
@@ -135,8 +127,8 @@ LABELS = {
             "embedding {embedding} · reranker {reranker} · 合成 {synthesis}"
         ),
         "recovered": (
-            "该日期为**回溯恢复，非 harness 记录** —— harness 完全不写时间戳。"
-            "恢复方式及其不能证明的部分见 `{path}provenance.json`。"
+            "该日期是**已提交的 provenance，而非 harness 输出** —— harness 完全不写"
+            "时间戳。其观测依据与限制见 `{path}provenance.json`。"
         ),
     },
 }
@@ -188,11 +180,13 @@ def load_run(run: pathlib.Path) -> dict:
         "h1": read("h1_report.json"),
         "config": read("run_config.json"),
         "provenance": provenance,
+        "display": provenance["display"],
+        "groundedness_guardrail": float(provenance["groundedness_guardrail"]),
         "levels": {b: read(f"{b}/taxonomy_breakdown.json") for b in BASELINES},
         "rows": rows,
         "path": f"{run.relative_to(ROOT).as_posix()}/",
-        # When the verdict file was written. Recovered by hand, not recorded by
-        # the harness — the surfaces that display it have to say so.
+        # When the verdict file was written. Recorded in provenance outside the
+        # harness — every surface that displays it has to preserve that distinction.
         "verdict_written": provenance["verdict_written_at"],
     }
 
@@ -239,12 +233,15 @@ def signed3(value: object) -> str:
 
 def block_provenance(run: dict, lang: str) -> str:
     t = LABELS[lang]
+    display = run["display"]
     source = t["source"].format(
         path=run["path"],
         verdict_written=run["verdict_written"],
-        corpus=CORPUS,
+        corpus=display["corpus"],
         k=run["config"]["k"],
-        **MODELS,
+        embedding=display["embedding"],
+        reranker=display["reranker"],
+        synthesis=display["synthesis"],
     )
     return f"{source}\n\n{t['recovered'].format(path=run['path'])}"
 
@@ -259,7 +256,7 @@ def block_suite_metrics(run: dict, lang: str) -> str:
     for baseline in BASELINES:
         row = run["suite"][baseline]
         grounded = m3(row["groundedness"])
-        if row["groundedness"] < GUARDRAIL:
+        if row["groundedness"] < run["groundedness_guardrail"]:
             grounded = f"**{grounded}** ⚠️ {t['below']}"
         lines.append(
             f"| `{baseline}` {baseline_label(run, lang, baseline)} | "
@@ -335,6 +332,7 @@ def render_doc(path: pathlib.Path, run: dict) -> str:
 def render_ts(run: dict) -> str:
     out: list[str] = []
     w = out.append
+    display = run["display"]
 
     def num(value: object) -> str:
         return repr(float(value))  # type: ignore[arg-type]
@@ -352,8 +350,8 @@ def render_ts(run: dict) -> str:
 
     w(f"""/**
  * H1 evaluation snapshot — generated from `{run["path"]}`, the full real-model run
- * ({MODELS["embedding"]} + {MODELS["reranker"]} + {MODELS["synthesis"]})
- * against the {CORPUS} corpus. Verdict written {run["verdict_written"]} — a recovered
+ * ({display["embedding"]} + {display["reranker"]} + {display["synthesis"]})
+ * against the {display["corpus"]} corpus. Verdict written {run["verdict_written"]} — a provenance
  * date, not one the harness recorded; see `{run["path"]}provenance.json`.
  *
  * Every number below is copied verbatim from a committed artifact in that
@@ -369,7 +367,7 @@ def render_ts(run: dict) -> str:
     w("export type Level = 'L1' | 'L2' | 'L3';")
     w("/** The levels H1 is actually evaluated on — L1 is single-hop and out of scope. */")
     w("export type Taxonomy = 'L2' | 'L3';\n")
-    w("/** Labels describe this archived run, not the current implementation. */")
+    w("/** Labels describe this recorded run, not every future implementation. */")
     w("export const baselineLabels: Record<BaselineName, string> = {")
     for baseline in BASELINES:
         label = (
@@ -422,16 +420,18 @@ export interface DemoQuestionCase {
     w("export const snapshotSource = {")
     w(f"  path: '{run['path']}',")
     w("  /**")
-    w("   * When the verdict file was written. Recovered, not recorded — the harness")
-    w("   * writes no timestamp, so any surface showing this has to say so.")
-    w(f"   * Reconstruction and its limits: `{run['path']}provenance.json`.")
+    w("   * When the verdict file was written. Provenance metadata, not harness output —")
+    w("   * the harness writes no timestamp, so every surface must preserve that distinction.")
+    w(f"   * Observation basis and limits: `{run['path']}provenance.json`.")
     w("   */")
     w(f"  verdictWritten: '{run['verdict_written']}',")
-    w(f"  corpus: '{CORPUS}',")
+    w(f"  corpus: {s(display['corpus'])},")
     w(f"  repoId: {s(config['repo_id_override'])},")
     w(f"  k: {config['k']},")
+    w(f"  groundednessGuardrail: {num(run['groundedness_guardrail'])},")
     w(f"  sparseRetrieval: {json.dumps(sparse_retrieval(run), ensure_ascii=False)} as const,")
-    for key, value in MODELS.items():
+    for key in ("embedding", "reranker", "synthesis"):
+        value = display[key]
         w(f"  {key}: '{value}',")
     w("} as const;\n")
 
@@ -520,6 +520,25 @@ export interface DemoQuestionCase {
     return "\n".join(out) + "\n"
 
 
+def format_ts(source: str) -> str:
+    """Return the generated snapshot in the frontend's locked Prettier format."""
+
+    prettier = ROOT / "apps/frontend/node_modules/.bin/prettier"
+    if not prettier.exists():
+        raise SystemExit(
+            "Frontend Prettier is not installed. Run `npm ci` in apps/frontend "
+            "before synchronizing evaluation artifacts."
+        )
+    completed = subprocess.run(
+        [str(prettier), "--stdin-filepath", str(TS_OUT)],
+        input=source,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return completed.stdout
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -529,9 +548,9 @@ def main() -> int:
     argv = sys.argv[1:]
     check = "--check" in argv
     positional = [arg for arg in argv if not arg.startswith("--")]
-    run = load_run(ROOT / (positional[0] if positional else "results/eval-real"))
+    run = load_run(ROOT / (positional[0] if positional else DEFAULT_RUN))
 
-    targets: list[tuple[pathlib.Path, str]] = [(TS_OUT, render_ts(run))]
+    targets: list[tuple[pathlib.Path, str]] = [(TS_OUT, format_ts(render_ts(run)))]
     targets += [(path, render_doc(path, run)) for path in DOC_TARGETS]
     stale = [path for path, rendered in targets if path.read_text() != rendered]
 
@@ -554,7 +573,11 @@ def main() -> int:
     print("\nsuite  recall  mrr    ndcg   grounded")
     for baseline in BASELINES:
         row = run["suite"][baseline]
-        flag = "  <- below guardrail" if row["groundedness"] < GUARDRAIL else ""
+        flag = (
+            "  <- below guardrail"
+            if row["groundedness"] < run["groundedness_guardrail"]
+            else ""
+        )
         print(
             f"  {baseline}  {row['recall_at_k']:.4f}  {row['mrr']:.4f}  "
             f"{row['ndcg_at_k']:.4f}  {row['groundedness']:.4f}{flag}"

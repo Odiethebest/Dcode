@@ -23,7 +23,7 @@ The repository currently includes a small versioned `requests` dataset at
 | Size | 16 questions |
 | Source | manual |
 | Taxonomy coverage | `L1`, `L2`, `L3` |
-| Recorded outputs | `results/eval-real/` (current H1 snapshot; its sparse arm predates BM25) |
+| Recorded outputs | `results/eval-h1-bm25-2026-07-30/` (current complete BM25 H1 snapshot) |
 
 This dataset is sufficient for a reproducible demo and for the current H1
 snapshot. It is not yet large enough to be treated as a stable final benchmark.

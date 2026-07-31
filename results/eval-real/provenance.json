@@ -4,7 +4,14 @@
   "verdict_written_at_status": "recovered, not recorded",
   "verdict_written_at_source": "The eval harness writes no timestamp anywhere in its output, which is why this file exists rather than a run_config.json field. The value is the mtime of h1_report.json as the generator read it at commit 9d4cd5b, while mtimes in this tree were still the ones the run left behind; a later checkout overwrote every mtime under results/eval-real/ with the checkout time.",
   "verdict_written_at_means": "The moment h1_report.json was written to disk. That is not the same claim as 'the date of the run': a run spanning midnight would make the two differ, and nothing available here can tell them apart.",
-  "what_is_not_here": "The models, EMBEDDING_DIM, and the groundedness threshold in force for this run are also unrecorded. They are still restated from constants in scripts/sync_eval_artifacts.py and are not recovered here.",
+  "what_is_not_here": "The harness did not record the models, EMBEDDING_DIM, or groundedness threshold. The display and guardrail fields below are recovered metadata for this archived run, not harness output.",
+  "display": {
+    "corpus": "psf/requests",
+    "embedding": "Jina v2-base-code (768-dim)",
+    "reranker": "BGE reranker v2-m3",
+    "synthesis": "gpt-4o-mini"
+  },
+  "groundedness_guardrail": 0.95,
   "sparse_retrieval": {
     "implementation": "legacy_ilike_weighted_substring",
     "status": "recovered, not recorded",
