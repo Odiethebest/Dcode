@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate every artifact that restates the evaluation numbers.
 
-    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-bm25-2026-07-30]
+    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-l3x12-2026-07-31]
 
 Targets:
   - apps/frontend/src/demo/evalSnapshot.ts   (read by /methodology and the landing ladder)
@@ -17,7 +17,7 @@ state what we can prove" cannot restate its own numbers by hand.
 So every figure lives in exactly one place — the results directory — and
 everything that displays it is generated from there. Prose carries qualitative
 conclusions only ("H1 unsupported", "the corrected BM25 path is measured",
-"the graph's contribution is unmeasured"); specific numbers belong inside a
+"the graph's measured contribution is small"); specific numbers belong inside a
 generated block.
 
 That claim only holds while this script is a pure function of the bytes under
@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_RUN = "results/eval-h1-bm25-2026-07-30"
+DEFAULT_RUN = "results/eval-h1-l3x12-2026-07-31"
 TS_OUT = ROOT / "apps/frontend/src/demo/evalSnapshot.ts"
 DOC_TARGETS = [
     ROOT / "README.md",

@@ -1,8 +1,8 @@
 /**
- * H1 evaluation snapshot — generated from `results/eval-h1-bm25-2026-07-30/`, the full real-model run
+ * H1 evaluation snapshot — generated from `results/eval-h1-l3x12-2026-07-31/`, the full real-model run
  * (Jina v2-base-code (768-dim) + BGE reranker v2-m3 + gpt-4o-mini)
- * against the psf/requests corpus. Verdict written 2026-07-30 — a provenance
- * date, not one the harness recorded; see `results/eval-h1-bm25-2026-07-30/provenance.json`.
+ * against the psf/requests corpus. Verdict written 2026-07-31 — a provenance
+ * date, not one the harness recorded; see `results/eval-h1-l3x12-2026-07-31/provenance.json`.
  *
  * Every number below is copied verbatim from a committed artifact in that
  * directory. Nothing here is rounded, adjusted, or hand-entered: `/methodology`
@@ -64,13 +64,13 @@ export interface DemoQuestionCase {
 
 /** Where these numbers come from, so the page can point at it. */
 export const snapshotSource = {
-  path: 'results/eval-h1-bm25-2026-07-30/',
+  path: 'results/eval-h1-l3x12-2026-07-31/',
   /**
    * When the verdict file was written. Provenance metadata, not harness output —
    * the harness writes no timestamp, so every surface must preserve that distinction.
-   * Observation basis and limits: `results/eval-h1-bm25-2026-07-30/provenance.json`.
+   * Observation basis and limits: `results/eval-h1-l3x12-2026-07-31/provenance.json`.
    */
-  verdictWritten: '2026-07-30',
+  verdictWritten: '2026-07-31',
   corpus: 'psf/requests',
   repoId: '2543893e-0965-4be7-ac45-5a8e38600bc0',
   k: 5,
@@ -94,34 +94,34 @@ export const snapshotSource = {
 export const suiteSummary: Record<BaselineName, BaselineSummary> = {
   B1: {
     baseline: 'B1',
-    questions: 16,
-    recallAtK: 0.3958333333333333,
-    mrr: 0.3614583333333333,
-    ndcgAtK: 0.3106529350894414,
+    questions: 33,
+    recallAtK: 0.3686868686868687,
+    mrr: 0.4732323232323232,
+    ndcgAtK: 0.33414665829754703,
     groundedness: 1.0,
   },
   B2: {
     baseline: 'B2',
-    questions: 16,
-    recallAtK: 0.4739583333333333,
-    mrr: 0.325,
-    ndcgAtK: 0.3326636655451126,
+    questions: 33,
+    recallAtK: 0.3404040404040404,
+    mrr: 0.39494949494949494,
+    ndcgAtK: 0.28644732294592795,
     groundedness: 1.0,
   },
   B3: {
     baseline: 'B3',
-    questions: 16,
-    recallAtK: 0.5260416666666666,
-    mrr: 0.625,
-    ndcgAtK: 0.5193678087913909,
+    questions: 33,
+    recallAtK: 0.40050505050505053,
+    mrr: 0.6338383838383839,
+    ndcgAtK: 0.41808802012445023,
     groundedness: 1.0,
   },
   B4: {
     baseline: 'B4',
-    questions: 16,
-    recallAtK: 0.5260416666666666,
-    mrr: 0.625,
-    ndcgAtK: 0.5193678087913909,
+    questions: 33,
+    recallAtK: 0.4484848484848485,
+    mrr: 0.7626262626262627,
+    ndcgAtK: 0.4942552509793038,
     groundedness: 1.0,
   },
 };
@@ -162,103 +162,103 @@ export const levelSummary: Record<Level, Record<BaselineName, BaselineSummary>> 
       baseline: 'B4',
       questions: 5,
       recallAtK: 1.0,
-      mrr: 0.9,
-      ndcgAtK: 0.9261859507142916,
+      mrr: 1.0,
+      ndcgAtK: 1.0,
       groundedness: 1.0,
     },
   },
   L2: {
     B1: {
       baseline: 'B1',
-      questions: 8,
-      recallAtK: 0.3541666666666667,
-      mrr: 0.24375,
-      ndcgAtK: 0.25734463848442524,
+      questions: 16,
+      recallAtK: 0.37604166666666666,
+      mrr: 0.465625,
+      ndcgAtK: 0.34429955418408925,
       groundedness: 1.0,
     },
     B2: {
       baseline: 'B2',
-      questions: 8,
-      recallAtK: 0.2916666666666667,
-      mrr: 0.2708333333333333,
-      ndcgAtK: 0.2309733194721046,
+      questions: 16,
+      recallAtK: 0.29270833333333335,
+      mrr: 0.375,
+      ndcgAtK: 0.2690606418736563,
       groundedness: 1.0,
     },
     B3: {
       baseline: 'B3',
-      questions: 8,
-      recallAtK: 0.3958333333333333,
-      mrr: 0.65625,
-      ndcgAtK: 0.43885345635245987,
+      questions: 16,
+      recallAtK: 0.36666666666666664,
+      mrr: 0.6927083333333334,
+      ndcgAtK: 0.412923096213062,
       groundedness: 1.0,
     },
     B4: {
       baseline: 'B4',
-      questions: 8,
-      recallAtK: 0.3958333333333333,
-      mrr: 0.65625,
-      ndcgAtK: 0.43885345635245987,
+      questions: 16,
+      recallAtK: 0.45,
+      mrr: 0.84375,
+      ndcgAtK: 0.512084745507928,
       groundedness: 1.0,
     },
   },
   L3: {
     B1: {
       baseline: 'B1',
-      questions: 3,
-      recallAtK: 0.16666666666666666,
-      mrr: 0.6666666666666666,
-      ndcgAtK: 0.26025336666140114,
+      questions: 12,
+      recallAtK: 0.2625,
+      mrr: 0.5277777777777778,
+      ndcgAtK: 0.28225975860851393,
       groundedness: 1.0,
     },
     B2: {
       baseline: 'B2',
-      questions: 3,
-      recallAtK: 0.08333333333333333,
-      mrr: 0.1111111111111111,
-      ndcgAtK: 0.06506334166535029,
+      questions: 12,
+      recallAtK: 0.12916666666666668,
+      mrr: 0.3611111111111111,
+      ndcgAtK: 0.15567910994068396,
       groundedness: 1.0,
     },
     B3: {
       baseline: 'B3',
-      questions: 3,
-      recallAtK: 0.08333333333333333,
-      mrr: 0.08333333333333333,
-      ndcgAtK: 0.05604251209037248,
+      questions: 12,
+      recallAtK: 0.19583333333333333,
+      mrr: 0.4444444444444444,
+      ndcgAtK: 0.21326711426053396,
       groundedness: 1.0,
     },
     B4: {
       baseline: 'B4',
-      questions: 3,
-      recallAtK: 0.08333333333333333,
-      mrr: 0.08333333333333333,
-      ndcgAtK: 0.05604251209037248,
+      questions: 12,
+      recallAtK: 0.21666666666666667,
+      mrr: 0.5555555555555556,
+      ndcgAtK: 0.25975561284918136,
       groundedness: 1.0,
     },
   },
 };
 
-/** Verbatim from results/eval-h1-bm25-2026-07-30/h1_report.json. */
+/** Verbatim from results/eval-h1-l3x12-2026-07-31/h1_report.json. */
 export const h1Report = {
   decision: 'unsupported',
   threshold: 0.05,
   note: 'H1 is supported only if B4 beats both B2 and B3 by at least 0.05 composite points on both L2 and L3.',
   comparisons: {
     L2: {
-      questions: 8,
-      b2Composite: 0.44836832986802616,
-      b3Composite: 0.6227341974214483,
-      b4Composite: 0.6227341974214483,
-      marginVsB2: 0.17436586755342215,
-      marginVsB3: 0.0,
-      supported: false,
+      questions: 16,
+      b2Composite: 0.4841922438017474,
+      b3Composite: 0.6180745240532655,
+      b4Composite: 0.701458686376982,
+      marginVsB2: 0.21726644257523464,
+      marginVsB3: 0.08338416232371659,
+      supported: true,
     },
     L3: {
-      questions: 3,
-      b2Composite: 0.3148769465274487,
-      b3Composite: 0.3056772946892598,
-      b4Composite: 0.3056772946892598,
-      marginVsB2: -0.009199651838188883,
-      marginVsB3: 0.0,
+      questions: 12,
+      b2Composite: 0.41148922192961546,
+      b3Composite: 0.46338622300957794,
+      b4Composite: 0.5079944587678509,
+      marginVsB2: 0.09650523683823542,
+      marginVsB3: 0.04460823575827294,
       supported: false,
     },
   } satisfies Record<Taxonomy, H1Comparison>,
@@ -303,11 +303,11 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B3: {
         answer:
-          'B3 hybrid baseline top evidence:\n- `src/requests/sessions.py:511` `prepare_request`\n- `tests/test_requests.py:624` `test_respect_proxy_env_on_send_session_prepared_request`\n- `tests/test_requests.py:1256` `test_prepare_request_with_bytestring_url`',
+          "A `Session` prepares a request by using the `prepare_request` method, which constructs a `PreparedRequest` instance for transmission. This method merges settings from the `Request` instance with those of the `Session`. \n\nHere’s how the preparation process works:\n\n1. **Extracting Request Details**: The method retrieves the URL and HTTP method from the `Request` instance.\n2. **Handling Cookies**: It checks if cookies are provided; if not, it initializes an empty dictionary. It then merges these cookies with the session's cookies using the `merge_cookies` function.\n3. **Authentication**: If the request does not explicitly set authentication and the session is configured to trust environment settings, it attempts to retrieve authentication details from the netrc file.\n4. **Creating PreparedRequest**: A new `PreparedRequest` object is created, and the method prepares it with the HTTP method and other necessary details before returning it.\n\nThis process ensures that the request is properly configured with all relevant session settings, including headers, cookies, and authentication details, before it is sent out `src/requests/sessions.py:511`. \n\nThe `Session` class itself is designed to manage these configurations, providing features like cookie persistence and connection pooling `src/requests/sessions.py:395` `src/requests/sessions.py:442`.",
         citations: [
           '`src/requests/sessions.py:511`',
-          '`tests/test_requests.py:624`',
-          '`tests/test_requests.py:1256`',
+          '`src/requests/sessions.py:395`',
+          '`src/requests/sessions.py:442`',
         ],
         groundedness: 1.0,
         recallAtK: 0.5,
@@ -316,7 +316,7 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B4: {
         answer:
-          "A `Session` prepares a request through the `prepare_request` method, which constructs a `PreparedRequest` for transmission. This method merges settings from the `Request` instance with those of the `Session`. Here’s how it works step-by-step:\n\n1. **Extract URL and Method**: The method begins by casting the request's URL and method to the appropriate types.\n\n2. **Handle Cookies**: It checks if the request has cookies. If not, it initializes an empty dictionary. If the cookies are not already in a `CookieJar`, it converts them using `cookiejar_from_dict`.\n\n3. **Merge Cookies**: The method merges the request's cookies with the session's cookies using `merge_cookies`, ensuring that both sets of cookies are included in the final request.\n\n4. **Authentication**: If the request does not explicitly set authentication and the session is configured to trust environment settings, it attempts to retrieve authentication details from the environment using `get_netrc_auth`.\n\n5. **Prepare the Request**: Finally, it creates a `PreparedRequest` instance and calls its `prepare` method, passing in the HTTP method and other necessary parameters (though the full details of this preparation are truncated in the evidence).\n\nThis process ensures that the request is fully configured with the appropriate headers, cookies, and authentication before it is sent out `src/requests/sessions.py:511`.",
+          "A `Session` prepares a request through the `prepare_request` method, which constructs a `PreparedRequest` for transmission. This method merges settings from the `Request` instance with those of the `Session`. Here’s how it works step-by-step:\n\n1. **Extract URL and Method**: The method begins by extracting the URL and HTTP method from the `Request` instance.\n\n2. **Handle Cookies**: It checks if the request has cookies. If not, it initializes an empty dictionary. If the cookies are not in the correct format, it converts them into a `CookieJar`.\n\n3. **Merge Cookies**: The method merges the request cookies with the session's cookies using the `merge_cookies` function, ensuring that all relevant cookies are included in the prepared request.\n\n4. **Authentication**: If the request does not specify authentication and the session is configured to trust the environment, it attempts to retrieve authentication details from the environment using `get_netrc_auth`.\n\n5. **Prepare the Request**: Finally, it creates a `PreparedRequest` instance and calls its `prepare` method, passing the HTTP method and other necessary parameters to finalize the request setup.\n\nThis process ensures that the request is fully configured with the appropriate settings before it is sent out `src/requests/sessions.py:511`.",
         citations: ['`src/requests/sessions.py:511`'],
         groundedness: 1.0,
         recallAtK: 0.5,
@@ -359,12 +359,8 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B3: {
         answer:
-          'B3 hybrid baseline top evidence:\n- `src/requests/sessions.py:395` `Session`\n- `src/requests/sessions.py:1` `__module_doc__`\n- `src/requests/sessions.py:442` `__init__`',
-        citations: [
-          '`src/requests/sessions.py:395`',
-          '`src/requests/sessions.py:1`',
-          '`src/requests/sessions.py:442`',
-        ],
+          "The flow from `requests.api.request` to `Session.request` involves several steps:\n\n1. **Starting Point**: The `requests.api.request` function is a high-level function that initiates a request. It is designed to handle various HTTP methods and parameters.\n\n2. **Session Creation**: When a `Session` object is created (e.g., `s = requests.Session()`), it initializes various settings such as headers, authentication, proxies, and cookies, as defined in the `__init__` method of the `Session` class `src/requests/sessions.py:442`.\n\n3. **Preparing the Request**: When a request is made using the session (e.g., `s.get('https://httpbin.org/get')`), the `Session` class's `prepare_request` method is called. This method constructs a `PreparedRequest` object that merges the request's settings with those of the session `src/requests/sessions.py:511`.\n\n4. **Executing the Request**: Finally, the `Session.request` method is invoked to send the prepared request. This method handles the actual transmission of the request, utilizing the session's configurations for cookies, authentication, and other settings.\n\nIn summary, the flow is initiated by `requests.api.request`, which leads to the creation of a `Session`, followed by the preparation of a request using `Session.prepare_request`, and ultimately the execution of the request through `Session.request`.",
+        citations: ['`src/requests/sessions.py:442`', '`src/requests/sessions.py:511`'],
         groundedness: 1.0,
         recallAtK: 0.0,
         mrr: 0.0,
@@ -372,18 +368,19 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B4: {
         answer:
-          'The flow from `requests.api.request` to `Session.request` involves several steps:\n\n1. **Entry Point**: The process begins at `requests.api.request`, which is the main function for making HTTP requests. This function is responsible for handling the request parameters and initiating the request process `src/requests/api.py:24`.\n\n2. **Session Creation**: When a request is made, it often utilizes a `Session` object. The `Session` class is designed to manage and persist settings across requests, such as cookies and authentication `src/requests/sessions.py:395`, `src/requests/sessions.py:1`.\n\n3. **Preparing the Request**: The `Session` object has a method called `prepare_request`, which constructs a `PreparedRequest` object. This method merges the settings from the `Request` instance with those of the `Session` `src/requests/sessions.py:511`. \n\n4. **Making the Request**: Finally, the `Session` class has a `request` method that is called to send the prepared request. This method handles the actual transmission of the request to the server `src.requests.sessions.Session.request`.\n\nIn summary, the flow can be outlined as:\n- `requests.api.request` → creates or uses a `Session` → calls `Session.prepare_request` → calls `Session.request` to send the request. \n\nThis sequence ensures that all session-specific settings are applied to the request before it is sent.',
+          'The flow from `requests.api.request` to `Session.request` involves several steps:\n\n1. **Entry Point**: The process begins at `requests.api.request`, which is the main function for making HTTP requests. This function is responsible for handling the request parameters and initiating the request process `src/requests/api.py:24`.\n\n2. **Session Creation**: If a `Session` object is used, it is typically created via `requests.Session()`. This object manages settings such as cookies, authentication, and proxies across multiple requests `src/requests/sessions.py:395`, `src/requests/sessions.py:1`.\n\n3. **Preparing the Request**: When a request is made using a `Session`, the `Session.request` method is called. This method internally calls `Session.prepare_request`, which constructs a `PreparedRequest` object that merges the request settings with those of the session `src/requests/sessions.py:511`, `src.requests.sessions.Session.request`.\n\n4. **Sending the Request**: After preparing the request, the `Session.send` method is invoked to actually send the HTTP request. This method handles the connection and response `src.requests.sessions.Session.send`.\n\n5. **Final Execution**: The response from the server is then returned to the caller, completing the flow from `requests.api.request` to `Session.request`.\n\nIn summary, the flow is as follows:\n- `requests.api.request` → `Session.request` → `Session.prepare_request` → `Session.send` → Response. \n\nThis sequence allows for the management of session-specific settings while making HTTP requests.',
         citations: [
           '`src/requests/api.py:24`',
           '`src/requests/sessions.py:395`',
           '`src/requests/sessions.py:1`',
           '`src/requests/sessions.py:511`',
           '`src/requests/sessions.py:557`',
+          '`src/requests/sessions.py:752`',
         ],
         groundedness: 1.0,
-        recallAtK: 0.0,
-        mrr: 0.0,
-        ndcgAtK: 0.0,
+        recallAtK: 1.0,
+        mrr: 1.0,
+        ndcgAtK: 0.8503449055347546,
       },
     },
   },
@@ -421,11 +418,13 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B3: {
         answer:
-          'B3 hybrid baseline top evidence:\n- `tests/test_requests.py:2649` `test_requests_are_updated_each_time`\n- `tests/test_requests.py:624` `test_respect_proxy_env_on_send_session_prepared_request`\n- `tests/test_requests.py:496` `test_headers_on_session_with_None_are_not_sent`',
+          'The end-to-end send flow from `requests.api.request` to `Session.send` can be outlined as follows:\n\n1. **Request Creation**: The process begins with creating a `Request` object using `requests.Request`. This object encapsulates the HTTP method and URL, among other parameters. For example, in the test `test_requests_are_updated_each_time`, a POST request is prepared with `requests.Request("POST", httpbin("post")).prepare()` `tests/test_requests.py:2649`.\n\n2. **Session Preparation**: A `Session` object is instantiated, which allows for persistent settings across multiple requests. The session can have default headers, authentication, proxies, and other configurations set `src/requests/sessions.py:442`.\n\n3. **Preparing the Request**: The request is prepared using the session\'s `prepare_request` method, which ensures that the request is ready to be sent with any session-specific settings applied. This is demonstrated in the test `test_session_pickling`, where a request is prepared before being sent `tests/test_requests.py:1619`.\n\n4. **Sending the Request**: The prepared request is sent using the `session.send(prep)` method. This method handles the actual transmission of the request to the server. In the `test_requests_are_updated_each_time`, the response from the send call is captured in `r0` `tests/test_requests.py:2649`.\n\n5. **Handling Redirects**: If the response indicates a redirect, the session can resolve these redirects using `session.resolve_redirects(r0, prep)`, which generates new requests for each redirect. Each of these requests is also sent using `session.send` `tests/test_requests.py:2649`.\n\n6. **Final Response**: The final response from the server is returned to the caller, completing the flow from request creation to response handling.\n\nThis flow illustrates how the `requests` library manages HTTP requests through a session, ensuring that configurations are consistently applied and that redirects are handled seamlessly.',
         citations: [
           '`tests/test_requests.py:2649`',
-          '`tests/test_requests.py:624`',
-          '`tests/test_requests.py:496`',
+          '`src/requests/sessions.py:442`',
+          '`tests/test_requests.py:1619`',
+          '`tests/test_requests.py:2649`',
+          '`tests/test_requests.py:2649`',
         ],
         groundedness: 1.0,
         recallAtK: 0.0,
@@ -434,10 +433,9 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B4: {
         answer:
-          'The end-to-end send flow from `requests.api.request` to `Session.send` can be outlined as follows:\n\n1. **Request Creation**: The process begins with the creation of a request using `requests.Request`. For example, in the test `test_requests_are_updated_each_time`, a POST request is prepared with `requests.Request("POST", httpbin("post")).prepare()` `tests/test_requests.py:2649`.\n\n2. **Session Initialization**: A `Session` object is created, which is responsible for maintaining certain parameters across requests, such as headers and proxies. In the same test, a `RedirectSession` is instantiated `tests/test_requests.py:2649`.\n\n3. **Sending the Request**: The prepared request is sent using the `session.send(prep)` method. This method is responsible for executing the request and returning a response object. The test checks that the request method is correctly set to "POST" and verifies the last call made by the session `tests/test_requests.py:2649`.\n\n4. **Handling Redirects**: If the response indicates a redirect (like HTTP 303 or 307), the session resolves these redirects using `session.resolve_redirects(r0, prep)`. This method generates new requests for each redirect, which are then sent using `session.send` again, but this time as GET requests `tests/test_requests.py:2649`.\n\n5. **Default Parameters**: When sending requests, the session uses default parameters such as `stream`, `verify`, and `timeout`, which can be overridden if specified `tests/test_requests.py:2649`.\n\n6. **Final Response**: The final response from the server is returned to the caller, completing the request cycle.\n\nThis flow illustrates how `requests.api.request` ultimately leads to `Session.send`, encapsulating the request preparation, sending, and handling of responses, including redirects.',
+          'The end-to-end send flow from `requests.api.request` to `Session.send` can be summarized as follows:\n\n1. **Request Preparation**: The process begins with the `requests.api.request` function, which is responsible for creating a request. This function typically calls `Session.prepare_request`, which prepares the request by setting up necessary attributes like headers and parameters. This is evident in the test case where a request is prepared using `session.prepare_request(request)` `tests/test_requests.py:624`.\n\n2. **Sending the Request**: Once the request is prepared, it is sent using the `Session.send` method. This method is called with the prepared request object. For example, in the test `test_requests_are_updated_each_time`, the prepared request is sent using `session.send(prep)` `tests/test_requests.py:2649`.\n\n3. **Handling Redirects**: If the response indicates a redirect (like HTTP 303 or 307), the `Session.send` method will handle the redirect by calling `session.resolve_redirects`, which processes the response and prepares a new request for the redirected URL. This is shown in the same test where the `redirect_generator` is used to handle multiple redirects `tests/test_requests.py:2649`.\n\n4. **Final Response**: The final response from the server is returned to the caller of `Session.send`. This response contains the status code and any data returned by the server, which can be accessed through the response object `tests/test_requests.py:2649`.\n\nIn summary, the flow involves preparing a request, sending it through the session, handling any redirects, and finally returning the response. Each of these steps is crucial for the proper functioning of HTTP requests in the `requests` library.',
         citations: [
-          '`tests/test_requests.py:2649`',
-          '`tests/test_requests.py:2649`',
+          '`tests/test_requests.py:624`',
           '`tests/test_requests.py:2649`',
           '`tests/test_requests.py:2649`',
           '`tests/test_requests.py:2649`',
@@ -483,11 +481,15 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B3: {
         answer:
-          'B3 hybrid baseline top evidence:\n- `tests/test_requests.py:2608` `RedirectSession`\n- `src/requests/sessions.py:127` `SessionRedirectMixin`\n- `tests/test_requests.py:2286` `test_custom_redirect_mixin`',
+          'Redirect handling in the session stack is managed primarily through the `RedirectSession` class, which inherits from `SessionRedirectMixin`. Here\'s how it works:\n\n1. **Initialization**: The `RedirectSession` class initializes with a list of redirects, a call history, a maximum redirect limit, and cookie storage. This setup allows it to track the redirects that need to be processed `tests/test_requests.py:2608`.\n\n2. **Sending Requests**: When a request is sent using the `send` method, it records the call and prepares a response using `build_response`. This method simulates the response based on the redirect status codes provided during initialization. If there are no more redirects, it defaults to a 200 status code `tests/test_requests.py:2608`.\n\n3. **Redirect Logic**: The `SessionRedirectMixin` class provides the `get_redirect_target` method, which is crucial for determining the next URL to follow when a response indicates a redirect (e.g., status codes like 302). This method checks if the response is a redirect and retrieves the "Location" header to find the target URL `src/requests/sessions.py:127` `src/requests/sessions.py:134`. It also handles potential encoding issues with the redirect URL `src/requests/sessions.py:134`.\n\n4. **Custom Handling**: Developers can subclass `RedirectSession` to customize redirect handling. For example, the `test_custom_redirect_mixin` demonstrates how a custom session can manage malformed redirects by overriding the `get_redirect_target` method `tests/test_requests.py:2286`.\n\n5. **Manual Redirects**: The `resolve_redirects` method in the session can be used to manually handle redirects, allowing for partial body reads before following the redirect. This is shown in the `test_manual_redirect_with_partial_body_read`, where the response body is read partially before proceeding with the redirect `tests/test_requests.py:1988`.\n\nOverall, the redirect handling mechanism is designed to be flexible, allowing for both automatic and custom handling of redirects while maintaining a clear structure for tracking and processing them across the session stack.',
         citations: [
           '`tests/test_requests.py:2608`',
+          '`tests/test_requests.py:2608`',
           '`src/requests/sessions.py:127`',
+          '`src/requests/sessions.py:134`',
+          '`src/requests/sessions.py:134`',
           '`tests/test_requests.py:2286`',
+          '`tests/test_requests.py:1988`',
         ],
         groundedness: 1.0,
         recallAtK: 0.25,
@@ -496,20 +498,22 @@ export const demoCases: DemoQuestionCase[] = [
       },
       B4: {
         answer:
-          "Redirect handling in the session stack is primarily managed through the `RedirectSession` class, which inherits from `SessionRedirectMixin`. Here's how it works:\n\n1. **Initialization**: The `RedirectSession` class is initialized with a list of redirects (`order_of_redirects`), a maximum number of redirects (`max_redirects`), and other session attributes like `cookies` and `trust_env` `tests/test_requests.py:2608`.\n\n2. **Sending Requests**: When a request is sent using the `send` method, it records the call and builds a response using `build_response`. This method simulates the response based on the current redirect status `tests/test_requests.py:2608`.\n\n3. **Building Responses**: The `build_response` method constructs a `Response` object. It sets the status code based on the next redirect in the list or defaults to 200 if there are no more redirects. It also sets the `Location` header to indicate where to redirect `tests/test_requests.py:2608`.\n\n4. **Redirect Logic**: The `SessionRedirectMixin` provides the `get_redirect_target` method, which is called to determine the next URL to redirect to. This method checks if the response is a redirect and retrieves the `Location` header. It also handles encoding issues with the header `src/requests/sessions.py:127` `src/requests/sessions.py:134`.\n\n5. **Handling Redirects**: The `resolve_redirects` method (not shown in the retrieved evidence but implied) would typically be responsible for following the redirect chain, ensuring that the session can handle multiple redirects as specified by the `max_redirects` limit `tests/test_requests.py:1988`.\n\n6. **Custom Redirect Handling**: The `test_custom_redirect_mixin` demonstrates how a custom session can override the default redirect behavior to handle specific cases, such as malformed responses `tests/test_requests.py:2286`.\n\nIn summary, the `RedirectSession` class manages redirects by simulating responses based on a predefined order, while the `SessionRedirectMixin` provides the necessary methods to interpret and follow those redirects. This structure allows for flexible handling of various redirect scenarios in HTTP requests.",
+          "Redirect handling in the session stack is primarily managed through the `RedirectSession` class, which inherits from `SessionRedirectMixin`. Here's how it works:\n\n1. **Initialization**: The `RedirectSession` class is initialized with an order of redirects, which it stores in `self.redirects`. It also maintains a list of calls made (`self.calls`), a maximum number of redirects (`self.max_redirects`), and a cookie jar (`self.cookies`) `tests/test_requests.py:2608`.\n\n2. **Sending Requests**: When a request is sent using the `send` method, it records the call and builds a response using the `build_response` method. This method simulates the response based on the current redirect status, popping the next status code from `self.redirects` `tests/test_requests.py:2608`.\n\n3. **Building Responses**: The `build_response` method constructs a `requests.Response` object. If there are no more redirects, it defaults to a status code of 200. It also sets the `Location` header to indicate where the redirect points `tests/test_requests.py:2608`.\n\n4. **Redirect Logic**: The `SessionRedirectMixin` provides the `get_redirect_target` method, which is called to determine the next URL to redirect to. This method checks if the response is a redirect and retrieves the `Location` header. It also handles encoding issues with the header `src/requests/sessions.py:127` `src/requests/sessions.py:134`.\n\n5. **Handling Redirects**: The redirect handling logic is designed to be extensible. For example, a custom session can override `get_redirect_target` to handle specific cases, such as malformed redirects `tests/test_requests.py:2286`. The tests ensure that the session can follow redirects correctly, even when responses are not standard `tests/test_requests.py:2286` `tests/test_requests.py:1988`.\n\n6. **Iterating Through Redirects**: The session can resolve redirects iteratively, allowing for partial body reads before following a redirect. This is demonstrated in tests where the response body is read partially before proceeding to the next redirect `tests/test_requests.py:1988`.\n\nIn summary, the `RedirectSession` class, through its methods and the mixin, manages the redirect process by tracking calls, building responses, and determining redirect targets, while allowing for customization and handling of edge cases.",
         citations: [
           '`tests/test_requests.py:2608`',
           '`tests/test_requests.py:2608`',
           '`tests/test_requests.py:2608`',
           '`src/requests/sessions.py:127`',
           '`src/requests/sessions.py:134`',
-          '`tests/test_requests.py:1988`',
           '`tests/test_requests.py:2286`',
+          '`tests/test_requests.py:2286`',
+          '`tests/test_requests.py:1988`',
+          '`tests/test_requests.py:1988`',
         ],
         groundedness: 1.0,
         recallAtK: 0.25,
-        mrr: 0.25,
-        ndcgAtK: 0.16812753627111746,
+        mrr: 0.3333333333333333,
+        ndcgAtK: 0.19519002499605084,
       },
     },
   },
