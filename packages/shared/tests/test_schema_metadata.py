@@ -27,6 +27,13 @@ _BM25_MIGRATION_PATH = (
     / "versions"
     / "002_bm25_index_revision.py"
 )
+_MIGRATION_MERGE_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "infra"
+    / "migrations"
+    / "versions"
+    / "004_merge_bm25_and_index_runs.py"
+)
 
 
 def test_model_metadata_exposes_expected_tables_and_columns() -> None:
@@ -93,3 +100,10 @@ def test_bm25_migration_adds_the_repository_index_revision() -> None:
     assert (
         'sa.Column("index_revision", sa.Integer(), nullable=False, server_default="0")' in migration
     )
+
+
+def test_bm25_migration_merges_with_the_existing_index_run_history() -> None:
+    migration = _MIGRATION_MERGE_PATH.read_text(encoding="utf-8")
+
+    assert '"002_bm25_index_revision"' in migration
+    assert '"003_nonzero_embedding_count"' in migration
