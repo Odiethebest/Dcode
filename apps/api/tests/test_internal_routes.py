@@ -12,7 +12,7 @@ from dcode_api.settings import api_settings
 from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Repo, Symbol
 from dcode_shared.internal import internal_auth_headers
-from dcode_shared.schemas import CallNeighbors, Chunk, Location, ScoreComponents
+from dcode_shared.schemas import CallNeighbors, Chunk, Location, ScoreComponents, SourceCall
 from fastapi.testclient import TestClient
 
 
@@ -238,6 +238,13 @@ def test_internal_get_call_neighbors_route(monkeypatch: pytest.MonkeyPatch) -> N
             matches=[target],
             callers=[caller],
             callees=[callee],
+            source_calls=[
+                SourceCall(
+                    expression="self.faiss.retrieve",
+                    file_path="src/retrieval/hybrid_search.py",
+                    line=72,
+                )
+            ],
         )
 
     monkeypatch.setattr(internal, "_get_call_neighbors", fake_get_call_neighbors)
@@ -254,6 +261,8 @@ def test_internal_get_call_neighbors_route(monkeypatch: pytest.MonkeyPatch) -> N
     assert body["matches"][0]["line"] == 63
     assert body["callers"][0]["symbol"] == "src.app.search"
     assert body["callees"][0]["symbol"].endswith("_min_max_normalize")
+    assert body["source_calls"][0]["expression"] == "self.faiss.retrieve"
+    assert body["source_calls"][0]["resolved_target"] is None
 
 
 def test_internal_get_call_neighbors_rejects_unknown_direction() -> None:
@@ -320,6 +329,34 @@ async def test_get_call_neighbors_queries_only_requested_directions(
     assert calls == [True]
     assert result.callers == [caller]
     assert result.callees == []
+
+
+def test_extract_source_calls_keeps_dynamic_calls_and_marks_resolved_edges() -> None:
+    resolved = Location(
+        symbol="src.retrieval.hybrid_search._min_max_normalize",
+        file_path="src/retrieval/hybrid_search.py",
+        line=19,
+    )
+    content = """\
+def retrieve(self, query):
+    hits = self.faiss.retrieve(query)
+    normalized = _min_max_normalize(hits)
+    return normalized.keys()
+"""
+
+    source_calls = internal._extract_source_calls(
+        content,
+        file_path="src/retrieval/hybrid_search.py",
+        start_line=63,
+        resolved_targets_by_line={65: [resolved]},
+    )
+
+    assert [(call.expression, call.line) for call in source_calls] == [
+        ("self.faiss.retrieve", 64),
+        ("_min_max_normalize", 65),
+    ]
+    assert source_calls[0].resolved_target is None
+    assert source_calls[1].resolved_target == resolved
 
 
 def test_internal_routes_404_for_unknown_repo() -> None:

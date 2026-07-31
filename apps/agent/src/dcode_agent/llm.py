@@ -54,7 +54,10 @@ SYSTEM_PROMPT = (
     "Call-graph honesty rule:\n"
     "- Callers/callees listed by the call-graph tool are resolved static edges. "
     "A call expression visible only in a source excerpt is not a resolved target; "
-    "describe it explicitly as a source-level unresolved call."
+    "describe it explicitly as a source-level unresolved call.\n"
+    "- When the question asks what a symbol calls, include every source-level call "
+    "expression returned by the tool. If any is marked UNRESOLVED, do not claim "
+    "that the resolved callee list is exhaustive."
 )
 
 _CONTEXTUALIZE_MAX_TOKENS = 128

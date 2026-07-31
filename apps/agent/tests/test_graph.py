@@ -133,6 +133,7 @@ class DummyCallResult(BaseModel):
     matches: list[dict[str, Any]]
     callers: list[dict[str, Any]]
     callees: list[dict[str, Any]]
+    source_calls: list[dict[str, Any]]
 
 
 class DummyCallNeighborsTool(Tool[DummyCallArgs, DummyCallResult]):
@@ -160,6 +161,14 @@ class DummyCallNeighborsTool(Tool[DummyCallArgs, DummyCallResult]):
             matches=[target],
             callers=[caller],
             callees=[],
+            source_calls=[
+                {
+                    "expression": "self.client.retrieve",
+                    "file_path": "src/requests/auth.py",
+                    "line": 90,
+                    "resolved_target": None,
+                }
+            ],
         )
 
 
@@ -604,6 +613,8 @@ async def test_build_graph_reads_source_after_bidirectional_call_lookup() -> Non
     ]
     assert "静态调用边按方向分组" in result["final_answer"]
     assert "src/requests/auth.py:85" in result["final_answer"]
+    assert "self.client.retrieve" in result["final_answer"]
+    assert "静态目标未解析" in result["final_answer"]
     assert result["groundedness_score"] == 1.0
 
 

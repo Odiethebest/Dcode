@@ -291,8 +291,9 @@ curl -fsS "http://localhost:8000/internal/get_call_neighbors?repo_id=${REPO_ID}&
   | python3 -m json.tool
 ```
 
-The response includes `matches`, `callers`, and `callees`; an empty group means
-the static graph did not resolve an edge in that direction.
+The response includes `matches`, `callers`, `callees`, and `source_calls`.
+Each source call has a `resolved_target` or an explicit `null`; an empty graph
+group therefore does not conceal dynamic/instance calls present in source.
 
 ## Validate Agent SSE
 

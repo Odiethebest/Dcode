@@ -1,7 +1,10 @@
 """Internal retrieval and graph-query endpoints."""
 
+import ast
+import builtins
 import logging
-from collections.abc import Iterable, Sequence
+import textwrap
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -10,7 +13,14 @@ from dcode_shared.db.models import Edge, Repo, Symbol
 from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.reranker import RerankerClient, create_reranker_client
-from dcode_shared.schemas import CallDirection, CallNeighbors, Chunk, Location, ScoreComponents
+from dcode_shared.schemas import (
+    CallDirection,
+    CallNeighbors,
+    Chunk,
+    Location,
+    ScoreComponents,
+    SourceCall,
+)
 from dcode_shared.symbols import select_symbol_matches
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
@@ -45,6 +55,27 @@ _RRF_K = 60
 _RERANK_PASSAGE_CHARS = 256
 _REFERENCE_EDGE_TYPES = ("calls", "references")
 _MODULE_REFERENCE_EDGE_TYPES = ("calls", "references", "imports")
+_BUILTIN_CALL_NAMES = frozenset(dir(builtins))
+_ROUTINE_CONTAINER_METHODS = frozenset(
+    {
+        "add",
+        "append",
+        "clear",
+        "copy",
+        "discard",
+        "extend",
+        "get",
+        "insert",
+        "items",
+        "keys",
+        "pop",
+        "remove",
+        "setdefault",
+        "sort",
+        "update",
+        "values",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -102,7 +133,7 @@ async def get_call_neighbors(
     direction: CallDirection = Query("both"),
     db: AsyncSession = Depends(get_db),
 ) -> CallNeighbors:
-    """Return resolved incoming/outgoing ``calls`` edges with explicit direction."""
+    """Return directed call edges plus source expressions with unresolved targets."""
     await _require_repo(db, repo_id)
     return await _get_call_neighbors(db, repo_id, symbol, direction)
 
@@ -503,6 +534,11 @@ async def _get_call_neighbors(
         if direction in {"callees", "both"}
         else []
     )
+    source_calls = (
+        await _source_calls_for_matches(db, repo_id, matches)
+        if direction in {"callees", "both"}
+        else []
+    )
     return CallNeighbors(
         found=True,
         symbol=symbol,
@@ -510,6 +546,7 @@ async def _get_call_neighbors(
         matches=[_location_from_symbol(row) for row in matches],
         callers=callers,
         callees=callees,
+        source_calls=source_calls,
     )
 
 
@@ -538,6 +575,142 @@ async def _call_edge_neighbors(
     )
     result = await db.execute(stmt)
     return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())
+
+
+async def _source_calls_for_matches(
+    db: AsyncSession,
+    repo_id: UUID,
+    matches: Sequence[Symbol],
+) -> list[SourceCall]:
+    resolved_by_source = await _resolved_call_targets_by_source_line(
+        db,
+        repo_id,
+        [match.id for match in matches],
+    )
+    source_calls: list[SourceCall] = []
+    for match in matches:
+        if match.chunk_id is None:
+            continue
+        chunk = await db.get(ChunkRow, match.chunk_id)
+        if chunk is None:
+            continue
+        source_calls.extend(
+            _extract_source_calls(
+                chunk.content,
+                file_path=chunk.file_path,
+                start_line=chunk.start_line,
+                resolved_targets_by_line=resolved_by_source.get(match.id, {}),
+            )
+        )
+    return _unique_source_calls(source_calls)
+
+
+async def _resolved_call_targets_by_source_line(
+    db: AsyncSession,
+    repo_id: UUID,
+    source_ids: Sequence[UUID],
+) -> dict[UUID, dict[int, list[Location]]]:
+    target_symbol = aliased(Symbol)
+    stmt = (
+        select(Edge.source_id, Edge.source_line, target_symbol)
+        .join(target_symbol, Edge.target_id == target_symbol.id)
+        .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "calls")
+        .where(Edge.source_id.in_(source_ids))
+        .order_by(
+            Edge.source_id,
+            Edge.source_line,
+            target_symbol.qualified_name,
+        )
+    )
+    result = await db.execute(stmt)
+    grouped: dict[UUID, dict[int, list[Location]]] = {}
+    for source_id, source_line, target in result.all():
+        by_line = grouped.setdefault(source_id, {})
+        by_line.setdefault(int(source_line), []).append(_location_from_symbol(target))
+    return grouped
+
+
+def _extract_source_calls(
+    content: str,
+    *,
+    file_path: str,
+    start_line: int,
+    resolved_targets_by_line: Mapping[int, Sequence[Location]],
+) -> list[SourceCall]:
+    try:
+        tree = ast.parse(textwrap.dedent(content))
+    except SyntaxError:
+        return []
+
+    call_nodes = sorted(
+        (node for node in ast.walk(tree) if isinstance(node, ast.Call)),
+        key=lambda node: (node.lineno, node.col_offset),
+    )
+    source_calls: list[SourceCall] = []
+    for node in call_nodes:
+        expression = ast.unparse(node.func)
+        terminal = _call_terminal(node.func)
+        line = start_line + node.lineno - 1
+        resolved_target = _resolved_target_for(
+            terminal,
+            resolved_targets_by_line.get(line, ()),
+        )
+        if resolved_target is None and not _is_meaningful_unresolved_call(node.func, terminal):
+            continue
+        source_calls.append(
+            SourceCall(
+                expression=expression,
+                file_path=file_path,
+                line=line,
+                resolved_target=resolved_target,
+            )
+        )
+    return source_calls
+
+
+def _call_terminal(function: ast.expr) -> str:
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return ""
+
+
+def _resolved_target_for(
+    terminal: str,
+    targets: Sequence[Location],
+) -> Location | None:
+    matches = [target for target in targets if target.symbol.rsplit(".", 1)[-1] == terminal]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _is_meaningful_unresolved_call(function: ast.expr, terminal: str) -> bool:
+    if not terminal:
+        return False
+    if isinstance(function, ast.Name):
+        return terminal not in _BUILTIN_CALL_NAMES
+    if isinstance(function, ast.Attribute):
+        return terminal not in _ROUTINE_CONTAINER_METHODS
+    return False
+
+
+def _unique_source_calls(source_calls: Iterable[SourceCall]) -> list[SourceCall]:
+    unique: list[SourceCall] = []
+    seen: set[tuple[str, str, int, str | None]] = set()
+    for source_call in source_calls:
+        target = source_call.resolved_target
+        key = (
+            source_call.expression,
+            source_call.file_path,
+            source_call.line,
+            target.symbol if target is not None else None,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(source_call)
+    return unique
 
 
 async def _get_dependencies(db: AsyncSession, repo_id: UUID, module: str) -> list[Location]:

@@ -218,7 +218,7 @@ The internal API includes:
 | `/internal/search` | Hybrid retrieval over indexed chunks |
 | `/internal/find_definition` | Locate symbol definitions |
 | `/internal/find_references` | Locate callers or references |
-| `/internal/get_call_neighbors` | Return resolved callers/callees with explicit direction |
+| `/internal/get_call_neighbors` | Return resolved callers/callees plus source call expressions with explicit unresolved targets |
 | `/internal/get_dependencies` | Outgoing graph dependencies (what a module imports) |
 | `/internal/get_dependents` | Incoming graph dependents (what imports a module) |
 | `/internal/get_file_outline` | File-level symbol outline |

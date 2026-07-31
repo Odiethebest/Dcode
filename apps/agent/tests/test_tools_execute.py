@@ -152,6 +152,14 @@ async def test_get_call_neighbors_preserves_direction_groups(
             "matches": [location],
             "callers": [],
             "callees": [location],
+            "source_calls": [
+                {
+                    "expression": "self.faiss.retrieve",
+                    "file_path": "src/retrieval/hybrid_search.py",
+                    "line": 72,
+                    "resolved_target": None,
+                }
+            ],
         }
 
     monkeypatch.setattr(common, "fetch_internal_json", fake_fetch)
@@ -165,6 +173,8 @@ async def test_get_call_neighbors_preserves_direction_groups(
     assert result.matches[0].line == 63
     assert result.callers == []
     assert result.callees[0].symbol.endswith("HybridRetriever.retrieve")
+    assert result.source_calls[0].expression == "self.faiss.retrieve"
+    assert result.source_calls[0].resolved_target is None
 
 
 async def test_get_file_outline_normalizes_repo_relative_path(

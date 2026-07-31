@@ -364,7 +364,11 @@ def _redact_unverified(
 
 
 def _render_verified_evidence_ids(answer: str, verified: list[CitationCheck]) -> str:
-    rendered = answer
+    # Models commonly emit compact citation clusters such as ``[C1][C2]``.
+    # Insert a separator while the IDs are still unambiguous; replacing them
+    # directly would create `` `a.py:1``b.py:2` ``, which Markdown interprets as
+    # one malformed code span instead of two clickable citations.
+    rendered = re.sub(r"(\[C\d+\])(?=\[C\d+\])", r"\1 ", answer)
     for check in verified:
         if check.source_token and check.display_token:
             rendered = rendered.replace(check.source_token, f"`{check.display_token}`")

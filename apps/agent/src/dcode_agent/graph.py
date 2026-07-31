@@ -227,6 +227,11 @@ async def synthesize_node(state: AgentState) -> AgentState:
     state.draft_answer = answer
     state.citations = citations
     if not streamed:
+        # Online template answers use the same modern parsing semantics as LLM
+        # answers: backticks format code, while explicit file:line tokens remain
+        # citations. ``verify(..., evidence_catalog=None)`` is retained only for
+        # direct historical-eval compatibility.
+        state.evidence_catalog = {}
         # Non-streaming (template) path: emit the whole draft as one delta so the
         # client sees a pre-final answer via the same partial_answer channel.
         await _emit_partial_answer(state, answer)
@@ -305,7 +310,7 @@ def _build_llm_context(
         elif tool_name == "get_call_neighbors":
             call_lines = [
                 f"Requested symbol `{result['symbol']}`; direction `{result['direction']}`.",
-                "Only entries below are resolved static call edges.",
+                "The first three groups below contain only resolved static call edges.",
             ]
             for heading, key in (
                 ("matched definitions", "matches"),
@@ -322,9 +327,25 @@ def _build_llm_context(
                     call_lines.append(
                         f"- {evidence_id_for[location_token]} `{loc['symbol']}` at {location_token}"
                     )
+            call_lines.append("source-level call expressions:")
+            source_calls = result.get("source_calls", [])
+            if not source_calls:
+                call_lines.append("- none extracted")
+            for source_call in source_calls[:20]:
+                source_token = f"{source_call['file_path']}:{source_call['line']}"
+                resolved_target = source_call.get("resolved_target")
+                resolution = (
+                    f"resolved to `{resolved_target['symbol']}`"
+                    if resolved_target is not None
+                    else "UNRESOLVED static target"
+                )
+                call_lines.append(
+                    f"- {evidence_id_for[source_token]} `{source_call['expression']}` at "
+                    f"{source_token}: {resolution}"
+                )
             call_lines.append(
-                "A call expression visible only in a file excerpt is source-level "
-                "evidence, not a resolved target; describe that limitation explicitly."
+                "When answering what the symbol calls, include the source-level "
+                "expressions above. Never present an UNRESOLVED target as resolved."
             )
             blocks.append("[get_call_neighbors results]\n" + "\n".join(call_lines))
         elif "locations" in result:
@@ -387,6 +408,14 @@ def _allowed_citations(state: AgentState) -> list[str]:
                 for location in result.get(key, []):
                     add(f"{location['file_path']}:{location['line']}")
                     symbol = str(location["symbol"])
+                    if "." in symbol:
+                        add(symbol)
+            for source_call in result.get("source_calls", []):
+                add(f"{source_call['file_path']}:{source_call['line']}")
+                resolved_target = source_call.get("resolved_target")
+                if resolved_target is not None:
+                    add(f"{resolved_target['file_path']}:{resolved_target['line']}")
+                    symbol = str(resolved_target["symbol"])
                     if "." in symbol:
                         add(symbol)
         elif "locations" in result:
@@ -955,9 +984,14 @@ def _summarize_observation(observation: dict[str, Any]) -> str:
         matches = result.get("matches", [])
         callers = result.get("callers", [])
         callees = result.get("callees", [])
+        source_calls = result.get("source_calls", [])
+        unresolved = sum(
+            1 for source_call in source_calls if source_call.get("resolved_target") is None
+        )
         return (
             cached_prefix
-            + f"{len(matches)} matches; {len(callers)} callers; {len(callees)} callees"
+            + f"{len(matches)} matches; {len(callers)} callers; {len(callees)} callees; "
+            f"{unresolved} unresolved source calls"
         )
     if "locations" in result:
         locations = result["locations"]
@@ -1059,6 +1093,34 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
                     else f"  - `{location['symbol']}` at "
                     f"`{location['file_path']}:{location['line']}`"
                 )
+        source_calls = result.get("source_calls", [])
+        lines.append("- 源码调用表达式：" if chinese else "- Source-level call expressions:")
+        if not source_calls:
+            lines.append("  - 未提取到结果。" if chinese else "  - None extracted.")
+        for source_call in source_calls[:10]:
+            citation = {
+                "symbol": source_call["file_path"],
+                "file_path": source_call["file_path"],
+                "line": source_call["line"],
+            }
+            _append_unique_citation(citations, citation)
+            resolved_target = source_call.get("resolved_target")
+            resolution = (
+                (
+                    f"已解析为 `{resolved_target['symbol']}`"
+                    if chinese
+                    else f"resolved to `{resolved_target['symbol']}`"
+                )
+                if resolved_target is not None
+                else ("静态目标未解析" if chinese else "static target unresolved")
+            )
+            lines.append(
+                f"  - `{source_call['expression']}`（{resolution}），位于 "
+                f"`{source_call['file_path']}:{source_call['line']}`"
+                if chinese
+                else f"  - `{source_call['expression']}` ({resolution}) at "
+                f"`{source_call['file_path']}:{source_call['line']}`"
+            )
         return ("\n".join(lines), citations)
 
     if tool_name in {
@@ -1232,6 +1294,36 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
                         else f"    - `{location['symbol']}` at "
                         f"`{location['file_path']}:{location['line']}`"
                     )
+            source_calls = result.get("source_calls", [])
+            lines.append(
+                "  - 源码调用表达式：" if chinese else "  - source-level call expressions:"
+            )
+            if not source_calls:
+                lines.append("    - 未提取到结果。" if chinese else "    - none extracted.")
+            for source_call in source_calls[:10]:
+                citation = {
+                    "symbol": source_call["file_path"],
+                    "file_path": source_call["file_path"],
+                    "line": source_call["line"],
+                }
+                _append_unique_citation(citations, citation)
+                resolved_target = source_call.get("resolved_target")
+                resolution = (
+                    (
+                        f"已解析为 `{resolved_target['symbol']}`"
+                        if chinese
+                        else f"resolved to `{resolved_target['symbol']}`"
+                    )
+                    if resolved_target is not None
+                    else ("静态目标未解析" if chinese else "static target unresolved")
+                )
+                lines.append(
+                    f"    - `{source_call['expression']}`（{resolution}），位于 "
+                    f"`{source_call['file_path']}:{source_call['line']}`"
+                    if chinese
+                    else f"    - `{source_call['expression']}` ({resolution}) at "
+                    f"`{source_call['file_path']}:{source_call['line']}`"
+                )
             continue
 
         if tool_name in {

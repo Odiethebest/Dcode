@@ -167,6 +167,14 @@ async def test_call_graph_context_separates_resolved_edges_from_source_expressio
                         }
                     ],
                     "callees": [],
+                    "source_calls": [
+                        {
+                            "expression": "self.faiss.retrieve",
+                            "file_path": "src/retrieval/hybrid_search.py",
+                            "line": 72,
+                            "resolved_target": None,
+                        }
+                    ],
                 },
             },
             {
@@ -192,4 +200,6 @@ async def test_call_graph_context_separates_resolved_edges_from_source_expressio
     assert "callers (incoming calls)" in context
     assert "callees (outgoing calls)" in context
     assert "hits = self.faiss.retrieve(query)" in context
-    assert "source-level evidence, not a resolved target" in context
+    assert "`self.faiss.retrieve`" in context
+    assert "UNRESOLVED static target" in context
+    assert "Never present an UNRESOLVED target as resolved" in context

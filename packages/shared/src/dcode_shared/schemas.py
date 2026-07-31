@@ -176,12 +176,27 @@ class Location(BaseModel):
 CallDirection = Literal["callers", "callees", "both"]
 
 
+class SourceCall(BaseModel):
+    """One call expression found in the matched symbol's source chunk.
+
+    ``resolved_target`` is present only when a stored ``calls`` edge on the same
+    source line identifies the target. A missing target is intentionally
+    represented, rather than silently dropping dynamic/instance calls.
+    """
+
+    expression: str
+    file_path: str
+    line: int
+    resolved_target: Location | None = None
+
+
 class CallNeighbors(BaseModel):
     """Resolved function-call neighbors for the Agent's call-graph tool.
 
-    The three location groups keep direction explicit. ``matches`` is retained
-    because a short name can resolve to several indexed symbols; callers and
-    callees are the union across those disclosed matches.
+    The location groups keep direction explicit. ``matches`` is retained because
+    a short name can resolve to several indexed symbols; callers and callees are
+    the union across those disclosed matches. ``source_calls`` keeps expressions
+    that the static graph could not resolve instead of silently dropping them.
     """
 
     found: bool
@@ -190,6 +205,7 @@ class CallNeighbors(BaseModel):
     matches: list[Location] = Field(default_factory=list)
     callers: list[Location] = Field(default_factory=list)
     callees: list[Location] = Field(default_factory=list)
+    source_calls: list[SourceCall] = Field(default_factory=list)
 
 
 # ===========================================================================

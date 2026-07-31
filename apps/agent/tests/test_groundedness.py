@@ -291,6 +291,35 @@ async def test_evidence_id_mode_redacts_unknown_ids() -> None:
     assert "[unverified reference removed]" in enforced.answer
 
 
+def test_adjacent_evidence_ids_render_as_separate_citations() -> None:
+    answer = "Both claims are supported [C1][C2]."
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(
+                symbol="a.py",
+                file_path="a.py",
+                line=1,
+                verified=True,
+                source_token="[C1]",
+                display_token="a.py:1",
+            ),
+            CitationCheck(
+                symbol="b.py",
+                file_path="b.py",
+                line=2,
+                verified=True,
+                source_token="[C2]",
+                display_token="b.py:2",
+            ),
+        ],
+        score=1.0,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+
+    assert enforced.answer == "Both claims are supported `a.py:1` `b.py:2`."
+
+
 async def test_evidence_id_mode_still_checks_explicit_file_line_references() -> None:
     result = await verify(
         "Ordinary `self.faiss.retrieve`, invented location `ghost.py:999`.",
