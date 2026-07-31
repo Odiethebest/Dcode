@@ -5,6 +5,12 @@ from dcode_eval.baselines import common
 from dcode_eval.baselines.base import AnswerResult
 from dcode_eval.baselines.bm25 import BM25Baseline
 from dcode_eval.baselines.full_system import FullSystemBaseline
+from dcode_eval.baselines.github_search import (
+    _SECONDS_BETWEEN_CALLS,
+    GithubSearchBaseline,
+    MissingGithubTokenError,
+    _item_to_chunk,
+)
 from dcode_eval.baselines.hybrid_agent_no_graph import HybridAgentNoGraphBaseline
 from dcode_eval.baselines.hybrid_rag import HybridRAGBaseline
 from dcode_eval.baselines.vanilla_rag import VanillaRAGBaseline
@@ -272,3 +278,47 @@ async def test_stream_hybrid_rag_answer_selects_hybrid_only_mode(monkeypatch) ->
         "mode": "hybrid_only",
     }
     assert result.answer == "Hybrid answer"
+
+
+# ---------------------------------------------------------------------------
+# B0 — external, file-level, and not part of the H1 decision
+# ---------------------------------------------------------------------------
+
+
+async def test_b0_without_a_token_refuses_rather_than_scoring_zero(monkeypatch) -> None:
+    """An empty result would be recorded as 0.000 across every metric.
+
+    That reads as "GitHub Search found nothing", which is a claim about GitHub
+    Search. Unmeasured is a blank; zero is an assertion. The baseline has to
+    make the difference impossible to record by accident.
+    """
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    with pytest.raises(MissingGithubTokenError):
+        await GithubSearchBaseline().retrieve("repo-1", "how are redirects resolved", 5)
+
+
+def test_b0_chunk_ids_are_stable_per_path() -> None:
+    """Random ids pinned every chunk-level metric at 0.000 by construction.
+
+    A stable id still cannot match ground truth — B0 has no chunk-level result
+    to give — but it makes two runs over the same file diff-able, so the
+    emptiness is visibly deliberate rather than fresh noise each run.
+    """
+    item = {"path": "src/requests/sessions.py", "name": "sessions.py", "url": "u"}
+
+    first = _item_to_chunk(item, 0)
+    second = _item_to_chunk(item, 3)
+
+    assert first.chunk_id == second.chunk_id
+    assert first.chunk_id != _item_to_chunk({**item, "path": "src/requests/models.py"}, 0).chunk_id
+
+
+def test_b0_rate_limit_respects_the_code_search_endpoint() -> None:
+    """10 req/min, not the 30 the rest of the Search API allows.
+
+    At the old 2s spacing a 33-question suite trips 403 partway through, and
+    the questions after that point score zero — which looks like a baseline
+    result rather than a rate limit.
+    """
+    assert _SECONDS_BETWEEN_CALLS >= 6.0

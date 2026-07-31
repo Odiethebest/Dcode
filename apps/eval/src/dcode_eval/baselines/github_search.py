@@ -1,7 +1,22 @@
 """Baseline B0 — GitHub Search (pure keyword).
 
 Industry-standard control: queries the public GitHub code search API.
-Requires GITHUB_TOKEN env var for authenticated requests (higher rate limit).
+
+**B0 retrieves files, not symbols.** The API returns a path, a matched fragment
+and character offsets *within that fragment* — verified against a live response,
+there is no line number anywhere in it. So B0 has no chunk-level result to give,
+and it is scored on the file-level metrics the harness computes for every arm.
+Its chunk-level cells stay empty rather than being filled by a mapping we
+invented, which would credit the baseline with a precision it does not have.
+
+**Its numbers cannot be regenerated from committed bytes.** Every other figure
+in this project can. This one queries a live external index that re-ranks and
+re-crawls, so re-running it is a fresh measurement, not a reproduction. It is a
+retrieval reference and is not part of the H1 decision.
+
+`GITHUB_TOKEN` raises the rate limit; public-repo search needs no scopes. With
+no token the baseline reports **unmeasured** rather than returning nothing,
+because an empty result scores zero and a zero is a claim about GitHub Search.
 """
 
 import re
@@ -14,6 +29,13 @@ from dcode_shared.schemas import Chunk, ScoreComponents
 from dcode_eval.baselines.base import AnswerResult, Baseline
 from dcode_eval.baselines.common import template_answer
 from dcode_eval.settings import eval_settings
+
+# Stable per-path ids, so repeated runs of an unreproducible baseline at least
+# produce diff-able artifacts.
+_B0_NAMESPACE = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+
+# GitHub's code search endpoint allows 10 requests/minute when authenticated.
+_SECONDS_BETWEEN_CALLS = 7.0
 
 
 def _parse_github_repo(url: str) -> str | None:
@@ -64,8 +86,11 @@ async def _github_search(
 ) -> list[dict[str, object]]:
     """Call GitHub code search API and return raw items.
 
-    GitHub Search allows 30 req/min (authenticated). We sleep 2s between calls
-    to stay safely under the limit when running a multi-question eval suite.
+    The *code search* endpoint is limited to 10 requests/minute authenticated —
+    not the 30/min that applies to the rest of the Search API, which an earlier
+    version of this comment assumed. At 2s between calls a 33-question suite
+    trips 403 partway through and the remaining questions score zero, which
+    would look like a baseline result rather than a rate limit.
     """
     import asyncio
 
@@ -81,7 +106,7 @@ async def _github_search(
         "q": f"{keywords} repo:{repo_slug}",
         "per_page": min(k, 30),
     }
-    await asyncio.sleep(2)  # stay under 30 req/min rate limit
+    await asyncio.sleep(_SECONDS_BETWEEN_CALLS)
     async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0)) as client:
         response = await client.get(
             "https://api.github.com/search/code",
@@ -97,12 +122,23 @@ async def _github_search(
 
 
 def _item_to_chunk(item: dict[str, object], rank: int) -> Chunk:
-    """Convert a GitHub Search result item to a Chunk."""
+    """Convert a GitHub Search result item to a Chunk.
+
+    `chunk_id` is a deterministic UUID5 of the repo-relative path, not a random
+    UUID. A random one can never equal a ground-truth chunk id, so every
+    chunk-level metric was structurally pinned at 0.000 no matter how good the
+    result was — a fabricated failure wearing the shape of a measurement.
+
+    A stable id per file cannot match ground truth either, and is not meant to:
+    B0 is scored on the file-level metrics. What it buys is that two runs
+    returning the same file produce the same id, so the artifacts are
+    diff-able and the emptiness is visibly deliberate.
+    """
     file_path = str(item.get("path", ""))
     name = str(item.get("name", ""))
     score = 1.0 / (rank + 1)
     return Chunk(
-        chunk_id=uuid.uuid4(),
+        chunk_id=uuid.uuid5(_B0_NAMESPACE, file_path),
         file_path=file_path,
         symbol_name=name,
         start_line=1,
@@ -113,15 +149,28 @@ def _item_to_chunk(item: dict[str, object], rank: int) -> Chunk:
     )
 
 
+class MissingGithubTokenError(RuntimeError):
+    """Raised instead of silently scoring zero when B0 cannot be measured."""
+
+
 class GithubSearchBaseline(Baseline):
     id = "B0"
     description = "GitHub code search — external pure-keyword baseline."
 
     def __init__(self, github_token: str | None = None) -> None:
         import os
-        self._token = github_token or os.environ.get("GITHUB_TOKEN")
+
+        self._token = github_token or os.environ.get("GITHUB_TOKEN") or None
 
     async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
+        if self._token is None:
+            # Returning [] here would record 0.000 across the board, which reads
+            # as "GitHub Search found nothing" rather than "we did not run it".
+            # Unmeasured is a blank; zero is a claim.
+            raise MissingGithubTokenError(
+                "B0 needs GITHUB_TOKEN to query the code search API. Without it "
+                "the baseline is unmeasured; it must not be recorded as zero."
+            )
         repo_url = await _fetch_repo_url(repo_id)
         if not repo_url:
             return []

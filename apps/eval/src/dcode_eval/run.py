@@ -94,6 +94,18 @@ async def run_eval(
             else candidate_scored_chunk_ids
         )
         gt_chunk_ids = set(question.gt_chunk_ids)
+        # File-level view, computed for every arm from data already recorded.
+        #
+        # It exists because B0 retrieves files: GitHub code search returns a
+        # path and no line, and manufacturing a chunk from that would credit
+        # the baseline with a precision it does not have. Scored in the unit an
+        # arm actually works in, B0 becomes comparable without being flattered
+        # or penalised by a mapping we invented.
+        #
+        # Reported beside the decision, never inside it. The H1 composite stays
+        # chunk-level, and B0 stays out of the decision entirely.
+        scored_files = _dedupe(retrieved_files[:k])
+        gt_files = set(question.gt_files)
         structural_evidence_chunk_ids = _structural_evidence_chunk_ids(
             answer,
             exclude=set(retrieved_chunk_ids),
@@ -137,6 +149,10 @@ async def run_eval(
             "recall_at_k": recall_at_k(scored_chunk_ids, gt_chunk_ids, k),
             "mrr": mrr(scored_chunk_ids, gt_chunk_ids),
             "ndcg_at_k": ndcg_at_k(scored_chunk_ids, gt_chunk_ids, k),
+            "scored_files": scored_files,
+            "file_recall_at_k": recall_at_k(scored_files, gt_files, k),
+            "file_mrr": mrr(scored_files, gt_files),
+            "file_ndcg_at_k": ndcg_at_k(scored_files, gt_files, k),
         }
         per_question_rows.append(row)
 
@@ -350,6 +366,9 @@ def _mean_across_repeats(
                 "final_evidence_recall_at_k",
                 "final_evidence_mrr",
                 "final_evidence_ndcg_at_k",
+                "file_recall_at_k",
+                "file_mrr",
+                "file_ndcg_at_k",
             ):
                 values = [float(sample.get(metric, 0.0)) for sample in samples]
                 row[metric] = mean(values)
@@ -391,6 +410,9 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
             "candidate_recall_at_k": 0.0,
             "candidate_mrr": 0.0,
             "candidate_ndcg_at_k": 0.0,
+            "file_recall_at_k": 0.0,
+            "file_mrr": 0.0,
+            "file_ndcg_at_k": 0.0,
             "final_evidence_recall_at_k": 0.0,
             "final_evidence_mrr": 0.0,
             "final_evidence_ndcg_at_k": 0.0,
@@ -421,6 +443,10 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
         "candidate_recall_at_k": average("candidate_recall_at_k", fallback="recall_at_k"),
         "candidate_mrr": average("candidate_mrr", fallback="mrr"),
         "candidate_ndcg_at_k": average("candidate_ndcg_at_k", fallback="ndcg_at_k"),
+        # Not a term in the composite. See the comment where these are computed.
+        "file_recall_at_k": average("file_recall_at_k"),
+        "file_mrr": average("file_mrr"),
+        "file_ndcg_at_k": average("file_ndcg_at_k"),
         "final_evidence_recall_at_k": average("final_evidence_recall_at_k"),
         "final_evidence_mrr": average("final_evidence_mrr"),
         "final_evidence_ndcg_at_k": average("final_evidence_ndcg_at_k"),
@@ -435,6 +461,21 @@ def _aggregate_metrics(rows: list[dict[str, Any]], baseline_id: str, k: int) -> 
         "answers_without_citations": sum(1 for row in rows if not row["citations"]),
         "pairwise_win_rate": None,
     }
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    """Distinct values in first-seen order.
+
+    Chunk-level arms can spend several of their k slots on one file; B0 spends
+    one slot per file by construction. Counting distinct files present in the
+    top-k reports that difference rather than hiding it — it is a real property
+    of retrieving at chunk granularity, not an artefact.
+    """
+    seen: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.append(value)
+    return seen
 
 
 def _verified_evidence_chunk_ids(answer: Any) -> list[str]:
