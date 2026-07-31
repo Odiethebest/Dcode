@@ -27,6 +27,9 @@ class AgentState:
     pending_tool_name: str | None = None
     pending_tool_args: dict[str, Any] = field(default_factory=dict)
     draft_answer: str | None = None
+    # ``None`` means template/legacy citation parsing. A dict (including an
+    # empty one) means LLM synthesis used the server-owned ``[C#]`` protocol.
+    evidence_catalog: dict[str, str] | None = None
     citations: list[dict[str, Any]] = field(default_factory=list)
     groundedness_score: float | None = None
     final_answer: str | None = None

@@ -7,6 +7,7 @@ from uuid import uuid4
 from dcode_agent.graph import (
     build_graph,
     contextualize_node,
+    groundedness_node,
     plan_node,
     synthesize_node,
     tool_call_node,
@@ -430,6 +431,24 @@ def _grounded_session(repo_id: Any) -> FakeGroundednessSession:
             ),
         ],
     )
+
+
+async def test_groundedness_node_resolves_evidence_ids_without_treating_code_as_citations() -> None:
+    repo_uuid = uuid4()
+    state = AgentState(
+        repo_id=str(repo_uuid),
+        query="它调用了哪些函数？",
+        draft_answer="源码中出现 `self.client.retrieve`，证据见 [C1]。",
+        evidence_catalog={"C1": "src/requests/auth.py:85"},
+        runtime={"db": _grounded_session(repo_uuid)},
+    )
+
+    updated = await groundedness_node(state)
+
+    assert updated.groundedness_score == 1.0
+    assert "`self.client.retrieve`" in (updated.final_answer or "")
+    assert "`src/requests/auth.py:85`" in (updated.final_answer or "")
+    assert "[C1]" not in (updated.final_answer or "")
 
 
 async def test_build_graph_runs_multihop_for_architecture_query() -> None:

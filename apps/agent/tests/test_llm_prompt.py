@@ -27,3 +27,9 @@ def test_system_prompt_uses_frontend_supported_math_delimiters() -> None:
     assert "inline math as `$...$`" in SYSTEM_PROMPT
     assert "display math as `$$...$$`" in SYSTEM_PROMPT
     assert "Do not use `\\(...\\)` or `\\[...\\]`" in SYSTEM_PROMPT
+
+
+def test_system_prompt_separates_evidence_ids_from_inline_code() -> None:
+    assert "for example [C1] or [C2]" in SYSTEM_PROMPT
+    assert "Keep evidence IDs outside backticks" in SYSTEM_PROMPT
+    assert "`self.client.retrieve` are not citations" in SYSTEM_PROMPT

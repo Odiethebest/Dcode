@@ -11,6 +11,7 @@ NFR-4 and PLAN.md §3.1 measure against.
 """
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -24,6 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 FILE_LINE_PATTERN = re.compile(r"`?([\w./\-]+\.py):(\d+)`?")
 # Pattern 2: backticked qualified-name with at least one dot, e.g. `flask.app.Flask.run`
 SYMBOL_PATTERN = re.compile(r"`([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)+)`")
+# LLM synthesis uses server-owned evidence IDs. Ordinary inline code remains
+# ordinary inline code and is not interpreted as a citation in that mode.
+EVIDENCE_ID_PATTERN = re.compile(r"\[(C\d+)\]")
 
 
 @dataclass
@@ -32,6 +36,11 @@ class CitationCheck:
     file_path: str
     line: int
     verified: bool
+    # The exact evidence ID emitted by the LLM, e.g. ``[C1]``. Empty for the
+    # legacy citation protocol used by templates and historical eval artifacts.
+    source_token: str = ""
+    # Server-owned token rendered after verification, e.g. ``src/pkg/mod.py:42``.
+    display_token: str = ""
 
 
 @dataclass
@@ -56,39 +65,34 @@ def extract_citations(answer: str) -> list[tuple[str, str, int]]:
     return out
 
 
-async def verify(answer: str, repo_id: str, db: AsyncSession | None) -> GroundednessResult:
-    """Verify every citation in `answer` against indexed chunks / symbols."""
+def extract_evidence_ids(answer: str) -> list[str]:
+    """Extract evidence IDs in occurrence order, including duplicates."""
+    return [match.group(1) for match in EVIDENCE_ID_PATTERN.finditer(answer)]
+
+
+async def verify(
+    answer: str,
+    repo_id: str,
+    db: AsyncSession | None,
+    *,
+    evidence_catalog: Mapping[str, str] | None = None,
+) -> GroundednessResult:
+    """Verify every citation in ``answer`` against indexed chunks / symbols.
+
+    ``evidence_catalog is None`` selects the legacy protocol used by template
+    synthesis and historical eval artifacts: backticked dotted names and
+    file:line tokens are citations. Passing a catalog selects the LLM protocol:
+    only server-owned ``[C#]`` IDs and explicit file:line tokens are citations,
+    so ordinary code such as ``self.faiss.retrieve`` is not misclassified.
+    """
+    if evidence_catalog is not None:
+        return await _verify_with_evidence_catalog(answer, repo_id, db, evidence_catalog)
+
     extracted = extract_citations(answer)
     if not extracted:
-        # An answer citing nothing scores ZERO, not one.
-        #
-        # `verified / total` is undefined at total = 0, so this is a convention and
-        # not an implementation of a fact. It used to be 1.0, which made the metric
-        # reward vagueness: an answer that names no `file:line` cannot cite anything
-        # false, so it collected a perfect grounding score while delivering nothing
-        # verifiable — and an agent that stopped citing altogether would have posted
-        # 1.000 across a whole suite.
-        #
-        # Chosen at 0.0 rather than excluded-from-the-average because excluding has
-        # its own exploit: an agent that cites nothing exactly where it is unsure
-        # drops those questions from the denominator and raises the mean over the
-        # rest. 0.0 also moves the number against us, which is the direction a
-        # scoring convention should be chosen in when it is being decided after the
-        # fact.
-        #
-        # The cost is that 0.0 cannot by itself distinguish "cited nothing" from
-        # "cited ten things and all ten failed". Those are different failures, and
-        # collapsing them is what Honesty_Constraints §4 forbids for the *marks* on
-        # individual references. The distinction is kept two ways: `citations` is
-        # empty here and non-empty there, and `enforce_groundedness` writes a
-        # different footnote for each. Anything aggregating these scores has to
-        # report the no-citation count alongside — `dcode_eval.run` does.
-        return GroundednessResult(citations=[], score=0.0)
+        return _uncited_result()
 
-    try:
-        parsed_repo_id = UUID(repo_id)
-    except ValueError:
-        parsed_repo_id = None
+    parsed_repo_id = _parse_repo_id(repo_id)
 
     checks: list[CitationCheck] = []
     for sym, path, line in extracted:
@@ -105,6 +109,115 @@ async def verify(answer: str, repo_id: str, db: AsyncSession | None) -> Grounded
     verified_count = sum(1 for c in checks if c.verified)
     score = verified_count / len(checks) if checks else 1.0
     return GroundednessResult(citations=checks, score=score)
+
+
+async def _verify_with_evidence_catalog(
+    answer: str,
+    repo_id: str,
+    db: AsyncSession | None,
+    evidence_catalog: Mapping[str, str],
+) -> GroundednessResult:
+    """Verify LLM evidence IDs plus explicit file:line references.
+
+    File:line remains recognized as a defensive compatibility path: a model
+    that ignores the ID instruction still cannot present an invented location
+    as evidence. Dotted inline code is intentionally absent from this extractor.
+    """
+    evidence_ids = extract_evidence_ids(answer)
+    file_lines = _extract_file_line_citations(answer)
+    if not evidence_ids and not file_lines:
+        return _uncited_result()
+
+    parsed_repo_id = _parse_repo_id(repo_id)
+    checks: list[CitationCheck] = []
+    for evidence_id in evidence_ids:
+        source_token = f"[{evidence_id}]"
+        display_token = evidence_catalog.get(evidence_id)
+        if display_token is None:
+            checks.append(
+                CitationCheck(
+                    symbol=source_token,
+                    file_path="",
+                    line=0,
+                    verified=False,
+                    source_token=source_token,
+                )
+            )
+            continue
+        check = await _verify_catalog_token(db, parsed_repo_id, display_token)
+        checks.append(
+            CitationCheck(
+                symbol=check.symbol,
+                file_path=check.file_path,
+                line=check.line,
+                verified=check.verified,
+                source_token=source_token,
+                display_token=display_token,
+            )
+        )
+
+    for symbol, path, line in file_lines:
+        if db is None or parsed_repo_id is None:
+            checks.append(CitationCheck(symbol=symbol, file_path=path, line=line, verified=False))
+        else:
+            checks.append(await _verify_file_line(db, parsed_repo_id, symbol, path, line))
+
+    verified_count = sum(1 for check in checks if check.verified)
+    return GroundednessResult(citations=checks, score=verified_count / len(checks))
+
+
+def _extract_file_line_citations(answer: str) -> list[tuple[str, str, int]]:
+    return [
+        (match.group(1), match.group(1), int(match.group(2)))
+        for match in FILE_LINE_PATTERN.finditer(answer)
+    ]
+
+
+async def _verify_catalog_token(
+    db: AsyncSession | None,
+    repo_id: UUID | None,
+    token: str,
+) -> CitationCheck:
+    file_line = FILE_LINE_PATTERN.fullmatch(token)
+    if file_line is not None:
+        path, line_text = file_line.group(1), file_line.group(2)
+        line = int(line_text)
+        if db is None or repo_id is None:
+            return CitationCheck(symbol=path, file_path=path, line=line, verified=False)
+        return await _verify_file_line(db, repo_id, path, path, line)
+
+    qualified_symbol = SYMBOL_PATTERN.fullmatch(f"`{token}`")
+    if qualified_symbol is not None:
+        if db is None or repo_id is None:
+            return CitationCheck(symbol=token, file_path="", line=0, verified=False)
+        return await _verify_symbol(db, repo_id, token)
+
+    return CitationCheck(symbol=token, file_path="", line=0, verified=False)
+
+
+def _parse_repo_id(repo_id: str) -> UUID | None:
+    try:
+        return UUID(repo_id)
+    except ValueError:
+        return None
+
+
+def _uncited_result() -> GroundednessResult:
+    # An answer citing nothing scores ZERO, not one.
+    #
+    # `verified / total` is undefined at total = 0, so this is a convention and
+    # not an implementation of a fact. It used to be 1.0, which made the metric
+    # reward vagueness: an answer that names no `file:line` cannot cite anything
+    # false, so it collected a perfect grounding score while delivering nothing
+    # verifiable — and an agent that stopped citing altogether would have posted
+    # 1.000 across a whole suite.
+    #
+    # Chosen at 0.0 rather than excluded-from-the-average because excluding has
+    # its own exploit: an agent that cites nothing exactly where it is unsure
+    # drops those questions from the denominator and raises the mean over the
+    # rest. The empty/non-empty citations list plus the enforcement footnote
+    # preserves the distinction between "nothing cited" and "everything failed".
+    return GroundednessResult(citations=[], score=0.0)
 
 
 async def _verify_file_line(
@@ -200,7 +313,8 @@ def enforce_groundedness(
     unverified = [check for check in result.citations if not check.verified]
     verified = [check for check in result.citations if check.verified]
 
-    redacted = _redact_unverified(answer, unverified, chinese=chinese)
+    rendered = _render_verified_evidence_ids(answer, verified)
+    redacted = _redact_unverified(rendered, unverified, chinese=chinese)
     if result.score < threshold:
         # Two different failures reach this branch and they get different footnotes.
         # An answer with no citations scores 0.0 by convention (see `verify`), and
@@ -236,7 +350,9 @@ def _redact_unverified(
     redacted = answer
     marker = _REDACTION_MARKER_ZH if chinese else _REDACTION_MARKER
     for check in unverified:
-        if check.line > 0 and check.file_path:
+        if check.source_token:
+            redacted = redacted.replace(check.source_token, marker)
+        elif check.line > 0 and check.file_path:
             redacted = _replace_file_line_reference(
                 redacted,
                 f"{check.file_path}:{check.line}",
@@ -245,6 +361,14 @@ def _redact_unverified(
         elif check.symbol:
             redacted = _replace_symbol_reference(redacted, check.symbol, marker=marker)
     return redacted
+
+
+def _render_verified_evidence_ids(answer: str, verified: list[CitationCheck]) -> str:
+    rendered = answer
+    for check in verified:
+        if check.source_token and check.display_token:
+            rendered = rendered.replace(check.source_token, f"`{check.display_token}`")
+    return rendered
 
 
 def _replace_file_line_reference(text: str, token: str, *, marker: str) -> str:

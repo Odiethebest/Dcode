@@ -1,22 +1,10 @@
-"""The agent may not offer a citation the guardrail would reject.
+"""Server-owned evidence targets must survive groundedness verification.
 
-This is the invariant; how it is satisfied is a choice. It has been satisfied two
-ways, and the second is the one in force:
-
-1. **Remove the offending tokens.** Qualified names were dropped from the
-   'Allowed citations' list, because the guardrail matched `symbols.qualified_name`
-   exactly while the indexer builds that name from the repository's directory layout
-   (`src.requests.api.get`) — so the shortened form a model writes matched no row.
-   This worked, and cost the evidence: on some questions the model was then left
-   with nothing it would cite, which the old no-citation scoring convention hid by
-   paying a perfect score for it.
-2. **Make one rule.** `dcode_shared.symbols` now holds the single definition of what
-   a name refers to, and both `routes/internal.py` and `groundedness._verify_symbol`
-   apply it. The tokens verify, so they can be offered again.
-
-The tests below pin the invariant rather than either remedy, which is why they
-survived the switch between them: every token the agent offers must be one the
-guardrail's own matching rule can accept.
+LLM synthesis cites request-local IDs such as ``[C1]`` rather than copying a
+qualified symbol into backticks. The server maps each ID back to a canonical
+target, then applies the same symbol-resolution rule as the graph API. These
+tests pin both sides of that contract: target resolution remains shared, and
+the generated context exposes only IDs as citations.
 
 **Mutation-verified, 5 reverts, all red** — over this file *and*
 `test_groundedness.py`, because mutation 5 survives this file alone. The first run
@@ -49,7 +37,7 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from dcode_agent import graph
-from dcode_agent.groundedness import SYMBOL_PATTERN, extract_citations
+from dcode_agent.groundedness import extract_citations
 from dcode_agent.state import AgentState
 from dcode_shared.db.models import Symbol
 from dcode_shared.symbols import candidate_filter, select_symbol_matches
@@ -176,13 +164,16 @@ def test_the_guardrail_and_the_api_share_one_rule() -> None:
     assert internal.select_symbol_matches is select_symbol_matches
 
 
-def test_the_evidence_block_offers_the_name_in_citable_form() -> None:
-    """Backticked, because it is now a token the model may cite."""
-    context = graph._build_llm_context(_state_with_definition_locations())
+def test_the_evidence_block_offers_ids_instead_of_overloading_inline_code() -> None:
+    state = _state_with_definition_locations()
+    catalog = graph._build_evidence_catalog(state)
+    context = graph._build_llm_context(state, evidence_catalog=catalog)
 
-    assert f"`{INDEXED}`" in context
-    assert "`src/requests/api.py:62`" in context
-    assert SYMBOL_PATTERN.search(context), (
-        "the evidence must present the qualified name in the form the extractor "
-        "recognises, or the model cannot cite it at all"
+    symbol_id = next(evidence_id for evidence_id, token in catalog.items() if token == INDEXED)
+    location_id = next(
+        evidence_id for evidence_id, token in catalog.items() if token == "src/requests/api.py:62"
     )
+
+    assert f"[{symbol_id}] -> `{INDEXED}`" in context
+    assert f"[{location_id}] -> `src/requests/api.py:62`" in context
+    assert "Evidence catalog (cite ONLY the [C#] IDs" in context

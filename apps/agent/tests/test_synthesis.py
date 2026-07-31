@@ -78,26 +78,28 @@ def _search_state(runtime: dict[str, Any]) -> AgentState:
 
 async def test_synthesis_streams_llm_deltas() -> None:
     emitter = _FakeEmitter()
-    llm = _FakeLLM(["Auth is in ", "`src/requests/auth.py:85`", "."])
+    llm = _FakeLLM(["Auth is implemented here ", "[C1]", "."])
     state = await synthesize_node(_search_state({"llm": llm, "emitter": emitter}))
-    assert state.draft_answer == "Auth is in `src/requests/auth.py:85`."
+    assert state.draft_answer == "Auth is implemented here [C1]."
+    assert state.evidence_catalog == {"C1": "src/requests/auth.py:85"}
     # every token delta was streamed live, in order
-    assert emitter.partials == ["Auth is in ", "`src/requests/auth.py:85`", "."]
+    assert emitter.partials == ["Auth is implemented here ", "[C1]", "."]
     # the LLM was handed the retrieved code content as grounding context
     assert "HTTPBasicAuth" in llm.calls[0][1]
+    assert "[C1] -> `src/requests/auth.py:85`" in llm.calls[0][1]
     assert llm.calls[0][2] == "English"
 
 
 async def test_synthesis_uses_original_followup_language_after_contextualization() -> None:
     emitter = _FakeEmitter()
-    llm = _FakeLLM(["认证逻辑见 ", "`src/requests/auth.py:85`", "。"])
+    llm = _FakeLLM(["认证逻辑见 ", "[C1]", "。"])
     state = _search_state({"llm": llm, "emitter": emitter})
     state.query = "How does HTTPBasicAuth work?"
     state.raw_query = "它的认证逻辑是怎样的？"
 
     updated = await synthesize_node(state)
 
-    assert updated.draft_answer == "认证逻辑见 `src/requests/auth.py:85`。"
+    assert updated.draft_answer == "认证逻辑见 [C1]。"
     assert llm.calls[0][0] == "How does HTTPBasicAuth work?"
     assert llm.calls[0][2] == "Chinese"
 

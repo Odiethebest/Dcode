@@ -238,7 +238,8 @@ async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
     Returns ``None`` on empty context or any failure so synthesis degrades to
     the rule-based template.
     """
-    context = _build_llm_context(state)
+    evidence_catalog = _build_evidence_catalog(state)
+    context = _build_llm_context(state, evidence_catalog=evidence_catalog)
     if not context.strip():
         return None
     await _emit_thought(state, "Synthesize a grounded answer from the retrieved evidence.")
@@ -262,71 +263,82 @@ async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
         )
         return None
     text = "".join(parts).strip()
-    return text or None
+    if not text:
+        return None
+    # Set this only after successful LLM synthesis. If streaming fails and the
+    # template fallback runs, groundedness must retain the legacy parser.
+    state.evidence_catalog = evidence_catalog
+    return text
 
 
 _LLM_CONTENT_CHARS = 1200  # cap per-chunk content included in the LLM context
 
 
-def _build_llm_context(state: AgentState) -> str:
+def _build_llm_context(
+    state: AgentState,
+    *,
+    evidence_catalog: dict[str, str] | None = None,
+) -> str:
     """Render the retrieved evidence (code + graph locations) for the LLM."""
+    catalog = evidence_catalog if evidence_catalog is not None else _build_evidence_catalog(state)
+    evidence_id_for = {token: f"[{evidence_id}]" for evidence_id, token in catalog.items()}
     blocks: list[str] = []
     for observation in state.observations:
         tool_name = observation["tool"]
         result = observation["result"]
         if tool_name == "search_code":
             for chunk in result.get("chunks", [])[:5]:
+                token = f"{chunk['file_path']}:{chunk['start_line']}"
                 blocks.append(
-                    f"[{chunk['file_path']}:{chunk['start_line']}] "
+                    f"[Evidence {evidence_id_for[token]}] {token} "
                     f"symbol `{chunk['symbol_name']}`\n{_clip(chunk.get('content', ''))}"
                 )
         elif tool_name == "read_file":
             start_line, end_line = result["line_range"]
+            token = f"{result['path']}:{start_line}"
             blocks.append(
-                f"[{result['path']}:{start_line}-{end_line}] (file excerpt)\n"
+                f"[Evidence {evidence_id_for[token]}] {result['path']}:{start_line}-{end_line} "
+                "(file excerpt)\n"
                 f"{_clip(result.get('content', ''))}"
             )
         elif "locations" in result:
-            # Backticked again: the qualified name is a citable token now that the
-            # guardrail resolves symbols by the same rule this tool does
-            # (dcode_shared.symbols). While the two disagreed, offering it in
-            # citation form invited a reference the guardrail would strip.
-            loc_lines = [
-                f"- `{loc['symbol']}` at `{loc['file_path']}:{loc['line']}`"
-                for loc in result["locations"][:10]
-            ]
+            loc_lines = []
+            for loc in result["locations"][:10]:
+                location_token = f"{loc['file_path']}:{loc['line']}"
+                symbol_token = str(loc["symbol"])
+                symbol_evidence = evidence_id_for.get(symbol_token)
+                suffix = f"; symbol evidence {symbol_evidence}" if symbol_evidence else ""
+                loc_lines.append(
+                    f"- {evidence_id_for[location_token]} `{symbol_token}` at "
+                    f"{location_token}{suffix}"
+                )
             if loc_lines:
                 blocks.append(f"[{tool_name} results]\n" + "\n".join(loc_lines))
         elif "entries" in result:
             names = ", ".join(str(entry["name"]) for entry in result["entries"][:20])
             blocks.append(f"[directory listing]\n{names}")
 
-    allowed = _allowed_citations(state)
-    if allowed:
+    if catalog:
         blocks.append(
-            "Allowed citations (cite ONLY these, copied verbatim inside backticks):\n"
-            + "\n".join(f"- `{token}`" for token in allowed)
+            "Evidence catalog (cite ONLY the [C#] IDs; never copy the target as a citation):\n"
+            + "\n".join(f"- [{evidence_id}] -> `{token}`" for evidence_id, token in catalog.items())
         )
     return "\n\n".join(blocks)
 
 
+def _build_evidence_catalog(state: AgentState) -> dict[str, str]:
+    """Assign stable request-local IDs to server-owned evidence tokens."""
+    return {f"C{index}": token for index, token in enumerate(_allowed_citations(state), start=1)}
+
+
 def _allowed_citations(state: AgentState) -> list[str]:
-    """Citation tokens the evidence supports — `file:line` and qualified names.
+    """Canonical evidence targets supported by observations.
 
-    Qualified names were removed from this list for one commit, because they could
-    not survive verification: the guardrail matched ``symbols.qualified_name``
-    exactly while the indexer builds that name from the repository's directory
-    layout (``src.requests.api.get``), so the shortened form a model actually writes
-    matched no row. Not one symbol-style citation survived the recorded run.
-
-    **That was the wrong end to fix.** The defect was two rules for one question —
-    the tools resolved a symbol by suffix, the guardrail by exact match — and
-    removing the tokens worked around it at the cost of the evidence: on some
-    questions the model was then left with nothing it would cite at all, which the
-    old no-citation scoring convention concealed by paying a perfect score for it.
-    ``dcode_shared.symbols`` now holds the single rule and the guardrail applies it,
-    so these tokens verify. Measured either way in
-    ``results/b4-citation-fix-experiment.md``.
+    The LLM never cites these strings directly. ``_build_evidence_catalog`` gives
+    each one a request-local ``[C#]`` ID, and groundedness resolves the ID back to
+    this server-owned target before applying the existing DB verification rules.
+    Keeping qualified names here preserves the shared symbol-resolution invariant
+    without overloading every dotted inline-code token as a citation.
     """
     allowed: list[str] = []
     seen: set[str] = set()
@@ -380,7 +392,12 @@ async def groundedness_node(state: AgentState) -> AgentState:
     citations are surfaced; the recorded score reflects the pre-redaction draft.
     """
     answer = state.draft_answer or ""
-    result = await groundedness.verify(answer, state.repo_id, state.runtime.get("db"))
+    result = await groundedness.verify(
+        answer,
+        state.repo_id,
+        state.runtime.get("db"),
+        evidence_catalog=state.evidence_catalog,
+    )
     enforced = groundedness.enforce_groundedness(
         answer,
         result,

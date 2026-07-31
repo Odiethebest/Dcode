@@ -7,6 +7,7 @@ from dcode_agent.groundedness import (
     GroundednessResult,
     enforce_groundedness,
     extract_citations,
+    extract_evidence_ids,
     verify,
 )
 from dcode_shared.db.models import Chunk, Symbol
@@ -86,6 +87,10 @@ def test_extracts_qualified_symbol_references() -> None:
 
 def test_returns_empty_when_no_references_present() -> None:
     assert extract_citations("This answer has no code references.") == []
+
+
+def test_extracts_server_owned_evidence_ids_in_occurrence_order() -> None:
+    assert extract_evidence_ids("First [C2], then [C1], then [C2].") == ["C2", "C1", "C2"]
 
 
 async def test_verify_checks_file_ranges_and_symbols_against_db_fixture() -> None:
@@ -220,6 +225,81 @@ async def test_verify_marks_citations_unverified_without_db() -> None:
     result = await verify("See `src/flask/app.py:42` and `flask.app.Flask.run`.", repo_id, None)
 
     assert [citation.verified for citation in result.citations] == [False, False]
+    assert result.score == 0.0
+
+
+async def test_evidence_id_mode_ignores_ordinary_dotted_inline_code() -> None:
+    repo_id = uuid4()
+    db = FakeSession(
+        chunks=[
+            Chunk(
+                id=uuid4(),
+                repo_id=repo_id,
+                file_path="src/retrieval/hybrid_search.py",
+                chunk_type="method",
+                parent_symbol="HybridRetriever",
+                symbol_name="retrieve",
+                signature="def retrieve(self, query):",
+                start_line=60,
+                end_line=90,
+                imports=[],
+                content="def retrieve(self, query): ...",
+                embedding=[0.0],
+            )
+        ],
+        symbols=[],
+    )
+
+    answer = (
+        "It calls `self.faiss.retrieve` and `self.bm25.retrieve`; "
+        "the implementation is shown by [C1]."
+    )
+    result = await verify(
+        answer,
+        str(repo_id),
+        db,
+        evidence_catalog={"C1": "src/retrieval/hybrid_search.py:63"},
+    )
+
+    assert [
+        (check.source_token, check.display_token, check.verified) for check in result.citations
+    ] == [("[C1]", "src/retrieval/hybrid_search.py:63", True)]
+    assert result.score == 1.0
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+    assert "`self.faiss.retrieve`" in enforced.answer
+    assert "`self.bm25.retrieve`" in enforced.answer
+    assert "[C1]" not in enforced.answer
+    assert "`src/retrieval/hybrid_search.py:63`" in enforced.answer
+
+
+async def test_evidence_id_mode_redacts_unknown_ids() -> None:
+    result = await verify(
+        "This claim cites an invented ID [C999].",
+        str(uuid4()),
+        None,
+        evidence_catalog={"C1": "src/retrieval/hybrid_search.py:63"},
+    )
+
+    assert [(check.source_token, check.verified) for check in result.citations] == [
+        ("[C999]", False)
+    ]
+    enforced = enforce_groundedness(
+        "This claim cites an invented ID [C999].", result, threshold=0.95
+    )
+    assert "[C999]" not in enforced.answer
+    assert "[unverified reference removed]" in enforced.answer
+
+
+async def test_evidence_id_mode_still_checks_explicit_file_line_references() -> None:
+    result = await verify(
+        "Ordinary `self.faiss.retrieve`, invented location `ghost.py:999`.",
+        str(uuid4()),
+        None,
+        evidence_catalog={},
+    )
+
+    assert [(check.symbol, check.verified) for check in result.citations] == [("ghost.py", False)]
     assert result.score == 0.0
 
 
