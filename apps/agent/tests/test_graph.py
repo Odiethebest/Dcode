@@ -1,5 +1,6 @@
 """LangGraph node tests for the agent's first-pass orchestration."""
 
+import json
 import logging
 from typing import Any, ClassVar
 from uuid import uuid4
@@ -12,7 +13,8 @@ from dcode_agent.graph import (
     synthesize_node,
     tool_call_node,
 )
-from dcode_agent.state import AgentState
+from dcode_agent.settings import agent_settings
+from dcode_agent.state import STRUCTURAL_TOOLS, AgentState
 from dcode_agent.tools.base import Tool, ToolRegistry
 from dcode_shared.db.models import Chunk, Symbol
 from pydantic import BaseModel
@@ -332,6 +334,7 @@ async def test_pronoun_only_chinese_call_query_searches_before_graph_walk() -> N
     assert updated.pending_tool_args == {
         "query": "它被哪些函数调用，又调用哪些函数？",
         "k": 5,
+        "mode": "hybrid",
     }
 
 
@@ -341,7 +344,7 @@ async def test_plan_node_defaults_to_search_code() -> None:
     updated = await plan_node(state)
 
     assert updated.pending_tool_name == "search_code"
-    assert updated.pending_tool_args == {"query": "auth related code", "k": 5}
+    assert updated.pending_tool_args == {"query": "auth related code", "k": 5, "mode": "hybrid"}
 
 
 async def test_plan_node_routes_dependents_queries() -> None:
@@ -907,3 +910,161 @@ async def test_hybrid_only_mode_stops_after_shared_search() -> None:
 
     assert [call["tool"] for call in result["tool_calls"]] == ["search_code"]
     assert "Top code hits" in result["draft_answer"]
+
+
+# ---------------------------------------------------------------------------
+# Evaluation arm modes
+#
+# Each mode is one row of the H1 ladder. If a mode silently behaves like
+# another, the ladder still runs, every higher-level test still passes, and the
+# resulting comparison is meaningless — so the invariants are pinned here.
+# ---------------------------------------------------------------------------
+
+
+def _search_observation(query: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "tool": "search_code",
+        "args": {"query": query, "k": 5, "mode": "hybrid"},
+        "result": {"chunks": chunks},
+        "cached": False,
+    }
+
+
+def _seed_chunk(path: str, symbol: str, start: int) -> dict[str, Any]:
+    return {
+        "chunk_id": str(uuid4()),
+        "file_path": path,
+        "symbol_name": symbol,
+        "start_line": start,
+        "end_line": start + 20,
+        "content": f"def {symbol}(): ...",
+        "score": 1.0,
+        "score_components": {"dense": 0.5, "sparse": 0.5, "rerank": 0.5},
+    }
+
+
+def _record(state: AgentState, planned: AgentState) -> None:
+    """Mirror what tool_call_node persists, so the planner's dedup works.
+
+    Dedup reads `tool_calls`; appending only to `observations` makes the
+    planner re-pick the same tool forever and quietly turns any walk assertion
+    into a test of nothing.
+    """
+    # tool_call_node persists JSON-normalized args; dedup compares against
+    # that form, so a tuple line_range recorded raw would never match.
+    entry = {
+        "tool": planned.pending_tool_name,
+        "args": json.loads(json.dumps(planned.pending_tool_args)),
+    }
+    state.tool_calls.append(entry)
+    state.observations.append({**entry, "result": {"locations": []}, "cached": False})
+
+
+async def test_each_mode_opens_with_its_own_retrieval_mode() -> None:
+    expected = {
+        "full": "hybrid",
+        "agent_no_graph": "hybrid",
+        "hybrid_only": "hybrid",
+        "dense_only": "dense",
+    }
+    for mode, search_mode in expected.items():
+        state = AgentState(repo_id=str(uuid4()), query="how are proxies resolved", mode=mode)
+
+        planned = await plan_node(state)
+
+        assert planned.pending_tool_name == "search_code"
+        assert planned.pending_tool_args["mode"] == search_mode, mode
+
+
+async def test_no_expansion_modes_stop_after_one_retrieval() -> None:
+    """B2 and B3 are single-retrieval arms; a follow-up tool would make them B4."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    for mode in ("hybrid_only", "dense_only"):
+        state = AgentState(
+            repo_id=str(uuid4()),
+            query="Explain the end-to-end redirect flow across the session stack",
+            mode=mode,
+            observations=[_search_observation("redirect flow", chunks)],
+        )
+
+        planned = await plan_node(state)
+
+        assert planned.pending_tool_name is None, mode
+
+
+async def test_no_graph_mode_never_selects_a_structural_tool() -> None:
+    """The B3.5 ablation is exactly this exclusion, so it gets an explicit net."""
+    chunks = [
+        _seed_chunk("src/requests/sessions.py", "resolve_redirects", 186),
+        _seed_chunk("src/requests/models.py", "prepare_body", 576),
+        _seed_chunk("src/requests/utils.py", "rewind_body", 1139),
+    ]
+    queries = [
+        "Explain how a streaming request body is rewound across redirects",
+        "Who calls `resolve_redirects`?",
+        "什么函数调用了 `rewind_body`？",
+        "What does `resolve_redirects` depend on?",
+        "Who imports `requests.sessions`?",
+    ]
+    for query in queries:
+        state = AgentState(
+            repo_id=str(uuid4()),
+            query=query,
+            mode="agent_no_graph",
+            observations=[_search_observation(query, chunks)],
+        )
+        for _ in range(agent_settings.max_steps):
+            planned = await plan_node(state)
+            if planned.pending_tool_name is None:
+                break
+            assert planned.pending_tool_name not in STRUCTURAL_TOOLS, (query, planned.pending_tool_name)
+            _record(state, planned)
+
+
+async def test_no_graph_mode_still_reaches_the_file_outline() -> None:
+    """B3.5 must be as strong as it can be without a graph.
+
+    A truncated walk would understate the no-graph arm and so overstate the
+    call graph in `B4 - B3.5` — an error in the direction that flatters the
+    hypothesis, which is the direction that matters.
+    """
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="Explain the end-to-end redirect flow across the session stack",
+        mode="agent_no_graph",
+        observations=[_search_observation("redirect flow", chunks)],
+    )
+
+    selected: list[str] = []
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        selected.append(planned.pending_tool_name)
+        _record(state, planned)
+
+    assert "read_file" in selected
+    assert "get_file_outline" in selected
+    assert not STRUCTURAL_TOOLS.intersection(selected)
+
+
+async def test_full_mode_does_use_the_graph_on_the_same_query() -> None:
+    """The control for the test above: without it, an always-empty walk passes."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="Explain the end-to-end redirect flow across the session stack",
+        mode="full",
+        observations=[_search_observation("redirect flow", chunks)],
+    )
+
+    selected: list[str] = []
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        selected.append(planned.pending_tool_name)
+        _record(state, planned)
+
+    assert STRUCTURAL_TOOLS.intersection(selected)

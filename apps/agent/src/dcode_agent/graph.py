@@ -12,6 +12,7 @@ from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
+from dcode_agent import state as state_module
 from dcode_agent.llm import LLMClient, response_language_for
 from dcode_agent.settings import agent_settings
 from dcode_agent.state import AgentState
@@ -618,18 +619,20 @@ def build_graph() -> Any:
 
 
 def _select_next_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
+    expansion = state_module.expansion_for(state.mode)
     if not state.observations:
-        # B4 is defined as B3 plus optional structural expansion. Both modes
-        # therefore start from the same hybrid retrieval instead of allowing a
-        # direct graph route to replace the B3 evidence.
+        # Every arm starts from one retrieval, so a richer arm is a superset of a
+        # leaner one rather than a different route. Only the retrieval *mode*
+        # varies here; the expansion policy decides what may follow.
+        search_mode = state_module.search_mode_for(state.mode)
         return (
             "search_code",
-            {"query": state.query.strip(), "k": 5},
-            "Start from the shared B3 hybrid retrieval before optional tool expansion.",
+            {"query": state.query.strip(), "k": 5, "mode": search_mode},
+            f"Start from the shared {search_mode} retrieval before optional tool expansion.",
         )
-    if state.mode == "hybrid_only":
+    if expansion == "none":
         return None
-    return _select_followup_tool(state)
+    return _select_followup_tool(state, expansion=expansion)
 
 
 def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
@@ -699,16 +702,34 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
     )
 
 
-def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
+def _select_followup_tool(
+    state: AgentState,
+    *,
+    expansion: str = "full",
+) -> tuple[str, dict[str, Any], str] | None:
+    """Pick the next tool, honouring the arm's expansion policy.
+
+    ``expansion="local"`` (B3.5) removes the graph and reference tools from
+    consideration and lets the remaining candidates proceed in their normal
+    order. It deliberately does *not* stop the walk at the first structural
+    candidate: truncating there would leave B3.5 without `get_file_outline`
+    purely because of branch ordering, which would understate the no-graph arm
+    and so overstate the call graph's contribution — an error in the direction
+    that flatters the hypothesis under test.
+    """
+    allow_structural = expansion == "full"
+
     call_direction = _call_query_direction(state.query.lower())
-    if call_direction is not None:
+    if call_direction is not None and allow_structural:
         return _select_call_followup_tool(state, call_direction)
 
     # Preserve the specialised product routes, but run them *after* the common
     # hybrid evidence has been collected. Once that one specialised lookup has
     # completed, synthesize rather than falling into the generic multihop path.
     specialised = _select_initial_tool(state.query)
-    if specialised[0] != "search_code":
+    if specialised[0] != "search_code" and (
+        allow_structural or specialised[0] not in state_module.STRUCTURAL_TOOLS
+    ):
         tool_name, args, thought = specialised
         if not _has_tool_call(state, tool_name, args):
             return tool_name, args, thought
@@ -735,17 +756,18 @@ def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] 
                 f"Read retrieved seed `{path}:{line_range[0]}` for local context.",
             )
 
-    for chunk in seed_chunks:
-        symbol = str(chunk["symbol_name"])
-        if symbol == "__module_doc__":
-            continue
-        args = {"symbol": symbol}
-        if not _has_tool_call(state, "find_references", args):
-            return (
-                "find_references",
-                args,
-                f"Follow graph references for `{symbol}` to expand cross-file context.",
-            )
+    if allow_structural:
+        for chunk in seed_chunks:
+            symbol = str(chunk["symbol_name"])
+            if symbol == "__module_doc__":
+                continue
+            args = {"symbol": symbol}
+            if not _has_tool_call(state, "find_references", args):
+                return (
+                    "find_references",
+                    args,
+                    f"Follow graph references for `{symbol}` to expand cross-file context.",
+                )
 
     seen_paths: set[str] = set()
     for chunk in seed_chunks:

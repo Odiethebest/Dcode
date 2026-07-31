@@ -9,7 +9,57 @@ synthesize decision.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-AgentMode = Literal["full", "hybrid_only"]
+AgentMode = Literal["full", "agent_no_graph", "hybrid_only", "dense_only"]
+
+SearchMode = Literal["hybrid", "dense", "sparse"]
+
+# One agent, one synthesis prompt, one citation protocol, one guardrail — the
+# evaluation arms differ only in these two dimensions. Keeping the mapping in
+# one table is what lets the harness claim the arms are comparable; a mode whose
+# retrieval or expansion is decided somewhere else would silently break that.
+#
+# ``retrieval`` reaches /internal/search. It must also travel in the tool's
+# args, not just here: the tool cache key is derived from (tool, repo_id, args),
+# so an arm-level retrieval mode kept out of the args would make B2's dense
+# search and B3's hybrid search collide on one cache entry.
+#
+# ``expansion`` gates follow-up tools after the first retrieval:
+#   none   — answer from the first search alone
+#   local  — read_file / get_file_outline: more of the same files, no graph
+#   full   — the graph and reference tools as well
+_MODE_TABLE: dict[str, tuple[SearchMode, Literal["none", "local", "full"]]] = {
+    # B4 — the system under test.
+    "full": ("hybrid", "full"),
+    # B3.5 — diagnostic. Identical to B4 except the graph is switched off, so
+    # (B4 - B3.5) isolates the call graph while (B4 - B3) measures the whole
+    # agent. Diagnostic only: it is not part of the H1 pass criteria.
+    "agent_no_graph": ("hybrid", "local"),
+    # B3 — hybrid retrieval, no tool expansion at all.
+    "hybrid_only": ("hybrid", "none"),
+    # B2 — vanilla dense RAG, sharing B4's synthesis and guardrail so its
+    # groundedness is measured rather than a template constant.
+    "dense_only": ("dense", "none"),
+}
+
+# Tools that consult the graph or the reference index. `local` expansion may not
+# use these; that exclusion is the entire definition of the B3.5 arm.
+STRUCTURAL_TOOLS = frozenset(
+    {
+        "find_definition",
+        "find_references",
+        "get_call_neighbors",
+        "get_dependencies",
+        "get_dependents",
+    }
+)
+
+
+def search_mode_for(mode: AgentMode) -> SearchMode:
+    return _MODE_TABLE[mode][0]
+
+
+def expansion_for(mode: AgentMode) -> Literal["none", "local", "full"]:
+    return _MODE_TABLE[mode][1]
 
 
 @dataclass
@@ -18,9 +68,9 @@ class AgentState:
 
     repo_id: str
     query: str
-    # ``hybrid_only`` is the fair B3 ablation: run the same hybrid search,
-    # synthesis model, citation protocol, and groundedness guardrail as B4, but
-    # stop before any graph/tool expansion. ``full`` is B4.
+    # Which evaluation arm this request is. Every mode shares the synthesis
+    # model, prompt, citation protocol and groundedness guardrail; only
+    # retrieval and tool expansion differ. See ``_MODE_TABLE``.
     mode: AgentMode = "full"
     # Prior conversation turns (bounded by the gateway) + the original follow-up
     # text preserved when the contextualize node rewrites `query` for retrieval.

@@ -36,7 +36,10 @@ async def test_search_code_calls_internal_search(monkeypatch: pytest.MonkeyPatch
     ) -> list[dict[str, object]]:
         assert endpoint == "search"
         assert passed_repo_id == repo_id
-        assert params == {"query": "auth", "k": 3}
+        # mode travels in the args, not just in the caller: the tool cache key
+        # is derived from them, so a dense and a hybrid search for the same
+        # query would otherwise share one cache entry.
+        assert params == {"query": "auth", "k": 3, "mode": "hybrid"}
         return [
             {
                 "chunk_id": str(uuid4()),
