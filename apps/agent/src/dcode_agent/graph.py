@@ -382,7 +382,10 @@ async def groundedness_node(state: AgentState) -> AgentState:
     answer = state.draft_answer or ""
     result = await groundedness.verify(answer, state.repo_id, state.runtime.get("db"))
     enforced = groundedness.enforce_groundedness(
-        answer, result, threshold=shared_settings.groundedness_threshold
+        answer,
+        result,
+        threshold=shared_settings.groundedness_threshold,
+        chinese=_answer_in_chinese(state),
     )
     state.citations = [
         {

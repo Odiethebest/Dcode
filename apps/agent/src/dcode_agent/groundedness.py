@@ -169,6 +169,7 @@ async def _verify_symbol(
 # ---------------------------------------------------------------------------
 
 _REDACTION_MARKER = "[unverified reference removed]"
+_REDACTION_MARKER_ZH = "[已移除未验证引用]"
 
 
 @dataclass
@@ -186,6 +187,7 @@ def enforce_groundedness(
     result: GroundednessResult,
     *,
     threshold: float,
+    chinese: bool = False,
 ) -> EnforcedGroundedness:
     """Apply the groundedness hard guardrail (D-2.3.1).
 
@@ -198,7 +200,7 @@ def enforce_groundedness(
     unverified = [check for check in result.citations if not check.verified]
     verified = [check for check in result.citations if check.verified]
 
-    redacted = _redact_unverified(answer, unverified)
+    redacted = _redact_unverified(answer, unverified, chinese=chinese)
     if result.score < threshold:
         # Two different failures reach this branch and they get different footnotes.
         # An answer with no citations scores 0.0 by convention (see `verify`), and
@@ -206,13 +208,14 @@ def enforce_groundedness(
         # would be accurate word by word and misleading as a whole — it implies
         # something was stripped. Say which failure it was.
         redacted = (
-            _append_uncited_note(redacted)
+            _append_uncited_note(redacted, chinese=chinese)
             if not result.citations
             else _append_guardrail_note(
                 redacted,
                 score=result.score,
                 threshold=threshold,
                 removed=len(unverified),
+                chinese=chinese,
             )
         )
 
@@ -224,33 +227,61 @@ def enforce_groundedness(
     )
 
 
-def _redact_unverified(answer: str, unverified: list[CitationCheck]) -> str:
+def _redact_unverified(
+    answer: str,
+    unverified: list[CitationCheck],
+    *,
+    chinese: bool,
+) -> str:
     redacted = answer
+    marker = _REDACTION_MARKER_ZH if chinese else _REDACTION_MARKER
     for check in unverified:
         if check.line > 0 and check.file_path:
-            redacted = _replace_reference(redacted, f"{check.file_path}:{check.line}")
+            redacted = _replace_file_line_reference(
+                redacted,
+                f"{check.file_path}:{check.line}",
+                marker=marker,
+            )
         elif check.symbol:
-            redacted = _replace_reference(redacted, check.symbol)
+            redacted = _replace_symbol_reference(redacted, check.symbol, marker=marker)
     return redacted
 
 
-def _replace_reference(text: str, token: str) -> str:
-    """Replace a backticked or bare reference token with the redaction marker."""
+def _replace_file_line_reference(text: str, token: str, *, marker: str) -> str:
+    """Replace one exact file:line citation, without touching a longer path."""
     escaped = re.escape(token)
-    text = re.sub(rf"`{escaped}`", _REDACTION_MARKER, text)
-    # Bare form: guard against matching inside a longer path / number / symbol.
-    return re.sub(rf"(?<![\w.]){escaped}(?![\w.])", _REDACTION_MARKER, text)
+    text = re.sub(rf"`{escaped}`", marker, text)
+    # Bare form stays supported because FILE_LINE_PATTERN deliberately extracts
+    # bare citations. Slashes and hyphens are path characters, so include them
+    # in the boundary guards: ``pkg/file.py:1`` must never be rewritten merely
+    # because a shorter ``file.py:1`` check failed.
+    return re.sub(rf"(?<![\w./-]){escaped}(?![\w./:-])", marker, text)
 
 
-def _append_uncited_note(answer: str) -> str:
+def _replace_symbol_reference(text: str, token: str, *, marker: str) -> str:
+    """Replace the exact backticked symbol that the extractor observed.
+
+    SYMBOL_PATTERN only extracts backticked dotted names. Replacing a bare
+    occurrence afterwards is both broader than extraction and unsafe: a failed
+    ``hybrid_search.py`` symbol used to corrupt the verified, longer citation
+    ``src/retrieval/hybrid_search.py:63``.
+    """
+    return re.sub(rf"`{re.escape(token)}`", marker, text)
+
+
+def _append_uncited_note(answer: str, *, chinese: bool) -> str:
     """The footnote for an answer that named no indexed code at all.
 
     Deliberately says nothing was *checked*, not that anything failed. The score is
     0.0 either way; only this line tells a reader which of the two it was.
     """
     note = (
-        "> ⚠️ This answer cites no indexed code, so nothing in it was checked against "
-        "the index. Treat it as unverified rather than as verified."
+        "> ⚠️ 此回答没有引用已索引代码，因此其中没有内容经过索引核验；请将其视为未验证回答。"
+        if chinese
+        else (
+            "> ⚠️ This answer cites no indexed code, so nothing in it was checked against "
+            "the index. Treat it as unverified rather than as verified."
+        )
     )
     body = answer.rstrip()
     return f"{body}\n\n{note}" if body else note
@@ -262,11 +293,18 @@ def _append_guardrail_note(
     score: float,
     threshold: float,
     removed: int,
+    chinese: bool,
 ) -> str:
-    plural = "s" if removed != 1 else ""
-    note = (
-        f"> ⚠️ Groundedness {score:.2f} is below the {threshold:.2f} guardrail: "
-        f"{removed} unverified reference{plural} removed (not found in the index)."
-    )
+    if chinese:
+        note = (
+            f"> ⚠️ 引用可信度 {score:.2f} 低于 {threshold:.2f} 的保护阈值："
+            f"已移除 {removed} 个未在索引中找到的引用。"
+        )
+    else:
+        plural = "s" if removed != 1 else ""
+        note = (
+            f"> ⚠️ Groundedness {score:.2f} is below the {threshold:.2f} guardrail: "
+            f"{removed} unverified reference{plural} removed (not found in the index)."
+        )
     body = answer.rstrip()
     return f"{body}\n\n{note}" if body else note

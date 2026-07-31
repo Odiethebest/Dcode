@@ -126,7 +126,9 @@ async def test_verify_checks_file_ranges_and_symbols_against_db_fixture() -> Non
         db,
     )
 
-    assert [(citation.file_path, citation.line, citation.verified) for citation in result.citations] == [
+    assert [
+        (citation.file_path, citation.line, citation.verified) for citation in result.citations
+    ] == [
         ("src/flask/app.py", 42, True),
         ("src/flask/app.py", 999, False),
         ("src/flask/app.py", 42, True),
@@ -233,7 +235,10 @@ def test_enforce_redacts_unverified_file_reference_and_keeps_verified() -> None:
                 symbol="src/flask/app.py", file_path="src/flask/app.py", line=42, verified=True
             ),
             CitationCheck(
-                symbol="src/flask/ghost.py", file_path="src/flask/ghost.py", line=999, verified=False
+                symbol="src/flask/ghost.py",
+                file_path="src/flask/ghost.py",
+                line=999,
+                verified=False,
             ),
         ],
         score=0.5,
@@ -264,6 +269,52 @@ def test_enforce_redacts_unverified_symbol_reference() -> None:
     assert "flask.app.Flask.ghost" not in enforced.answer
     assert "[unverified reference removed]" in enforced.answer
     assert enforced.citations == []
+
+
+def test_symbol_redaction_does_not_corrupt_a_longer_verified_file_path() -> None:
+    answer = (
+        "The helper module is `hybrid_search.py`; its implementation is at "
+        "`src/retrieval/hybrid_search.py:63`."
+    )
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(
+                symbol="src/retrieval/hybrid_search.py",
+                file_path="src/retrieval/hybrid_search.py",
+                line=63,
+                verified=True,
+            ),
+            CitationCheck(symbol="hybrid_search.py", file_path="", line=0, verified=False),
+        ],
+        score=0.5,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95)
+
+    assert "`src/retrieval/hybrid_search.py:63`" in enforced.answer
+    assert "`hybrid_search.py`" not in enforced.answer
+    assert enforced.answer.count("[unverified reference removed]") == 1
+
+
+def test_enforce_localizes_redaction_and_guardrail_note_for_chinese() -> None:
+    answer = "不存在的调用位于 `src/retrieval/ghost.py:999`。"
+    result = GroundednessResult(
+        citations=[
+            CitationCheck(
+                symbol="src/retrieval/ghost.py",
+                file_path="src/retrieval/ghost.py",
+                line=999,
+                verified=False,
+            )
+        ],
+        score=0.0,
+    )
+
+    enforced = enforce_groundedness(answer, result, threshold=0.95, chinese=True)
+
+    assert "[已移除未验证引用]" in enforced.answer
+    assert "引用可信度 0.00 低于 0.95" in enforced.answer
+    assert "unverified reference" not in enforced.answer
 
 
 def test_enforce_leaves_fully_grounded_answer_untouched() -> None:
