@@ -9,6 +9,7 @@ from dcode_agent.settings import agent_settings
 from dcode_agent.tools import common
 from dcode_agent.tools.find_definition import FindDefinitionArgs, FindDefinitionTool
 from dcode_agent.tools.find_references import FindReferencesArgs, FindReferencesTool
+from dcode_agent.tools.get_call_neighbors import GetCallNeighborsArgs, GetCallNeighborsTool
 from dcode_agent.tools.get_dependencies import GetDependenciesArgs, GetDependenciesTool
 from dcode_agent.tools.get_dependents import GetDependentsArgs, GetDependentsTool
 from dcode_agent.tools.get_file_outline import GetFileOutlineArgs, GetFileOutlineTool
@@ -30,7 +31,9 @@ def repo_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str
 async def test_search_code_calls_internal_search(monkeypatch: pytest.MonkeyPatch) -> None:
     repo_id = str(uuid4())
 
-    async def fake_fetch(endpoint: str, passed_repo_id: str, params: dict[str, object]) -> list[dict[str, object]]:
+    async def fake_fetch(
+        endpoint: str, passed_repo_id: str, params: dict[str, object]
+    ) -> list[dict[str, object]]:
         assert endpoint == "search"
         assert passed_repo_id == repo_id
         assert params == {"query": "auth", "k": 3}
@@ -58,8 +61,18 @@ async def test_search_code_calls_internal_search(monkeypatch: pytest.MonkeyPatch
 @pytest.mark.parametrize(
     ("tool", "args", "endpoint", "field_name"),
     [
-        (FindDefinitionTool(), FindDefinitionArgs(symbol="HTTPBasicAuth"), "find_definition", "locations"),
-        (FindReferencesTool(), FindReferencesArgs(symbol="src.requests.auth"), "find_references", "locations"),
+        (
+            FindDefinitionTool(),
+            FindDefinitionArgs(symbol="HTTPBasicAuth"),
+            "find_definition",
+            "locations",
+        ),
+        (
+            FindReferencesTool(),
+            FindReferencesArgs(symbol="src.requests.auth"),
+            "find_references",
+            "locations",
+        ),
         (
             GetDependenciesTool(),
             GetDependenciesArgs(module="src.requests.api"),
@@ -113,6 +126,47 @@ async def test_graph_tools_call_internal_api(
     assert getattr(result, field_name)[0].file_path == "src/requests/auth.py"
 
 
+async def test_get_call_neighbors_preserves_direction_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = str(uuid4())
+
+    async def fake_fetch(
+        endpoint: str,
+        passed_repo_id: str,
+        params: dict[str, object],
+    ) -> dict[str, object]:
+        assert endpoint == "get_call_neighbors"
+        assert passed_repo_id == repo_id
+        assert params == {"symbol": "HybridRetriever.retrieve", "direction": "both"}
+        location = {
+            "symbol": "src.retrieval.hybrid_search.HybridRetriever.retrieve",
+            "file_path": "src/retrieval/hybrid_search.py",
+            "line": 63,
+            "chunk_id": None,
+        }
+        return {
+            "found": True,
+            "symbol": "HybridRetriever.retrieve",
+            "direction": "both",
+            "matches": [location],
+            "callers": [],
+            "callees": [location],
+        }
+
+    monkeypatch.setattr(common, "fetch_internal_json", fake_fetch)
+
+    result = await GetCallNeighborsTool().execute(
+        repo_id,
+        GetCallNeighborsArgs(symbol="HybridRetriever.retrieve", direction="both"),
+    )
+
+    assert result.direction == "both"
+    assert result.matches[0].line == 63
+    assert result.callers == []
+    assert result.callees[0].symbol.endswith("HybridRetriever.retrieve")
+
+
 async def test_get_file_outline_normalizes_repo_relative_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,7 +213,9 @@ async def test_read_file_reads_inclusive_line_range(repo_workspace: tuple[str, P
     file_path.parent.mkdir()
     file_path.write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
 
-    result = await ReadFileTool().execute(repo_id, ReadFileArgs(path="pkg/mod.py", line_range=(2, 3)))
+    result = await ReadFileTool().execute(
+        repo_id, ReadFileArgs(path="pkg/mod.py", line_range=(2, 3))
+    )
 
     assert result.path == "pkg/mod.py"
     assert result.content == "line2\nline3"

@@ -12,7 +12,7 @@ from dcode_api.settings import api_settings
 from dcode_shared.db.models import Chunk as ChunkRow
 from dcode_shared.db.models import Repo, Symbol
 from dcode_shared.internal import internal_auth_headers
-from dcode_shared.schemas import Chunk, Location, ScoreComponents
+from dcode_shared.schemas import CallNeighbors, Chunk, Location, ScoreComponents
 from fastapi.testclient import TestClient
 
 
@@ -201,6 +201,125 @@ def test_internal_get_dependents_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert response.status_code == 200
     assert response.json()[0]["symbol"] == "src.requests.sessions"
+
+
+def test_internal_get_call_neighbors_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo_id = uuid.uuid4()
+    override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
+    target = Location(
+        symbol="src.retrieval.hybrid_search.HybridRetriever.retrieve",
+        file_path="src/retrieval/hybrid_search.py",
+        line=63,
+    )
+    caller = Location(
+        symbol="src.app.search",
+        file_path="src/app.py",
+        line=20,
+    )
+    callee = Location(
+        symbol="src.retrieval.hybrid_search.HybridRetriever._min_max_normalize",
+        file_path="src/retrieval/hybrid_search.py",
+        line=48,
+    )
+
+    async def fake_get_call_neighbors(
+        _: FakeSession,
+        passed_repo_id: uuid.UUID,
+        symbol: str,
+        direction: str,
+    ) -> CallNeighbors:
+        assert passed_repo_id == repo_id
+        assert symbol == "HybridRetriever.retrieve"
+        assert direction == "both"
+        return CallNeighbors(
+            found=True,
+            symbol=symbol,
+            direction="both",
+            matches=[target],
+            callers=[caller],
+            callees=[callee],
+        )
+
+    monkeypatch.setattr(internal, "_get_call_neighbors", fake_get_call_neighbors)
+
+    response = TestClient(app).get(
+        f"/internal/get_call_neighbors?repo_id={repo_id}"
+        "&symbol=HybridRetriever.retrieve&direction=both",
+        headers=_internal_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["direction"] == "both"
+    assert body["matches"][0]["line"] == 63
+    assert body["callers"][0]["symbol"] == "src.app.search"
+    assert body["callees"][0]["symbol"].endswith("_min_max_normalize")
+
+
+def test_internal_get_call_neighbors_rejects_unknown_direction() -> None:
+    repo_id = uuid.uuid4()
+    override_db(FakeSession(Repo(id=repo_id, url="https://example.com/repo.git", status="ready")))
+
+    response = TestClient(app).get(
+        f"/internal/get_call_neighbors?repo_id={repo_id}"
+        "&symbol=HybridRetriever.retrieve&direction=sideways",
+        headers=_internal_headers(),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_get_call_neighbors_queries_only_requested_directions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_id = uuid.uuid4()
+    target = _symbol_row(
+        "src.retrieval.hybrid_search.HybridRetriever.retrieve",
+        "method",
+        "src/retrieval/hybrid_search.py",
+        63,
+    )
+    target.repo_id = repo_id
+    caller = Location(symbol="src.app.search", file_path="src/app.py", line=20)
+    calls: list[bool] = []
+
+    async def fake_resolve(
+        _: object,
+        passed_repo_id: uuid.UUID,
+        symbol: str,
+        *,
+        module_only: bool = False,
+    ) -> list[Symbol]:
+        assert passed_repo_id == repo_id
+        assert symbol == "HybridRetriever.retrieve"
+        assert module_only is False
+        return [target]
+
+    async def fake_edges(
+        _: object,
+        passed_repo_id: uuid.UUID,
+        symbol_ids: list[uuid.UUID],
+        *,
+        incoming: bool,
+    ) -> list[Location]:
+        assert passed_repo_id == repo_id
+        assert symbol_ids == [target.id]
+        calls.append(incoming)
+        return [caller]
+
+    monkeypatch.setattr(internal, "_resolve_symbols", fake_resolve)
+    monkeypatch.setattr(internal, "_call_edge_neighbors", fake_edges)
+
+    result = await internal._get_call_neighbors(
+        object(),  # type: ignore[arg-type]
+        repo_id,
+        "HybridRetriever.retrieve",
+        "callers",
+    )
+
+    assert calls == [True]
+    assert result.callers == [caller]
+    assert result.callees == []
 
 
 def test_internal_routes_404_for_unknown_repo() -> None:

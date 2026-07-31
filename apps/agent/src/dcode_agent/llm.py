@@ -50,7 +50,11 @@ SYSTEM_PROMPT = (
     "- Do NOT invent an evidence ID or use a file, line, or symbol as a substitute "
     "citation, even if you recognise it from general knowledge or infer it from code.\n"
     "- Attach an evidence ID to each concrete claim.\n"
-    "- If the evidence catalog is insufficient to answer, say so plainly."
+    "- If the evidence catalog is insufficient to answer, say so plainly.\n\n"
+    "Call-graph honesty rule:\n"
+    "- Callers/callees listed by the call-graph tool are resolved static edges. "
+    "A call expression visible only in a source excerpt is not a resolved target; "
+    "describe it explicitly as a source-level unresolved call."
 )
 
 _CONTEXTUALIZE_MAX_TOKENS = 128

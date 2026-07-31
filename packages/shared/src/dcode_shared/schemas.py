@@ -173,6 +173,25 @@ class Location(BaseModel):
     chunk_id: UUID | None = None
 
 
+CallDirection = Literal["callers", "callees", "both"]
+
+
+class CallNeighbors(BaseModel):
+    """Resolved function-call neighbors for the Agent's call-graph tool.
+
+    The three location groups keep direction explicit. ``matches`` is retained
+    because a short name can resolve to several indexed symbols; callers and
+    callees are the union across those disclosed matches.
+    """
+
+    found: bool
+    symbol: str
+    direction: CallDirection
+    matches: list[Location] = Field(default_factory=list)
+    callers: list[Location] = Field(default_factory=list)
+    callees: list[Location] = Field(default_factory=list)
+
+
 # ===========================================================================
 # Inspector API (read-only source + call graph — Phase 2 workbench)
 # ===========================================================================

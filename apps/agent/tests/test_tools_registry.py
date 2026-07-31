@@ -11,6 +11,7 @@ EXPECTED_TOOLS = {
     "read_file",
     "find_definition",
     "find_references",
+    "get_call_neighbors",
     "get_dependencies",
     "get_dependents",
     "get_file_outline",
@@ -19,8 +20,8 @@ EXPECTED_TOOLS = {
 }
 
 
-def test_registry_has_nine_canonical_tools() -> None:
-    """DESIGN.md §2.3.2 tools plus the reverse-dependency get_dependents route."""
+def test_registry_has_canonical_tools() -> None:
+    """DESIGN.md tools plus explicit reverse-dependency and call-direction tools."""
     registry = default_registry()
     assert set(registry.names()) == EXPECTED_TOOLS
 

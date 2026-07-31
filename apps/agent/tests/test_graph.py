@@ -121,6 +121,48 @@ class DummyReferencesTool(Tool[DummyArgs, DummyResult]):
         )
 
 
+class DummyCallArgs(BaseModel):
+    symbol: str
+    direction: str
+
+
+class DummyCallResult(BaseModel):
+    found: bool
+    symbol: str
+    direction: str
+    matches: list[dict[str, Any]]
+    callers: list[dict[str, Any]]
+    callees: list[dict[str, Any]]
+
+
+class DummyCallNeighborsTool(Tool[DummyCallArgs, DummyCallResult]):
+    name: ClassVar[str] = "get_call_neighbors"
+    description: ClassVar[str] = "Dummy call-neighbor tool for graph tests."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummyCallArgs
+
+    async def execute(self, repo_id: str, args: DummyCallArgs) -> DummyCallResult:
+        target = {
+            "symbol": "requests.auth.HTTPBasicAuth",
+            "file_path": "src/requests/auth.py",
+            "line": 85,
+            "chunk_id": None,
+        }
+        caller = {
+            "symbol": "requests.models.PreparedRequest.prepare_auth",
+            "file_path": "src/requests/models.py",
+            "line": 589,
+            "chunk_id": None,
+        }
+        return DummyCallResult(
+            found=True,
+            symbol=args.symbol,
+            direction=args.direction,
+            matches=[target],
+            callers=[caller],
+            callees=[],
+        )
+
+
 class DummyOutlineArgs(BaseModel):
     path: str
 
@@ -186,21 +228,62 @@ async def test_plan_node_routes_definition_queries() -> None:
     assert "find_definition" in updated.thoughts[0]
 
 
-async def test_plan_node_extracts_symbols_from_reference_queries() -> None:
+async def test_plan_node_routes_call_queries_with_explicit_direction() -> None:
     queries = [
-        "Who calls send in requests?",
-        "who references send",
-        "find callers of send",
-        "Who calls `send`?",
+        ("Who calls send in requests?", "callers"),
+        ("find callers of send", "callers"),
+        ("Which functions call send?", "callers"),
+        ("Who calls `send`?", "callers"),
+        ("What does send call?", "callees"),
     ]
 
-    for query in queries:
+    for query, direction in queries:
+        state = AgentState(repo_id=str(uuid4()), query=query)
+
+        updated = await plan_node(state)
+
+        assert updated.pending_tool_name == "get_call_neighbors"
+        assert updated.pending_tool_args == {"symbol": "send", "direction": direction}
+
+
+async def test_plan_node_routes_reference_queries_separately_from_calls() -> None:
+    for query in ("who references send", "references to `send`"):
         state = AgentState(repo_id=str(uuid4()), query=query)
 
         updated = await plan_node(state)
 
         assert updated.pending_tool_name == "find_references"
         assert updated.pending_tool_args == {"symbol": "send"}
+
+
+async def test_plan_node_understands_chinese_bidirectional_call_queries() -> None:
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="HybridRetriever.retrieve 被哪些函数调用，又调用哪些函数？",
+    )
+
+    updated = await plan_node(state)
+
+    assert updated.pending_tool_name == "get_call_neighbors"
+    assert updated.pending_tool_args == {
+        "symbol": "HybridRetriever.retrieve",
+        "direction": "both",
+    }
+
+
+async def test_pronoun_only_chinese_call_query_searches_before_graph_walk() -> None:
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="它被哪些函数调用，又调用哪些函数？",
+    )
+
+    updated = await plan_node(state)
+
+    assert updated.pending_tool_name == "search_code"
+    assert updated.pending_tool_args == {
+        "query": "它被哪些函数调用，又调用哪些函数？",
+        "k": 5,
+    }
 
 
 async def test_plan_node_defaults_to_search_code() -> None:
@@ -494,6 +577,69 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
     assert len(emitter.thoughts) == 4
     assert len(emitter.tool_calls) == 4
     assert len(emitter.tool_results) == 4
+
+
+async def test_build_graph_reads_source_after_bidirectional_call_lookup() -> None:
+    repo_uuid = uuid4()
+    emitter = FakeEmitter()
+    registry = _registry(DummyCallNeighborsTool(), DummyReadFileTool())
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=str(repo_uuid),
+            query="`HTTPBasicAuth` 被哪些函数调用，又调用哪些函数？",
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": {},
+                "emitter": emitter,
+                "db": _grounded_session(repo_uuid),
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "get_call_neighbors",
+        "read_file",
+    ]
+    assert "静态调用边按方向分组" in result["final_answer"]
+    assert "src/requests/auth.py:85" in result["final_answer"]
+    assert result["groundedness_score"] == 1.0
+
+
+async def test_exact_chinese_pronoun_query_retrieves_then_walks_both_call_directions() -> None:
+    repo_uuid = uuid4()
+    emitter = FakeEmitter()
+    registry = _registry(
+        DummySearchTool(),
+        DummyReadFileTool(),
+        DummyCallNeighborsTool(),
+    )
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=str(repo_uuid),
+            query="它被哪些函数调用，又调用哪些函数？",
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": {},
+                "emitter": emitter,
+                "db": _grounded_session(repo_uuid),
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "read_file",
+        "get_call_neighbors",
+    ]
+    assert result["tool_calls"][-1]["args"] == {
+        "symbol": "HTTPBasicAuth",
+        "direction": "both",
+    }
+    assert result["groundedness_score"] == 1.0
 
 
 class DummyFailingSearchTool(Tool[DummySearchArgs, DummySearchResult]):

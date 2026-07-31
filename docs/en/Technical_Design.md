@@ -188,18 +188,18 @@ Graph v1 is intentionally conservative. It may miss dynamic calls, complex attri
 
 ## Agent Design
 
-The agent is a bounded LangGraph loop with rule-based planning. It can call registered tools for search, definitions, references, dependencies, dependents, file context, and repository status.
+The agent is a bounded LangGraph loop with rule-based planning. It can call registered tools for search, definitions, references, explicitly directed caller/callee lookup, dependencies, dependents, file context, and repository status.
 
 The answer path is:
 
 1. classify the query intent;
 2. choose one or more tools;
 3. execute internal API calls;
-4. synthesize a response from tool results — a rule-based template by default, or an optional LLM (`SYNTHESIS_MODEL`) that streams a grounded, citation-formatted answer;
+4. synthesize a response from tool results — a rule-based template by default, or an optional LLM (`SYNTHESIS_MODEL`) that cites request-local server-owned evidence IDs such as `[C1]`;
 5. verify citations against indexed evidence;
 6. stream typed SSE events through the API gateway.
 
-Groundedness is a hard product requirement. Unsupported citations must be removed or flagged instead of being presented as verified evidence.
+Groundedness is a hard product requirement. The server resolves LLM evidence IDs back to indexed locations or symbols before verification; ordinary backticked code is formatting, not a citation. Unsupported IDs and explicit file-line citations must be removed or flagged instead of being presented as verified evidence.
 
 ## API Contracts
 
@@ -218,6 +218,7 @@ The internal API includes:
 | `/internal/search` | Hybrid retrieval over indexed chunks |
 | `/internal/find_definition` | Locate symbol definitions |
 | `/internal/find_references` | Locate callers or references |
+| `/internal/get_call_neighbors` | Return resolved callers/callees with explicit direction |
 | `/internal/get_dependencies` | Outgoing graph dependencies (what a module imports) |
 | `/internal/get_dependents` | Incoming graph dependents (what imports a module) |
 | `/internal/get_file_outline` | File-level symbol outline |

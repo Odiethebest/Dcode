@@ -134,3 +134,62 @@ async def test_synthesis_degrades_to_template_when_llm_fails() -> None:
     assert "`src/requests/auth.py:85`" in answer
     # failed stream → template fallback, emitted once
     assert emitter.partials == [answer]
+
+
+async def test_call_graph_context_separates_resolved_edges_from_source_expressions() -> None:
+    emitter = _FakeEmitter()
+    llm = _FakeLLM(["The resolved caller is shown here ", "[C3]", "."])
+    state = AgentState(
+        repo_id="11111111-1111-1111-1111-111111111111",
+        query="Who calls it, and what does it call?",
+        runtime={"llm": llm, "emitter": emitter},
+        observations=[
+            {
+                "tool": "get_call_neighbors",
+                "args": {"symbol": "HybridRetriever.retrieve", "direction": "both"},
+                "cached": False,
+                "result": {
+                    "found": True,
+                    "symbol": "HybridRetriever.retrieve",
+                    "direction": "both",
+                    "matches": [
+                        {
+                            "symbol": "src.retrieval.hybrid_search.HybridRetriever.retrieve",
+                            "file_path": "src/retrieval/hybrid_search.py",
+                            "line": 63,
+                        }
+                    ],
+                    "callers": [
+                        {
+                            "symbol": "src.app.search",
+                            "file_path": "src/app.py",
+                            "line": 20,
+                        }
+                    ],
+                    "callees": [],
+                },
+            },
+            {
+                "tool": "read_file",
+                "args": {
+                    "path": "src/retrieval/hybrid_search.py",
+                    "line_range": [63, 143],
+                },
+                "cached": False,
+                "result": {
+                    "path": "src/retrieval/hybrid_search.py",
+                    "line_range": [63, 143],
+                    "content": "hits = self.faiss.retrieve(query)",
+                },
+            },
+        ],
+    )
+
+    updated = await synthesize_node(state)
+    context = llm.calls[0][1]
+
+    assert updated.evidence_catalog is not None
+    assert "callers (incoming calls)" in context
+    assert "callees (outgoing calls)" in context
+    assert "hits = self.faiss.retrieve(query)" in context
+    assert "source-level evidence, not a resolved target" in context

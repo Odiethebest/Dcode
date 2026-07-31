@@ -7,6 +7,7 @@ import re
 from typing import Any, cast
 
 from dcode_shared.observability import log_event
+from dcode_shared.schemas import CallDirection
 from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
@@ -301,6 +302,31 @@ def _build_llm_context(
                 "(file excerpt)\n"
                 f"{_clip(result.get('content', ''))}"
             )
+        elif tool_name == "get_call_neighbors":
+            call_lines = [
+                f"Requested symbol `{result['symbol']}`; direction `{result['direction']}`.",
+                "Only entries below are resolved static call edges.",
+            ]
+            for heading, key in (
+                ("matched definitions", "matches"),
+                ("callers (incoming calls)", "callers"),
+                ("callees (outgoing calls)", "callees"),
+            ):
+                call_lines.append(f"{heading}:")
+                locations = result.get(key, [])
+                if not locations:
+                    call_lines.append("- none resolved")
+                    continue
+                for loc in locations[:10]:
+                    location_token = f"{loc['file_path']}:{loc['line']}"
+                    call_lines.append(
+                        f"- {evidence_id_for[location_token]} `{loc['symbol']}` at {location_token}"
+                    )
+            call_lines.append(
+                "A call expression visible only in a file excerpt is source-level "
+                "evidence, not a resolved target; describe that limitation explicitly."
+            )
+            blocks.append("[get_call_neighbors results]\n" + "\n".join(call_lines))
         elif "locations" in result:
             loc_lines = []
             for loc in result["locations"][:10]:
@@ -356,6 +382,13 @@ def _allowed_citations(state: AgentState) -> list[str]:
                 add(f"{chunk['file_path']}:{chunk['start_line']}")
         elif tool_name == "read_file":
             add(f"{result['path']}:{result['line_range'][0]}")
+        elif tool_name == "get_call_neighbors":
+            for key in ("matches", "callers", "callees"):
+                for location in result.get(key, []):
+                    add(f"{location['file_path']}:{location['line']}")
+                    symbol = str(location["symbol"])
+                    if "." in symbol:
+                        add(symbol)
         elif "locations" in result:
             for location in result["locations"]:
                 add(f"{location['file_path']}:{location['line']}")
@@ -481,6 +514,7 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
     normalized = query.lower()
     subject = _extract_subject(query)
     path = _extract_path(query)
+    call_direction = _call_query_direction(normalized)
     if (
         "outline" in normalized
         or "symbols in" in normalized
@@ -506,6 +540,22 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
             {"module": module},
             f"Route query to get_dependencies for `{module}`.",
         )
+    if call_direction is not None:
+        call_subject = subject or _extract_call_subject(query)
+        if call_subject is not None:
+            return (
+                "get_call_neighbors",
+                {"symbol": call_subject, "direction": call_direction},
+                f"Route call-graph query to get_call_neighbors for `{call_subject}` "
+                f"({call_direction}).",
+            )
+        # Pronouns and natural-language descriptions need retrieval to identify
+        # the target symbol before the graph can be walked.
+        return (
+            "search_code",
+            {"query": query.strip(), "k": 5},
+            "Search for the call-query subject before walking call-graph edges.",
+        )
     if _is_reference_query(normalized):
         symbol = subject or _extract_reference_subject(query) or query.strip()
         return (
@@ -528,6 +578,10 @@ def _select_initial_tool(query: str) -> tuple[str, dict[str, Any], str]:
 
 
 def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
+    call_direction = _call_query_direction(state.query.lower())
+    if call_direction is not None:
+        return _select_call_followup_tool(state, call_direction)
+
     if not _needs_multihop(state.query):
         return None
 
@@ -566,6 +620,58 @@ def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] 
     return None
 
 
+def _select_call_followup_tool(
+    state: AgentState,
+    direction: CallDirection,
+) -> tuple[str, dict[str, Any], str] | None:
+    neighbors = _last_observation(state, "get_call_neighbors")
+    if neighbors is not None:
+        matches = neighbors["result"].get("matches", [])
+        if matches:
+            target = matches[0]
+            path = str(target["file_path"])
+            start_line = int(target["line"])
+            line_range = (start_line, start_line + 80)
+            if not _has_read_covering(state, path, start_line):
+                return (
+                    "read_file",
+                    {"path": path, "line_range": line_range},
+                    f"Read `{path}:{start_line}` to capture unresolved source-level calls.",
+                )
+            return None
+
+    search = _first_observation(state, "search_code")
+    if search is None:
+        return (
+            "search_code",
+            {"query": state.query.strip(), "k": 5},
+            "Search for the unresolved call-query subject.",
+        )
+
+    top_chunk = _top_search_chunk(search)
+    if top_chunk is None:
+        return None
+
+    path = str(top_chunk["file_path"])
+    symbol = str(top_chunk["symbol_name"])
+    line_range = _chunk_line_range(top_chunk)
+    if not _has_tool_call(state, "read_file", {"path": path, "line_range": list(line_range)}):
+        return (
+            "read_file",
+            {"path": path, "line_range": line_range},
+            f"Read the candidate `{path}:{line_range[0]}` before walking its call edges.",
+        )
+
+    args = {"symbol": symbol, "direction": direction}
+    if not _has_tool_call(state, "get_call_neighbors", args):
+        return (
+            "get_call_neighbors",
+            args,
+            f"Walk resolved {direction} call edges for `{symbol}`.",
+        )
+    return None
+
+
 def _needs_multihop(query: str) -> bool:
     normalized = query.lower()
     return any(
@@ -584,12 +690,25 @@ def _needs_multihop(query: str) -> bool:
             "call",
             "use",
             "uses",
+            "如何",
+            "流程",
+            "架构",
+            "实现",
+            "调用",
+            "使用",
         )
     )
 
 
 def _first_observation(state: AgentState, tool_name: str) -> dict[str, Any] | None:
     for observation in state.observations:
+        if observation["tool"] == tool_name:
+            return observation
+    return None
+
+
+def _last_observation(state: AgentState, tool_name: str) -> dict[str, Any] | None:
+    for observation in reversed(state.observations):
         if observation["tool"] == tool_name:
             return observation
     return None
@@ -617,6 +736,23 @@ def _has_tool_call(state: AgentState, tool_name: str, args: dict[str, Any]) -> b
     )
 
 
+def _has_read_covering(state: AgentState, path: str, line: int) -> bool:
+    for call in state.tool_calls:
+        if call["tool"] != "read_file":
+            continue
+        args = call["args"]
+        if args.get("path") != path:
+            continue
+        line_range = args.get("line_range")
+        if (
+            isinstance(line_range, list)
+            and len(line_range) == 2
+            and int(line_range[0]) <= line <= int(line_range[1])
+        ):
+            return True
+    return False
+
+
 def _jsonable_args(args: dict[str, Any]) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(json.dumps(args)))
 
@@ -640,11 +776,10 @@ def _is_reference_query(normalized_query: str) -> bool:
     return any(
         marker in normalized_query
         for marker in (
-            "who calls",
             "who references",
             "references",
-            "caller",
-            "callers",
+            "谁引用",
+            "引用了",
         )
     )
 
@@ -670,9 +805,78 @@ def _is_dependents_query(normalized_query: str) -> bool:
 
 def _extract_reference_subject(query: str) -> str | None:
     patterns = (
-        r"\bwho\s+(?:calls|references)\s+([A-Za-z_][\w.]*)\b",
-        r"\bfind\s+callers?\s+(?:of\s+)?([A-Za-z_][\w.]*)\b",
+        r"\bwho\s+references\s+([A-Za-z_][\w.]*)\b",
         r"\breferences\s+(?:to\s+|of\s+)?([A-Za-z_][\w.]*)\b",
+        r"(?:谁引用|引用了)\s*([A-Za-z_][\w.]*)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, query, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _call_query_direction(normalized_query: str) -> CallDirection | None:
+    """Classify explicit caller/callee intent in English or Chinese."""
+    caller_markers = (
+        "who calls",
+        "called by",
+        "caller",
+        "被哪些函数调用",
+        "被哪些方法调用",
+        "被哪个函数调用",
+        "被哪个方法调用",
+        "被调用",
+        "谁调用",
+        "谁在调用",
+        "哪些函数调用",
+        "哪些方法调用",
+    )
+    callee_markers = (
+        "callee",
+        "calls what",
+        "calls which",
+        "调用哪些",
+        "调用哪个",
+        "调用了哪些",
+        "调用了谁",
+        "调用谁",
+        "调用什么",
+        "调用了什么",
+    )
+    asks_callers = any(marker in normalized_query for marker in caller_markers)
+    asks_callers = asks_callers or bool(
+        re.search(
+            r"\b(?:what|which\s+(?:functions?|methods?))\s+calls?\b",
+            normalized_query,
+        )
+    )
+    asks_callees = any(marker in normalized_query for marker in callee_markers)
+    asks_callees = asks_callees or bool(
+        re.search(r"\b(?:what|which)\b.*\b(?:does|do)\b.*\bcall\b", normalized_query)
+    )
+
+    if "调用关系" in normalized_query or (asks_callers and asks_callees):
+        return "both"
+    if asks_callers:
+        return "callers"
+    if asks_callees:
+        return "callees"
+    return None
+
+
+def _extract_call_subject(query: str) -> str | None:
+    identifier = r"([A-Za-z_][\w.]*)"
+    patterns = (
+        rf"\bwho\s+calls\s+{identifier}\b",
+        rf"\bfind\s+callers?\s+(?:of\s+)?{identifier}\b",
+        rf"\bcallers?\s+(?:of\s+)?{identifier}\b",
+        rf"\b(?:what|which\s+(?:functions?|methods?))\s+calls?\s+{identifier}\b",
+        rf"\b(?:what|which)\b.*\b(?:does|do)\s+{identifier}\s+call\b",
+        rf"\bcallees?\s+(?:of\s+)?{identifier}\b",
+        rf"(?:谁|哪些函数|哪些方法)(?:在)?调用\s*{identifier}",
+        rf"{identifier}\s*被(?:哪些函数|哪些方法|哪个函数|哪个方法)?调用",
+        rf"{identifier}\s*调用(?:了)?(?:哪些|哪个|谁|什么)",
     )
     for pattern in patterns:
         match = re.search(pattern, query, flags=re.IGNORECASE)
@@ -747,6 +951,14 @@ def _summarize_observation(observation: dict[str, Any]) -> str:
             return cached_prefix + "0 chunk results"
         top = chunks[0]
         return cached_prefix + f"{len(chunks)} chunks; top {top['file_path']}:{top['start_line']}"
+    if tool_name == "get_call_neighbors":
+        matches = result.get("matches", [])
+        callers = result.get("callers", [])
+        callees = result.get("callees", [])
+        return (
+            cached_prefix
+            + f"{len(matches)} matches; {len(callers)} callers; {len(callees)} callees"
+        )
     if "locations" in result:
         locations = result["locations"]
         if not locations:
@@ -809,6 +1021,44 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
                 if chinese
                 else f"- `{chunk['symbol_name']}` in `{chunk['file_path']}:{chunk['start_line']}`"
             )
+        return ("\n".join(lines), citations)
+
+    if tool_name == "get_call_neighbors":
+        if not result["found"]:
+            message = (
+                f"没有找到与 `{result['symbol']}` 匹配的已索引符号。"
+                if chinese
+                else f"No indexed symbol matched `{result['symbol']}`."
+            )
+            return (message, [])
+
+        lines = [
+            (
+                f"`{result['symbol']}` 的静态调用关系："
+                if chinese
+                else f"Resolved static call relationships for `{result['symbol']}`:"
+            )
+        ]
+        citations = []
+        for heading, key in (
+            ("匹配定义" if chinese else "Matched definitions", "matches"),
+            ("调用它的函数" if chinese else "Callers", "callers"),
+            ("它调用的函数" if chinese else "Callees", "callees"),
+        ):
+            lines.append(f"- {heading}:")
+            locations = result[key]
+            if not locations:
+                lines.append("  - 未解析到结果。" if chinese else "  - None resolved.")
+                continue
+            for location in locations[:5]:
+                citation = _citation_from_location(location)
+                _append_unique_citation(citations, citation)
+                lines.append(
+                    f"  - `{location['symbol']}`，位于 `{location['file_path']}:{location['line']}`"
+                    if chinese
+                    else f"  - `{location['symbol']}` at "
+                    f"`{location['file_path']}:{location['line']}`"
+                )
         return ("\n".join(lines), citations)
 
     if tool_name in {
@@ -947,6 +1197,41 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
                 else f"- `read_file` inspected `{result['path']}:{start_line}`-"
                 f"`{end_line}` for local implementation context."
             )
+            continue
+
+        if tool_name == "get_call_neighbors":
+            if not result["found"]:
+                lines.append(
+                    f"- `get_call_neighbors` 未找到 `{result['symbol']}`。"
+                    if chinese
+                    else f"- `get_call_neighbors` did not resolve `{result['symbol']}`."
+                )
+                continue
+            lines.append(
+                "- `get_call_neighbors` 将静态调用边按方向分组："
+                if chinese
+                else "- `get_call_neighbors` grouped resolved static call edges by direction:"
+            )
+            for heading, key in (
+                ("匹配定义" if chinese else "matched definitions", "matches"),
+                ("调用方" if chinese else "callers", "callers"),
+                ("被调用方" if chinese else "callees", "callees"),
+            ):
+                locations = result[key]
+                lines.append(f"  - {heading}:")
+                if not locations:
+                    lines.append("    - 未解析到结果。" if chinese else "    - none resolved.")
+                    continue
+                for location in locations[:5]:
+                    citation = _citation_from_location(location)
+                    _append_unique_citation(citations, citation)
+                    lines.append(
+                        f"    - `{location['symbol']}`，位于 "
+                        f"`{location['file_path']}:{location['line']}`"
+                        if chinese
+                        else f"    - `{location['symbol']}` at "
+                        f"`{location['file_path']}:{location['line']}`"
+                    )
             continue
 
         if tool_name in {

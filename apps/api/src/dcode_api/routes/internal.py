@@ -10,7 +10,7 @@ from dcode_shared.db.models import Edge, Repo, Symbol
 from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.reranker import RerankerClient, create_reranker_client
-from dcode_shared.schemas import Chunk, Location, ScoreComponents
+from dcode_shared.schemas import CallDirection, CallNeighbors, Chunk, Location, ScoreComponents
 from dcode_shared.symbols import select_symbol_matches
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
@@ -93,6 +93,18 @@ async def find_references(
 ) -> list[Location]:
     await _require_repo(db, repo_id)
     return await _find_references(db, repo_id, symbol)
+
+
+@router.get("/get_call_neighbors", response_model=CallNeighbors)
+async def get_call_neighbors(
+    repo_id: UUID,
+    symbol: str = Query(..., min_length=1),
+    direction: CallDirection = Query("both"),
+    db: AsyncSession = Depends(get_db),
+) -> CallNeighbors:
+    """Return resolved incoming/outgoing ``calls`` edges with explicit direction."""
+    await _require_repo(db, repo_id)
+    return await _get_call_neighbors(db, repo_id, symbol, direction)
 
 
 @router.get("/get_dependencies", response_model=list[Location])
@@ -461,6 +473,68 @@ async def _find_references(db: AsyncSession, repo_id: UUID, symbol: str) -> list
         .where(Edge.edge_type.in_(edge_types))
         .where(Edge.target_id.in_([row.id for row in targets]))
         .order_by(source_symbol.file_path, source_symbol.line, source_symbol.qualified_name)
+    )
+    result = await db.execute(stmt)
+    return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())
+
+
+async def _get_call_neighbors(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol: str,
+    direction: CallDirection,
+) -> CallNeighbors:
+    matches = await _resolve_symbols(db, repo_id, symbol)
+    if not matches:
+        return CallNeighbors(
+            found=False,
+            symbol=symbol,
+            direction=direction,
+        )
+
+    symbol_ids = [row.id for row in matches]
+    callers = (
+        await _call_edge_neighbors(db, repo_id, symbol_ids, incoming=True)
+        if direction in {"callers", "both"}
+        else []
+    )
+    callees = (
+        await _call_edge_neighbors(db, repo_id, symbol_ids, incoming=False)
+        if direction in {"callees", "both"}
+        else []
+    )
+    return CallNeighbors(
+        found=True,
+        symbol=symbol,
+        direction=direction,
+        matches=[_location_from_symbol(row) for row in matches],
+        callers=callers,
+        callees=callees,
+    )
+
+
+async def _call_edge_neighbors(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol_ids: Sequence[UUID],
+    *,
+    incoming: bool,
+) -> list[Location]:
+    """Return callers (incoming) or callees (outgoing) across ``calls`` edges."""
+    other_symbol = aliased(Symbol)
+    join_column = Edge.source_id if incoming else Edge.target_id
+    match_column = Edge.target_id if incoming else Edge.source_id
+    stmt = (
+        select(other_symbol)
+        .join(Edge, join_column == other_symbol.id)
+        .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "calls")
+        .where(match_column.in_(symbol_ids))
+        .order_by(
+            other_symbol.file_path,
+            other_symbol.line,
+            other_symbol.qualified_name,
+        )
     )
     result = await db.execute(stmt)
     return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())

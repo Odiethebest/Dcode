@@ -283,6 +283,17 @@ Expected references include:
 - `src.requests.sessions.SessionRedirectMixin.resolve_redirects`
 - `src.requests.sessions.Session.request`
 
+Directed call lookup keeps incoming and outgoing `calls` edges separate:
+
+```bash
+curl -fsS "http://localhost:8000/internal/get_call_neighbors?repo_id=${REPO_ID}&symbol=send&direction=both" \
+  -H "X-Dcode-Internal-Key: ${INTERNAL_API_KEY}" \
+  | python3 -m json.tool
+```
+
+The response includes `matches`, `callers`, and `callees`; an empty group means
+the static graph did not resolve an edge in that direction.
+
 ## Validate Agent SSE
 
 Clear local Redis query cache:
@@ -301,9 +312,10 @@ curl -fsS -N -X POST http://localhost:8000/api/v1/query \
 
 Expected checkpoints:
 
-- `thought` routes to `find_references`;
-- `tool_call.args.symbol` is `send`;
-- `tool_result` includes at least two locations;
+- `thought` routes to `get_call_neighbors`;
+- `tool_call.args` includes `symbol=send` and `direction=callers`;
+- `tool_result` reports matched symbols and caller/callee counts;
+- a follow-up `read_file` captures source-level calls that the static graph may not resolve;
 - `citation` events include verified references;
 - `final_answer.groundedness` is `1.0`.
 
