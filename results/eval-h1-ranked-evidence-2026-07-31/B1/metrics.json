@@ -1,0 +1,17 @@
+{
+  "baseline": "B1",
+  "questions": 33,
+  "k": 5,
+  "recall_at_k": 0.3686868686868687,
+  "mrr": 0.4732323232323232,
+  "ndcg_at_k": 0.33414665829754703,
+  "candidate_recall_at_k": 0.3686868686868687,
+  "candidate_mrr": 0.4732323232323232,
+  "candidate_ndcg_at_k": 0.33414665829754703,
+  "final_evidence_recall_at_k": 0.0,
+  "final_evidence_mrr": 0.0,
+  "final_evidence_ndcg_at_k": 0.0,
+  "groundedness": 1.0,
+  "answers_without_citations": 0,
+  "pairwise_win_rate": null
+}

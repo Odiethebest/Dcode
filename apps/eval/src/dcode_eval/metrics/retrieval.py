@@ -1,7 +1,7 @@
-"""Retrieval metrics — DESIGN.md §2.4.4 (Recall@k / MRR / nDCG).
+"""Pure retrieval metrics: Recall@k, MRR, and nDCG.
 
-Real implementations (not stubs) — these are pure math, no LLM, and they
-are exercised by the harness on every eval run starting at M3.
+These are deterministic math functions with no model dependency and are
+exercised on every evaluation run.
 """
 
 import math

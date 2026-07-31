@@ -18,7 +18,7 @@ from dcode_agent import graph
 from dcode_agent.llm import create_llm_client
 from dcode_agent.settings import agent_settings
 from dcode_agent.sse import SSEEmitter
-from dcode_agent.state import AgentState
+from dcode_agent.state import AgentMode, AgentState
 from dcode_agent.tools import default_registry
 
 
@@ -50,6 +50,17 @@ app = FastAPI(
 )
 
 
+class InternalQueryRequest(QueryRequest):
+    """Agent-only controls layered over the public query contract.
+
+    The gateway sends the public fields and receives the default ``full`` mode.
+    Evaluation can select ``hybrid_only`` over the authenticated internal route
+    to run B3 through the exact same synthesis and groundedness path as B4.
+    """
+
+    mode: AgentMode = "full"
+
+
 @app.get("/healthz", tags=["meta"])
 async def healthz() -> dict[str, str]:
     """Shallow liveness probe — does not check dependent services."""
@@ -68,7 +79,7 @@ async def list_tools(
 
 @app.post("/internal/query", tags=["agent"])
 async def internal_query(
-    body: QueryRequest,
+    body: InternalQueryRequest,
     x_dcode_internal_key: str | None = Header(default=None, alias=INTERNAL_API_KEY_HEADER),
 ) -> StreamingResponse:
     """Run the agent for one query and stream SSE events back."""
@@ -77,6 +88,7 @@ async def internal_query(
     state = AgentState(
         repo_id=str(body.repo_id),
         query=body.query,
+        mode=body.mode,
         history=[turn.model_dump() for turn in body.history],
     )
     asyncio.create_task(
@@ -113,6 +125,7 @@ async def _run_graph_pipeline(
                 AgentState(
                     repo_id=state.repo_id,
                     query=state.query,
+                    mode=state.mode,
                     history=state.history,
                     runtime={
                         "emitter": emitter,
@@ -132,6 +145,9 @@ async def _run_graph_pipeline(
                 file_path=citation.file_path,
                 line=citation.line,
                 verified=citation.verified,
+                chunk_id=citation.chunk_id,
+                evidence_id=citation.evidence_id,
+                origins=citation.origins,
             )
 
         # partial_answer events are emitted during synthesis (streamed token
@@ -174,6 +190,9 @@ def _citation_events(state_dict: dict[str, Any]) -> list[CitationEvent]:
                 file_path=str(citation["file_path"]),
                 line=int(citation["line"]),
                 verified=bool(citation["verified"]),
+                chunk_id=citation.get("chunk_id") or None,
+                evidence_id=str(citation["evidence_id"]) if citation.get("evidence_id") else None,
+                origins=[str(origin) for origin in citation.get("origins", [])],
             )
         )
     return out

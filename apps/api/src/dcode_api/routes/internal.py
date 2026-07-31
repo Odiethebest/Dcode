@@ -1,8 +1,10 @@
 """Internal retrieval and graph-query endpoints."""
 
+import ast
+import builtins
 import logging
-import re
-from collections.abc import Iterable, Sequence
+import textwrap
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -11,13 +13,24 @@ from dcode_shared.db.models import Edge, Repo, Symbol
 from dcode_shared.embedding import EmbeddingClient, create_embedding_client
 from dcode_shared.internal import INTERNAL_API_KEY_HEADER
 from dcode_shared.reranker import RerankerClient, create_reranker_client
-from dcode_shared.schemas import Chunk, Location, ScoreComponents
+from dcode_shared.schemas import (
+    CallDirection,
+    CallNeighbors,
+    CallPath,
+    Chunk,
+    Location,
+    ScoreComponents,
+    SourceCall,
+)
+from dcode_shared.symbols import select_symbol_matches
+from dcode_shared.testpaths import is_test_path, query_is_about_tests
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from dcode_api.deps import get_db
+from dcode_api.retrieval.bm25 import search_repo_bm25
 from dcode_api.settings import api_settings
 
 logger = logging.getLogger(__name__)
@@ -35,7 +48,6 @@ async def _require_internal_api_key(
 
 router = APIRouter(tags=["internal"], dependencies=[Depends(_require_internal_api_key)])
 
-_TERM_SPLIT_RE = re.compile(r"\s+")
 _SEARCH_CANDIDATE_LIMIT = 50
 _RRF_K = 60
 # Cap per-passage length sent to the reranker. BGE on CPU is token-bound: full
@@ -45,6 +57,27 @@ _RRF_K = 60
 _RERANK_PASSAGE_CHARS = 256
 _REFERENCE_EDGE_TYPES = ("calls", "references")
 _MODULE_REFERENCE_EDGE_TYPES = ("calls", "references", "imports")
+_BUILTIN_CALL_NAMES = frozenset(dir(builtins))
+_ROUTINE_CONTAINER_METHODS = frozenset(
+    {
+        "add",
+        "append",
+        "clear",
+        "copy",
+        "discard",
+        "extend",
+        "get",
+        "insert",
+        "items",
+        "keys",
+        "pop",
+        "remove",
+        "setdefault",
+        "sort",
+        "update",
+        "values",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -64,8 +97,15 @@ async def search(
     mode: str = Query("hybrid", pattern="^(sparse|dense|hybrid)$"),
     db: AsyncSession = Depends(get_db),
 ) -> list[Chunk]:
-    await _require_repo(db, repo_id)
-    return await _search_chunks(db, repo_id, query, k, mode=mode)
+    repo = await _require_repo(db, repo_id)
+    return await _search_chunks(
+        db,
+        repo_id,
+        query,
+        k,
+        mode=mode,
+        index_revision=int(repo.index_revision or 0),
+    )
 
 
 @router.get("/find_definition", response_model=list[Location])
@@ -78,6 +118,51 @@ async def find_definition(
     return await _find_definitions(db, repo_id, symbol)
 
 
+@router.get("/get_chunks", response_model=list[Chunk])
+async def get_chunks(
+    repo_id: UUID,
+    chunk_ids: list[UUID] = Query(..., min_length=1, max_length=64),
+    db: AsyncSession = Depends(get_db),
+) -> list[Chunk]:
+    """Fetch indexed chunks by id, so graph results can carry their source.
+
+    Graph and reference lookups return `(symbol, file_path, line, chunk_id)`
+    with no code. Rendered into an answer prompt that way they are bare names
+    competing against retrieved chunks that do carry code, which is a large part
+    of why graph evidence was rarely cited. Hydrating them here lets the same
+    reranker score every candidate on equal terms.
+
+    Returned in the caller's requested order; unknown ids are skipped rather
+    than erroring, because a stale chunk id is a cache-age problem, not a
+    client error.
+    """
+    await _require_repo(db, repo_id)
+    rows = (
+        await db.execute(
+            select(ChunkRow)
+            .where(ChunkRow.repo_id == repo_id)
+            .where(ChunkRow.id.in_(chunk_ids))
+        )
+    ).scalars().all()
+    by_id = {row.id: row for row in rows}
+    return [
+        Chunk(
+            chunk_id=row.id,
+            file_path=row.file_path,
+            symbol_name=row.symbol_name,
+            start_line=row.start_line,
+            end_line=row.end_line,
+            content=row.content,
+            # No retrieval happened here, so there is no relevance to report.
+            # Zeroes say "unscored" rather than inventing a rank.
+            score=0.0,
+            score_components=ScoreComponents(dense=0.0, sparse=0.0, rerank=0.0),
+        )
+        for chunk_id in chunk_ids
+        if (row := by_id.get(chunk_id)) is not None
+    ]
+
+
 @router.get("/find_references", response_model=list[Location])
 async def find_references(
     repo_id: UUID,
@@ -86,6 +171,31 @@ async def find_references(
 ) -> list[Location]:
     await _require_repo(db, repo_id)
     return await _find_references(db, repo_id, symbol)
+
+
+@router.get("/get_call_neighbors", response_model=CallNeighbors)
+async def get_call_neighbors(
+    repo_id: UUID,
+    symbol: str = Query(..., min_length=1),
+    direction: CallDirection = Query("both"),
+    db: AsyncSession = Depends(get_db),
+) -> CallNeighbors:
+    """Return directed call edges plus source expressions with unresolved targets."""
+    await _require_repo(db, repo_id)
+    return await _get_call_neighbors(db, repo_id, symbol, direction)
+
+
+@router.get("/find_call_path", response_model=CallPath)
+async def find_call_path(
+    repo_id: UUID,
+    start: str = Query(..., min_length=1),
+    end: str = Query(..., min_length=1),
+    max_depth: int = Query(4, ge=1, le=6),
+    db: AsyncSession = Depends(get_db),
+) -> CallPath:
+    """Shortest chain of `calls` edges from `start` to `end`, if one exists."""
+    await _require_repo(db, repo_id)
+    return await _find_call_path(db, repo_id, start, end, max_depth)
 
 
 @router.get("/get_dependencies", response_model=list[Location])
@@ -129,19 +239,33 @@ async def _require_repo(db: AsyncSession, repo_id: UUID) -> Repo:
 
 
 async def _search_chunks(
-    db: AsyncSession, repo_id: UUID, query: str, k: int, *, mode: str = "hybrid"
+    db: AsyncSession,
+    repo_id: UUID,
+    query: str,
+    k: int,
+    *,
+    mode: str = "hybrid",
+    index_revision: int = 0,
 ) -> list[Chunk]:
     query_text = query.strip()
     if not query_text:
         return []
 
-    terms = _query_terms(query_text)
     candidate_limit = max(k, _SEARCH_CANDIDATE_LIMIT)
+    # Tests stay indexed and stay reachable when asked for; they are just not
+    # the answer to "how does this library do X". See dcode_shared.testpaths.
+    keep_tests = query_is_about_tests(query_text)
 
     if mode == "sparse":
-        sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+        sparse = await _search_sparse_candidates(
+            db,
+            repo_id,
+            query_text,
+            index_revision=index_revision,
+            limit=candidate_limit,
+        )
         reranked = _identity_rerank(sparse)
-        return [_chunk_from_candidate(c) for c in reranked[:k]]
+        return _take(reranked, k, keep_tests)
 
     query_vector = await _embed_search_query(query_text)
 
@@ -149,46 +273,61 @@ async def _search_chunks(
         dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
         # Degrade to sparse when stub embeddings are active (no query vector).
         if not dense:
-            sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+            sparse = await _search_sparse_candidates(
+                db,
+                repo_id,
+                query_text,
+                index_revision=index_revision,
+                limit=candidate_limit,
+            )
             reranked = _identity_rerank(sparse)
         else:
             reranked = _identity_rerank(dense)
-        return [_chunk_from_candidate(c) for c in reranked[:k]]
+        return _take(reranked, k, keep_tests)
 
     # mode == "hybrid": sparse + dense → RRF fusion → rerank
-    sparse = await _search_sparse_candidates(db, repo_id, query_text, terms, limit=candidate_limit)
+    sparse = await _search_sparse_candidates(
+        db,
+        repo_id,
+        query_text,
+        index_revision=index_revision,
+        limit=candidate_limit,
+    )
     dense = await _search_dense_candidates(db, repo_id, query_vector, limit=candidate_limit)
     fused = _fuse_search_candidates(sparse, dense)
     reranked = await _rerank_candidates(query_text, fused)
-    return [_chunk_from_candidate(candidate) for candidate in reranked[:k]]
+    return _take(reranked, k, keep_tests)
+
+
+def _take(candidates: list[SearchCandidate], k: int, keep_tests: bool) -> list[Chunk]:
+    """Cut to k, dropping test code unless the question asked about tests.
+
+    Filtering after ranking rather than before it keeps the candidate pool and
+    the fusion arithmetic untouched; only what reaches the caller changes.
+    """
+    selected = candidates if keep_tests else [
+        candidate for candidate in candidates if not is_test_path(candidate.row.file_path)
+    ]
+    return [_chunk_from_candidate(candidate) for candidate in selected[:k]]
 
 
 async def _search_sparse_candidates(
     db: AsyncSession,
     repo_id: UUID,
     query: str,
-    terms: list[str],
     *,
+    index_revision: int,
     limit: int,
 ) -> list[SearchCandidate]:
-    patterns = [f"%{term}%" for term in terms]
-    conditions = []
-    for pattern in patterns:
-        conditions.extend(
-            [
-                ChunkRow.symbol_name.ilike(pattern),
-                ChunkRow.file_path.ilike(pattern),
-                ChunkRow.content.ilike(pattern),
-            ]
-        )
-
-    stmt = select(ChunkRow).where(ChunkRow.repo_id == repo_id).where(or_(*conditions))
-    result = await db.execute(stmt)
-    rows = list(result.scalars().all())
-    ranked = sorted(rows, key=lambda row: _chunk_rank(row, query, terms), reverse=True)
     return [
-        SearchCandidate(row=row, sparse_score=_chunk_rank(row, query, terms))
-        for row in ranked[:limit]
+        SearchCandidate(row=row, sparse_score=score)
+        for row, score in await search_repo_bm25(
+            db,
+            repo_id,
+            query,
+            index_revision=index_revision,
+            limit=limit,
+        )
     ]
 
 
@@ -386,7 +525,15 @@ def _identity_rerank(candidates: list[SearchCandidate]) -> list[SearchCandidate]
             sparse_score=candidate.sparse_score,
             dense_score=candidate.dense_score,
             fused_score=candidate.fused_score,
-            rerank_score=candidate.fused_score,
+            rerank_score=(
+                candidate.fused_score
+                if candidate.fused_score != 0.0
+                else (
+                    candidate.dense_score
+                    if candidate.dense_score != 0.0
+                    else candidate.sparse_score
+                )
+            ),
         )
         for candidate in candidates
     ]
@@ -435,6 +582,293 @@ async def _find_references(db: AsyncSession, repo_id: UUID, symbol: str) -> list
     )
     result = await db.execute(stmt)
     return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())
+
+
+async def _get_call_neighbors(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol: str,
+    direction: CallDirection,
+) -> CallNeighbors:
+    matches = await _resolve_symbols(db, repo_id, symbol)
+    if not matches:
+        return CallNeighbors(
+            found=False,
+            symbol=symbol,
+            direction=direction,
+        )
+
+    symbol_ids = [row.id for row in matches]
+    callers = (
+        await _call_edge_neighbors(db, repo_id, symbol_ids, incoming=True)
+        if direction in {"callers", "both"}
+        else []
+    )
+    callees = (
+        await _call_edge_neighbors(db, repo_id, symbol_ids, incoming=False)
+        if direction in {"callees", "both"}
+        else []
+    )
+    source_calls = (
+        await _source_calls_for_matches(db, repo_id, matches)
+        if direction in {"callees", "both"}
+        else []
+    )
+    return CallNeighbors(
+        found=True,
+        symbol=symbol,
+        direction=direction,
+        matches=[_location_from_symbol(row) for row in matches],
+        callers=callers,
+        callees=callees,
+        source_calls=source_calls,
+    )
+
+
+async def _find_call_path(
+    db: AsyncSession,
+    repo_id: UUID,
+    start: str,
+    end: str,
+    max_depth: int,
+) -> CallPath:
+    """Breadth-first search over stored `calls` edges, start → end.
+
+    BFS rather than DFS so the returned chain is the shortest one: for an
+    architecture answer the direct route is the explanation, and a longer walk
+    that happens to arrive first would read as though the code were more
+    indirect than it is.
+
+    Both endpoints are resolved with the shared symbol rule, so `send`,
+    `Session.send` and `requests.sessions.Session.send` behave the same here as
+    everywhere else. A short name can resolve to several symbols; every match is
+    a valid start, and the first target reached wins.
+    """
+    start_rows = await _resolve_symbols(db, repo_id, start)
+    end_rows = await _resolve_symbols(db, repo_id, end)
+    if not start_rows or not end_rows:
+        return CallPath(found=False, start=start, end=end, max_depth=max_depth)
+
+    targets = {row.id for row in end_rows}
+    by_id: dict[UUID, Symbol] = {row.id: row for row in (*start_rows, *end_rows)}
+
+    # parent[child] = the symbol we arrived from, for path reconstruction.
+    parent: dict[UUID, UUID | None] = {row.id: None for row in start_rows}
+    frontier = [row.id for row in start_rows]
+
+    for _ in range(max_depth):
+        hit = next((symbol_id for symbol_id in frontier if symbol_id in targets), None)
+        if hit is not None:
+            break
+        if not frontier:
+            break
+
+        callee = aliased(Symbol)
+        rows = (
+            await db.execute(
+                select(Edge.source_id, callee)
+                .join(callee, Edge.target_id == callee.id)
+                .where(Edge.repo_id == repo_id)
+                .where(Edge.edge_type == "calls")
+                .where(Edge.source_id.in_(frontier))
+                .order_by(callee.file_path, callee.line, callee.qualified_name)
+            )
+        ).all()
+
+        next_frontier: list[UUID] = []
+        for source_id, callee_row in rows:
+            if callee_row.id in parent:
+                continue
+            parent[callee_row.id] = source_id
+            by_id[callee_row.id] = callee_row
+            next_frontier.append(callee_row.id)
+        frontier = next_frontier
+    else:
+        # Depth exhausted without the loop breaking early.
+        frontier = [symbol_id for symbol_id in frontier if symbol_id in targets]
+
+    reached = next((symbol_id for symbol_id in frontier if symbol_id in targets), None)
+    if reached is None:
+        return CallPath(found=False, start=start, end=end, max_depth=max_depth)
+
+    chain: list[UUID] = []
+    cursor: UUID | None = reached
+    while cursor is not None:
+        chain.append(cursor)
+        cursor = parent[cursor]
+    chain.reverse()
+
+    return CallPath(
+        found=True,
+        start=start,
+        end=end,
+        max_depth=max_depth,
+        nodes=[_location_from_symbol(by_id[symbol_id]) for symbol_id in chain],
+        depth=len(chain) - 1,
+    )
+
+
+async def _call_edge_neighbors(
+    db: AsyncSession,
+    repo_id: UUID,
+    symbol_ids: Sequence[UUID],
+    *,
+    incoming: bool,
+) -> list[Location]:
+    """Return callers (incoming) or callees (outgoing) across ``calls`` edges."""
+    other_symbol = aliased(Symbol)
+    join_column = Edge.source_id if incoming else Edge.target_id
+    match_column = Edge.target_id if incoming else Edge.source_id
+    stmt = (
+        select(other_symbol)
+        .join(Edge, join_column == other_symbol.id)
+        .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "calls")
+        .where(match_column.in_(symbol_ids))
+        .order_by(
+            other_symbol.file_path,
+            other_symbol.line,
+            other_symbol.qualified_name,
+        )
+    )
+    result = await db.execute(stmt)
+    return _unique_locations(_location_from_symbol(row) for row in result.scalars().all())
+
+
+async def _source_calls_for_matches(
+    db: AsyncSession,
+    repo_id: UUID,
+    matches: Sequence[Symbol],
+) -> list[SourceCall]:
+    resolved_by_source = await _resolved_call_targets_by_source_line(
+        db,
+        repo_id,
+        [match.id for match in matches],
+    )
+    source_calls: list[SourceCall] = []
+    for match in matches:
+        if match.chunk_id is None:
+            continue
+        chunk = await db.get(ChunkRow, match.chunk_id)
+        if chunk is None:
+            continue
+        source_calls.extend(
+            _extract_source_calls(
+                chunk.content,
+                file_path=chunk.file_path,
+                start_line=chunk.start_line,
+                resolved_targets_by_line=resolved_by_source.get(match.id, {}),
+            )
+        )
+    return _unique_source_calls(source_calls)
+
+
+async def _resolved_call_targets_by_source_line(
+    db: AsyncSession,
+    repo_id: UUID,
+    source_ids: Sequence[UUID],
+) -> dict[UUID, dict[int, list[Location]]]:
+    target_symbol = aliased(Symbol)
+    stmt = (
+        select(Edge.source_id, Edge.source_line, target_symbol)
+        .join(target_symbol, Edge.target_id == target_symbol.id)
+        .where(Edge.repo_id == repo_id)
+        .where(Edge.edge_type == "calls")
+        .where(Edge.source_id.in_(source_ids))
+        .order_by(
+            Edge.source_id,
+            Edge.source_line,
+            target_symbol.qualified_name,
+        )
+    )
+    result = await db.execute(stmt)
+    grouped: dict[UUID, dict[int, list[Location]]] = {}
+    for source_id, source_line, target in result.all():
+        by_line = grouped.setdefault(source_id, {})
+        by_line.setdefault(int(source_line), []).append(_location_from_symbol(target))
+    return grouped
+
+
+def _extract_source_calls(
+    content: str,
+    *,
+    file_path: str,
+    start_line: int,
+    resolved_targets_by_line: Mapping[int, Sequence[Location]],
+) -> list[SourceCall]:
+    try:
+        tree = ast.parse(textwrap.dedent(content))
+    except SyntaxError:
+        return []
+
+    call_nodes = sorted(
+        (node for node in ast.walk(tree) if isinstance(node, ast.Call)),
+        key=lambda node: (node.lineno, node.col_offset),
+    )
+    source_calls: list[SourceCall] = []
+    for node in call_nodes:
+        expression = ast.unparse(node.func)
+        terminal = _call_terminal(node.func)
+        line = start_line + node.lineno - 1
+        resolved_target = _resolved_target_for(
+            terminal,
+            resolved_targets_by_line.get(line, ()),
+        )
+        if resolved_target is None and not _is_meaningful_unresolved_call(node.func, terminal):
+            continue
+        source_calls.append(
+            SourceCall(
+                expression=expression,
+                file_path=file_path,
+                line=line,
+                resolved_target=resolved_target,
+            )
+        )
+    return source_calls
+
+
+def _call_terminal(function: ast.expr) -> str:
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return ""
+
+
+def _resolved_target_for(
+    terminal: str,
+    targets: Sequence[Location],
+) -> Location | None:
+    matches = [target for target in targets if target.symbol.rsplit(".", 1)[-1] == terminal]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _is_meaningful_unresolved_call(function: ast.expr, terminal: str) -> bool:
+    if not terminal:
+        return False
+    if isinstance(function, ast.Name):
+        return terminal not in _BUILTIN_CALL_NAMES
+    if isinstance(function, ast.Attribute):
+        return terminal not in _ROUTINE_CONTAINER_METHODS
+    return False
+
+
+def _unique_source_calls(source_calls: Iterable[SourceCall]) -> list[SourceCall]:
+    unique: list[SourceCall] = []
+    seen: set[tuple[str, str, int, str | None]] = set()
+    for source_call in source_calls:
+        target = source_call.resolved_target
+        key = (
+            source_call.expression,
+            source_call.file_path,
+            source_call.line,
+            target.symbol if target is not None else None,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(source_call)
+    return unique
 
 
 async def _get_dependencies(db: AsyncSession, repo_id: UUID, module: str) -> list[Location]:
@@ -505,43 +939,6 @@ async def _resolve_symbols(
     return _select_symbol_matches(rows, symbol)
 
 
-def _query_terms(query: str) -> list[str]:
-    lowered = query.lower().strip()
-    terms = [term for term in _TERM_SPLIT_RE.split(lowered) if term]
-    if lowered not in terms:
-        return [lowered, *terms]
-    return terms
-
-
-def _chunk_rank(row: ChunkRow, query: str, terms: list[str]) -> float:
-    query_lower = query.lower()
-    symbol = row.symbol_name.lower()
-    path = row.file_path.lower()
-    content = row.content.lower()
-    score = 0.0
-
-    if symbol == query_lower:
-        score += 100.0
-    if path == query_lower:
-        score += 90.0
-    if query_lower in symbol:
-        score += 35.0
-    if query_lower in path:
-        score += 25.0
-    if query_lower in content:
-        score += 10.0
-
-    for term in terms:
-        if term in symbol:
-            score += 12.0
-        if term in path:
-            score += 8.0
-        if term in content:
-            score += 4.0
-
-    return score
-
-
 def _location_from_symbol(row: Symbol) -> Location:
     return Location(
         symbol=row.qualified_name,
@@ -564,10 +961,15 @@ def _unique_locations(locations: Iterable[Location]) -> list[Location]:
 
 
 def _select_symbol_matches(rows: Sequence[Symbol], symbol: str) -> list[Symbol]:
-    exact = [row for row in rows if row.qualified_name == symbol]
-    if exact:
-        return exact
-    return [row for row in rows if row.qualified_name.endswith(f".{symbol}")]
+    """Thin alias over the shared rule.
+
+    The body moved to `dcode_shared.symbols` because the agent's groundedness
+    guardrail has to apply the same rule, and it was applying a stricter one — so
+    the tool here accepted a name the guardrail then rejected. Kept as a named
+    function rather than inlining the import at each call site, so the several
+    callers below read unchanged.
+    """
+    return select_symbol_matches(rows, symbol)
 
 
 def _reference_edge_types(targets: Sequence[Symbol]) -> tuple[str, ...]:

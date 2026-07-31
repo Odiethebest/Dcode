@@ -1,8 +1,8 @@
-"""Indexing pipeline orchestration — implements DESIGN.md §2.1.
+"""Indexing pipeline orchestration and durable progress reporting.
 
 Six stages, advanced as a strict monotonic state machine:
 `queued → cloning → parsing → embedding → graphing → ready`
-(or `→ failed` at any point, with error context preserved per D-2.1.4).
+(or `→ failed` at any point, with error context preserved).
 """
 
 import json
@@ -66,8 +66,8 @@ async def handle_job(
     """Top-level handler for one RabbitMQ message.
 
     Advances the durable Repo state and the live Redis `job:{repo_id}` snapshot
-    through the pipeline. Stage implementations are filled in by later roadmap
-    items; this state machine already records their success or failure.
+    through the implemented clone, parse, chunk, embed, and graph stages while
+    recording each success or failure.
     """
     job = _parse_job(message_body)
     if job is None:
@@ -147,7 +147,7 @@ async def handle_job(
             log_event(logger, "index_job_completed", repo_id=repo_id, progress=100)
     except RepoRowMissingError:
         # The repo row was deleted while indexing — nothing to persist. Ack and
-        # discard instead of raising, so RabbitMQ does not redeliver forever (P3-9).
+        # Discard instead of raising so RabbitMQ does not redeliver forever.
         logger.warning(structured_event("index_job_repo_deleted", repo_id=repo_id))
     except Exception as exc:  # noqa: BLE001 — stage failures are represented in job state
         error = str(exc) or exc.__class__.__name__
@@ -183,7 +183,7 @@ async def _record_failure(
 
     Persisting the failure can itself fail — the repo row may have been deleted
     (RepoRowMissingError) or Postgres may be unreachable. Letting that escape would
-    nack the RabbitMQ message and cause an infinite redelivery loop (P3-9), so
+    nack the RabbitMQ message and cause an infinite redelivery loop, so
     any error here is logged and swallowed; the message is still acked.
     """
     try:
@@ -200,7 +200,7 @@ async def _record_failure(
                 commit_sha=commit_sha,
                 warnings=warnings,
             )
-    except Exception:  # noqa: BLE001 — failure persistence must never escape (P3-9)
+    except Exception:  # noqa: BLE001 — failure persistence must never escape
         logger.exception(
             structured_event("index_job_failure_unpersisted", repo_id=repo_id, error=error)
         )

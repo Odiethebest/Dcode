@@ -1,7 +1,6 @@
 """Tool: `find_references(symbol)` → List[Location].
 
-Implements DESIGN.md §2.3.2 row 4. Reverse-edge query on the code graph
-(§2.2.2): "who calls / references this symbol?".
+Runs the reverse-edge graph query for indexed references to a symbol.
 """
 
 from dcode_shared.schemas import Location

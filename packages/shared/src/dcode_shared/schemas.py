@@ -1,4 +1,4 @@
-"""Pydantic request / response schemas — implements DESIGN.md §4 (Interface Contracts).
+"""Canonical Pydantic request and response schemas for cross-service contracts.
 
 This module is the single source of truth for every cross-service payload shape.
 Services MUST import these types rather than redefining.
@@ -11,7 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # ===========================================================================
-# Enums (DESIGN.md §3.2 repos.status / §2.1 state machine)
+# Enums shared by the database, indexing state machine, and API
 # ===========================================================================
 
 
@@ -37,7 +37,7 @@ class StageState(StrEnum):
 
 
 class ChunkType(StrEnum):
-    """AST-level chunk discriminator (DESIGN.md §3.2 chunks.chunk_type)."""
+    """AST-level chunk discriminator stored by the index."""
 
     function = "function"
     method = "method"
@@ -46,7 +46,7 @@ class ChunkType(StrEnum):
 
 
 class SymbolKind(StrEnum):
-    """Code-graph node kind (DESIGN.md §3.2 symbols.kind)."""
+    """Code-graph node kind."""
 
     function = "function"
     class_ = "class"
@@ -55,7 +55,7 @@ class SymbolKind(StrEnum):
 
 
 class EdgeType(StrEnum):
-    """Code-graph edge kind (DESIGN.md §3.2 edges.edge_type)."""
+    """Code-graph edge kind."""
 
     calls = "calls"
     imports = "imports"
@@ -64,7 +64,7 @@ class EdgeType(StrEnum):
 
 
 # ===========================================================================
-# Indexing API (DESIGN.md §4.1)
+# Public indexing API
 # ===========================================================================
 
 
@@ -110,7 +110,7 @@ class RepoStatusResponse(BaseModel):
 
 
 # ===========================================================================
-# Query API (DESIGN.md §4.3 — request body; SSE events live in events.py)
+# Public query API (request body; SSE events live in events.py)
 # ===========================================================================
 
 
@@ -137,7 +137,7 @@ class QueryRequest(BaseModel):
 
 
 # ===========================================================================
-# Internal retrieval & graph API (DESIGN.md §4.2)
+# Internal retrieval and graph API
 # ===========================================================================
 
 
@@ -152,7 +152,7 @@ class ScoreComponents(BaseModel):
 
 
 class Chunk(BaseModel):
-    """A retrieved chunk (DESIGN.md §4.2 search return shape)."""
+    """A retrieved chunk returned by the internal search API."""
 
     chunk_id: UUID
     file_path: str
@@ -165,12 +165,71 @@ class Chunk(BaseModel):
 
 
 class Location(BaseModel):
-    """Graph-query result shape (DESIGN.md §4.2)."""
+    """Indexed location returned by graph-query endpoints."""
 
     symbol: str
     file_path: str
     line: int
     chunk_id: UUID | None = None
+
+
+CallDirection = Literal["callers", "callees", "both"]
+
+
+class SourceCall(BaseModel):
+    """One call expression found in the matched symbol's source chunk.
+
+    ``resolved_target`` is present only when a stored ``calls`` edge on the same
+    source line identifies the target. A missing target is intentionally
+    represented, rather than silently dropping dynamic/instance calls.
+    """
+
+    expression: str
+    file_path: str
+    line: int
+    resolved_target: Location | None = None
+
+
+class CallNeighbors(BaseModel):
+    """Resolved function-call neighbors for the Agent's call-graph tool.
+
+    The location groups keep direction explicit. ``matches`` is retained because
+    a short name can resolve to several indexed symbols; callers and callees are
+    the union across those disclosed matches. ``source_calls`` keeps expressions
+    that the static graph could not resolve instead of silently dropping them.
+    """
+
+    found: bool
+    symbol: str
+    direction: CallDirection
+    matches: list[Location] = Field(default_factory=list)
+    callers: list[Location] = Field(default_factory=list)
+    callees: list[Location] = Field(default_factory=list)
+    source_calls: list[SourceCall] = Field(default_factory=list)
+
+
+class CallPath(BaseModel):
+    """A bounded chain of `calls` edges from one symbol to another.
+
+    Architecture questions overwhelmingly ask how control reaches B from A —
+    "explain the proxy flow from Session settings to the adapter connection".
+    Listing every reference to A answers a different question and buries the
+    chain in noise. `nodes` is ordered start → end and each hop is a stored
+    `calls` edge, so the path is evidence rather than narration.
+
+    `found=False` with an empty `nodes` is a real answer: within `max_depth`
+    there is no static call chain. It is reported rather than smoothed over,
+    because the graph's documented blind spots (no type inference, unresolved
+    inherited `self.method()`) make absence genuinely common.
+    """
+
+    found: bool
+    start: str
+    end: str
+    max_depth: int
+    nodes: list[Location] = Field(default_factory=list)
+    # Hops actually traversed; `len(nodes) - 1` when found.
+    depth: int = 0
 
 
 # ===========================================================================

@@ -72,8 +72,25 @@ async def run(
         import_records.extend(_imports_for_file(parsed_file, module_name, internal_modules))
 
     internal_symbols = {record.qualified_name for record in symbol_records}
-    call_records: list[CallRecord] = []
+
+    # Inheritance is resolved first because call resolution depends on it. A
+    # `self.method()` whose method lives on a base class is the single most
+    # common call this analysis used to miss: in `requests` it hides the entire
+    # redirect machinery from `Session`, because `resolve_redirects` and friends
+    # are defined on `SessionRedirectMixin`.
     inherit_records: list[RelationshipRecord] = []
+    for parsed_file in ctx.parsed_files:
+        inherit_records.extend(
+            _inherits_for_file(
+                parsed_file,
+                module_by_file[parsed_file.file_path],
+                internal_symbols=internal_symbols,
+                internal_modules=internal_modules,
+            )
+        )
+    bases_by_class = _bases_by_class(inherit_records)
+
+    call_records: list[CallRecord] = []
     reference_records: list[RelationshipRecord] = []
     for parsed_file in ctx.parsed_files:
         module_name = module_by_file[parsed_file.file_path]
@@ -83,14 +100,7 @@ async def run(
                 module_name,
                 internal_symbols=internal_symbols,
                 internal_modules=internal_modules,
-            )
-        )
-        inherit_records.extend(
-            _inherits_for_file(
-                parsed_file,
-                module_name,
-                internal_symbols=internal_symbols,
-                internal_modules=internal_modules,
+                bases_by_class=bases_by_class,
             )
         )
         reference_records.extend(
@@ -187,9 +197,11 @@ def _calls_for_file(
     *,
     internal_symbols: set[str],
     internal_modules: set[str],
+    bases_by_class: dict[str, list[str]] | None = None,
 ) -> list[CallRecord]:
     aliases = _import_aliases_for_file(parsed_file, module_name, internal_modules)
     local_functions = _module_local_function_names(parsed_file)
+    local_classes = _module_local_class_names(parsed_file)
     calls: list[CallRecord] = []
 
     for node in parsed_file.tree.body:
@@ -207,6 +219,8 @@ def _calls_for_file(
                             local_functions=local_functions,
                             import_aliases=aliases,
                             internal_symbols=internal_symbols,
+                            bases_by_class=bases_by_class or {},
+                            local_classes=local_classes,
                         )
                     )
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -220,6 +234,8 @@ def _calls_for_file(
                     local_functions=local_functions,
                     import_aliases=aliases,
                     internal_symbols=internal_symbols,
+                    bases_by_class=bases_by_class or {},
+                    local_classes=local_classes,
                 )
             )
 
@@ -235,8 +251,17 @@ def _calls_in_body(
     local_functions: set[str],
     import_aliases: dict[str, str],
     internal_symbols: set[str],
+    bases_by_class: dict[str, list[str]],
+    local_classes: set[str],
 ) -> list[CallRecord]:
     calls: list[CallRecord] = []
+    local_types = _local_variable_types(
+        node,
+        module_name=module_name,
+        local_classes=local_classes,
+        import_aliases=import_aliases,
+        internal_symbols=internal_symbols,
+    )
     for child in ast.walk(node):
         if not isinstance(child, ast.Call):
             continue
@@ -247,6 +272,8 @@ def _calls_in_body(
             local_functions=local_functions,
             import_aliases=import_aliases,
             internal_symbols=internal_symbols,
+            bases_by_class=bases_by_class,
+            local_types=local_types,
         )
         if target is None:
             continue
@@ -262,6 +289,8 @@ def _resolve_call_target(
     local_functions: set[str],
     import_aliases: dict[str, str],
     internal_symbols: set[str],
+    bases_by_class: dict[str, list[str]] | None = None,
+    local_types: dict[str, str] | None = None,
 ) -> str | None:
     if isinstance(func, ast.Name):
         if func.id in import_aliases:
@@ -276,8 +305,28 @@ def _resolve_call_target(
         return None
 
     if isinstance(func.value, ast.Name) and func.value.id == "self" and class_name is not None:
-        candidate = f"{module_name}.{class_name}.{func.attr}"
-        return candidate if candidate in internal_symbols else None
+        return _resolve_self_attribute(
+            f"{module_name}.{class_name}",
+            func.attr,
+            internal_symbols=internal_symbols,
+            bases_by_class=bases_by_class or {},
+        )
+
+    # `p = PreparedRequest()` then `p.prepare(...)`. Only a directly constructed
+    # local counts: the class is written at the assignment, so this reads the
+    # code rather than inferring a type.
+    if isinstance(func.value, ast.Name) and local_types and func.value.id in local_types:
+        candidate = f"{local_types[func.value.id]}.{func.attr}"
+        if candidate in internal_symbols:
+            return candidate
+        inherited = _resolve_self_attribute(
+            local_types[func.value.id],
+            func.attr,
+            internal_symbols=internal_symbols,
+            bases_by_class=bases_by_class or {},
+        )
+        if inherited is not None:
+            return inherited
 
     prefix: str | None = None
     if isinstance(func.value, ast.Name):
@@ -295,6 +344,105 @@ def _resolve_call_target(
 
     candidate = f"{prefix}.{func.attr}"
     return candidate if candidate in internal_symbols else None
+
+
+def _bases_by_class(inherit_records: list[RelationshipRecord]) -> dict[str, list[str]]:
+    """Direct internal base classes, keyed by qualified class name."""
+    bases: dict[str, list[str]] = {}
+    for record in inherit_records:
+        bases.setdefault(record.source_symbol, []).append(record.target_symbol)
+    return bases
+
+
+# Depth ceiling for the base-class walk. Deep enough for the mixin stacks this
+# analysis meets in practice, shallow enough that a cyclic or pathological
+# hierarchy cannot stall indexing.
+_MAX_BASE_DEPTH = 6
+
+
+def _resolve_self_attribute(
+    owner: str,
+    attribute: str,
+    *,
+    internal_symbols: set[str],
+    bases_by_class: dict[str, list[str]],
+) -> str | None:
+    """Resolve `self.attr` on `owner`, falling back to its base classes.
+
+    Breadth-first over declared bases, so the nearest definition wins. This is
+    an approximation of the MRO, not the MRO itself: it ignores C3
+    linearisation, so a diamond with the same name on two branches can resolve
+    to the sibling Python would not pick. It is reported as best-effort static
+    evidence for that reason.
+
+    Without this, a method inherited from a mixin is invisible to the call
+    graph — which in `requests` means `Session.send` appears not to touch the
+    redirect machinery at all, because `resolve_redirects` lives on
+    `SessionRedirectMixin`.
+    """
+    own = f"{owner}.{attribute}"
+    if own in internal_symbols:
+        return own
+
+    seen = {owner}
+    frontier = list(bases_by_class.get(owner, ()))
+    for _ in range(_MAX_BASE_DEPTH):
+        if not frontier:
+            return None
+        next_frontier: list[str] = []
+        for base in frontier:
+            if base in seen:
+                continue
+            seen.add(base)
+            candidate = f"{base}.{attribute}"
+            if candidate in internal_symbols:
+                return candidate
+            next_frontier.extend(bases_by_class.get(base, ()))
+        frontier = next_frontier
+    return None
+
+
+def _local_variable_types(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    module_name: str,
+    local_classes: set[str],
+    import_aliases: dict[str, str],
+    internal_symbols: set[str],
+) -> dict[str, str]:
+    """Map local names to the internal class they were directly constructed from.
+
+    Only `name = SomeClass()` counts. The class is written literally at the
+    assignment, so this is reading the code rather than inferring a type — the
+    stated limit of "no type inference" is intact. A name assigned more than
+    once is dropped rather than guessed at.
+
+    This exists because the flows these questions ask about are built that way:
+    `Session.prepare_request` does `p = PreparedRequest()` and then `p.prepare(...)`,
+    and without this the chain simply stops at the constructor.
+    """
+    types: dict[str, str] = {}
+    reassigned: set[str] = set()
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Assign) or not isinstance(child.value, ast.Call):
+            continue
+        resolved = _resolve_base(
+            child.value.func,
+            module_name=module_name,
+            local_classes=local_classes,
+            import_aliases=import_aliases,
+            internal_symbols=internal_symbols,
+        )
+        for target in child.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if target.id in types and types[target.id] != resolved:
+                reassigned.add(target.id)
+            if resolved is not None:
+                types[target.id] = resolved
+    for name in reassigned:
+        types.pop(name, None)
+    return types
 
 
 def _import_aliases_for_file(

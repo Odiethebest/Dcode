@@ -1,10 +1,12 @@
 # Honesty Constraints
 
 This document exists because the project's central claim is narrow and easy to
-fake: **every code reference in an answer is verified against the index before a
-user sees it.** A system can produce a convincing verified-citations interface
-without any verification behind it, and the difference is invisible from a
-screenshot. So the rules below are written down, and most are pinned by tests.
+fake: **every citation presented as indexed code evidence is verified before a
+user sees it.** Ordinary inline code is formatting, not an implicit citation; a
+server-owned evidence ID or explicit `file.py:line` is the claim the guardrail
+checks. A system can produce a convincing verified-citations interface without
+any verification behind it, and the difference is invisible from a screenshot.
+So the rules below are written down, and most are pinned by tests.
 
 Several of them look like things worth cleaning up. They are not. Each entry
 gives the rule and the reason, because the reason is what stops a later change
@@ -37,7 +39,7 @@ token-level "verifying → verified" animation anywhere in the product.
 
 > The landing page's hero card *does* animate verifying → verified. That is
 > marketing motion on a static mock, explicitly not product state, and it is the
-> single exception.
+> single exception. The exemption covers the *motion*, not the mock — §12.
 
 ### `done` is gated on `final_answer` alone
 
@@ -127,6 +129,12 @@ build shipped a filled unverified chip, which made an unverified reference read 
 The score is the fraction of the model's citations that passed verification **in
 the draft**, not in the delivered answer.
 
+An answer with no citations scores `0.0`, not `1.0` and not “excluded”. Excluding
+it would let an uncertain agent improve its own denominator by citing nothing;
+scoring it perfectly would reward the same failure directly. The evaluation
+output therefore reports `answers_without_citations` alongside the mean so
+“cited nothing” remains distinguishable from “all cited claims failed”.
+
 The obvious change here is a trap, so it is worth being explicit. Unverifiable
 references are already stripped before the user sees the answer. If the score
 counted only what survived, it would be scoring a set that is verified *by
@@ -138,17 +146,26 @@ Measured before redaction, the number answers a real question: **how clean was
 the model's draft?** A heavily-redacted answer scores low, which is correct — the
 user got safe output, but the model needed a lot of correcting to produce it.
 
-The consequence is that this guardrail can visibly fail. On the recorded run B4
-scores 0.916 against a pre-registered floor of 0.95, and that is reported as a
-failure rather than explained away. Tightening the synthesis prompt so the model
-cites only from the allowed list is the legitimate fix — it changes the system,
-not the metric — and it has to be reported as its own change.
+The consequence is that this guardrail can visibly fail. The superseded
+`results/eval-real/` snapshot and the three-arm experiment did fail it, and that
+failure remains archived rather than explained away. Tightening the synthesis
+contract so the model cites only server-owned evidence IDs is a legitimate class
+of fix — it changes the system, not the metric — and it has to be reported as
+its own change. The current complete H1 rerun exercises that evidence-ID path
+and clears the guardrail without changing how groundedness is scored.
 
 ## 7. Markdown is rendered, never injected
 
 Answers render through a markdown-to-React-element pipeline with no
 `dangerouslySetInnerHTML` and no raw-HTML plugin. Embedded HTML in model output is
 ignored, not executed. XSS-safe by construction rather than by sanitising.
+
+Math is parsed only from Markdown math nodes and rendered with KaTeX. The
+frontend normalizes `\(...\)` and `\[...\]` to the Markdown delimiters understood
+by `remark-math`, but skips inline code and fenced code blocks so a code example
+cannot be reinterpreted as a formula. The synthesis prompt prefers `$...$` and
+`$$...$$`; normalization is a compatibility boundary, not permission to inject
+raw HTML.
 
 ## 8. Source and graph lookups degrade, never fabricate
 
@@ -186,9 +203,12 @@ The same applies to a failed index: show the reason, not just that it failed.
 
 ## 11. Displayed numbers are generated, never transcribed
 
-Every evaluation figure in the UI and in the documentation is generated from
-`results/eval-real/` by `scripts/sync_eval_artifacts.py`, and `make check` fails
-if any of them drifts.
+Every official H1 snapshot figure in the UI and in the generated documentation
+blocks comes from `results/eval-h1-repeat3-2026-07-31/` through
+`scripts/sync_eval_artifacts.py`, and `make check` fails if any of those surfaces
+drifts. A separately labelled experiment report may contain figures derived
+from its own committed run directories; it must name that authority explicitly
+and must not imply that the generated-artifact drift check covers it.
 
 This rule was earned. The same defect occurred three times: numbers hand-copied
 into a surface, then reality moved and the copy stayed. It hit the frontend's
@@ -197,19 +217,120 @@ page's baseline chart (decorative hardcoded bars showing the system winning whil
 the methodology page reported the hypothesis unsupported), and the README plus
 this document set (stub-run numbers left in place after the real-model run).
 
-Prose is not generated, so it carries qualitative conclusions only — *H1
-unsupported*, *hybrid retrieval validated*, *the graph's contribution is
-unmeasured*. Any specific figure belongs inside a generated block.
+Prose around the official snapshot is not generated, so it carries qualitative
+conclusions only — *H1 unsupported*, *the current sparse path is BM25*, *the
+graph's measured contribution is small*. Any specific official-snapshot figure
+belongs inside a generated block. Experimental figures belong in their named
+experiment record; when a report cites one, it must state that exception and
+link the authority.
+
+**A qualitative claim can go stale too, and this one did.** For two runs the
+prose said *the graph's contribution is unmeasured* — accurate then, false as of
+2026-07-31, when the harness began counting structural ground-truth hits. The
+drift check only guards figures. After every run, the sentences have to be
+re-read against the data by a person; that step is step 3 of the harness
+procedure in [Operations.md](Operations.md) and it is not optional.
+
+### A verdict that depends on a scoring choice must publish both
+
+When two defensible scoring rules disagree about the outcome, the surface reports
+the **pre-registered** one as the verdict and states the alternative beside it.
+It does not report whichever one is preferable, and it does not quietly omit the
+one that was not chosen.
+
+This exists because the current snapshot is such a case: B2/B3 are scored on
+retrieved top-k and B4 on its verified final evidence, and applying B4's rule to
+B3 as well moves L3 from `fail` to `pass`. The recorded verdict is `unsupported`
+because that is what the pre-registered rule returns. Selecting the other rule
+after seeing that it flips the result would be indistinguishable, from the
+outside, from having pre-registered it honestly — which is exactly why the choice
+is not available after the fact.
+
+### The generator is a pure function of committed bytes
+
+The generator may only read bytes under `results/<run>/`. Any input taken from
+filesystem metadata, the wall clock, or a constant in the source is a bug —
+"the numbers come from the results directory" is only true while the generator
+is a pure function of those bytes.
+
+This is also the limit of what `make check` is worth. `--check` proves that
+every displayed figure agrees with the generator's own inputs; it does not
+prove those inputs are true. A generator reading the wrong source is green.
+That class of defect cannot be caught downstream — it is only excluded
+structurally, by the rule above.
+
+This was earned too. The recorded date was derived from `h1_report.json`'s
+mtime, which git does not preserve, so the drift check was anchored to a value
+no two checkouts agree on: the gate went red a day after the run and stayed red,
+and "fixing" it by regenerating would have stamped the checkout date into the
+artifacts as though it were the run's. A gate that is permanently red gets
+routed around, and this one is the only thing holding the rule above in place.
+
+Metadata for a finished run may be pinned, but it must live in a separate file
+from the harness's own output and state how it was obtained — for example,
+**recovered from surviving evidence** or **observed during the live run**, never
+merely "recorded" when the harness wrote no such field. The test is whether the
+copied value can still change, not whether it was typed by hand: a finished
+run's date will never move again, while a model choice for a future run can.
+Keeping external observations out of `run_config.json` is what stops them from
+reading as harness output.
+
+## 12. A mock must be identifiable as a mock
+
+The exemption in §1 licenses the *motion*, not the mock. It establishes that the
+hero's verifying → verified sequence is theatre. It says nothing about whether
+the card that theatre plays on can be recognised as one.
+
+So: any surface showing a metric-shaped figure is either driven by a real source
+or identifiable as an illustration. **An artefact indistinguishable from a
+measurement is an over-claim, even when every individual statement on it is
+true.**
+
+The hero card is the case that produced this rule, and it produced it by being
+clean. The citation coordinates on it are real locations in the indexed corpus.
+The mock answer is plausible. `1.00` was the arithmetically correct score for its
+own two verified mock citations. Nothing was fabricated and no number was
+transcribed — so rule 11 had nothing to say, and neither did *never fabricate
+data*. And yet the card was indistinguishable from a screenshot of a real answer,
+and the first groundedness figure a visitor met on that page looked like a
+measurement even though it was staged. The current recorded run also happens to
+clear the guardrail; that coincidence does not turn a mock into evidence.
+
+Every other rule here governs whether the interface says something false. This
+one governs whether it lets someone believe they are looking at a measurement.
+That is a different failure and it needs its own rule.
+
+The label is also subject to the pattern this document keeps recording: it may
+not be the smallest or faintest thing on the surface it qualifies. A disclosure
+demoted to fine print is the same defect as no disclosure, arrived at politely.
+
+## 13. Chinese and English answers follow the current question
+
+For the supported bilingual contract, the current user question owns the answer
+language. A Chinese question receives Chinese prose and an English question
+receives English prose; source comments, code identifiers, retrieved evidence,
+and earlier turns do not override it. Code identifiers and citation tokens stay
+verbatim in either language.
+
+The deterministic selector treats the presence of a Han character as Chinese
+and otherwise defaults to English, which keeps Latin-heavy code symbols from
+misclassifying a Chinese question. This is deliberately a Chinese/English
+contract, not a claim of general language detection. Follow-up
+contextualization preserves that selected language rather than translating the
+question.
 
 ---
 
 ## Where these are enforced
 
-Most of the above is pinned by tests in `apps/frontend/tests/` — an interrupted
-turn never renders as settled and never binds chips; an unverified chip is never
-solid; a walked graph node is marked indexed rather than verified; the landing
-chart's bars trace to the snapshot and none is full-width; the methodology page
-names the leading baseline from the data rather than from a hardcoded string.
+UI rules are pinned by tests in `apps/frontend/tests/` — an interrupted turn
+never renders as settled and never binds chips; an unverified chip is never
+solid; a walked graph node is marked indexed rather than verified; math
+delimiter normalization skips code; the landing chart's bars trace to the
+snapshot and none is full-width; the methodology page names the leading
+baseline from the data rather than from a hardcoded string. Agent tests pin the
+Chinese/English selector, history contextualization, server-owned evidence IDs,
+zero-citation score, and exact-token redaction.
 
 The intent is that breaking one of these rules breaks a test with a comment
 explaining why the rule exists.

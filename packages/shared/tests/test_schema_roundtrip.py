@@ -82,11 +82,23 @@ def test_sse_encode_wire_format() -> None:
 def test_final_answer_event_carries_citations() -> None:
     event = FinalAnswerEvent(
         answer="...",
-        citations=[CitationEvent(symbol="X", file_path="a.py", line=1, verified=True)],
+        citations=[
+            CitationEvent(
+                symbol="X",
+                file_path="a.py",
+                line=1,
+                verified=True,
+                chunk_id="11111111-1111-1111-1111-111111111111",
+                evidence_id="C1",
+                origins=["search_code", "get_call_neighbors"],
+            )
+        ],
         groundedness=1.0,
     )
     parsed = FinalAnswerEvent.model_validate_json(event.model_dump_json())
     assert parsed.citations[0].verified is True
+    assert parsed.citations[0].evidence_id == "C1"
+    assert parsed.citations[0].origins == ["search_code", "get_call_neighbors"]
 
 
 def _legacy_query_cache_key(repo_id: str, query: str) -> str:

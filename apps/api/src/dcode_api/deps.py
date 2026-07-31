@@ -74,7 +74,8 @@ def _create_agent_client() -> httpx.AsyncClient:
 async def get_agent_client() -> httpx.AsyncClient:
     """Return the process-wide httpx client targeting the agent service.
 
-    TODO(M2): tune timeouts/retries per NFR-2 (TTFB ≤ 3s).
+    The client allows slow real-model synthesis but performs no automatic
+    retries, which could duplicate a partially streamed answer.
     """
     global _agent_client
     if _agent_client is None:

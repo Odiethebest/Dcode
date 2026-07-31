@@ -1,0 +1,24 @@
+{
+  "mode": "single",
+  "baseline": "B2",
+  "questions_path": "apps/eval/src/dcode_eval/questions/data/questions.jsonl",
+  "output_dir": "results/eval-h1-bm25-2026-07-30/B2",
+  "k": 5,
+  "repo_id_override": "2543893e-0965-4be7-ac45-5a8e38600bc0",
+  "corpus_revision": 0,
+  "sparse_retrieval": {
+    "implementation": "okapi_bm25_v1",
+    "idf": "ln(1 + (N - df + 0.5) / (df + 0.5))",
+    "k1": 1.2,
+    "b": 0.75,
+    "tokenizer": "dcode_source_code_v1",
+    "document_fields": [
+      "symbol_name",
+      "file_path",
+      "signature",
+      "content"
+    ],
+    "field_weighting": "none",
+    "query_term_frequency": "deduplicated"
+  }
+}

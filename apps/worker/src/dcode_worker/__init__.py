@@ -1,3 +1,3 @@
-"""Dcode index worker — implements DESIGN.md §2.1 Indexing Pipeline."""
+"""Dcode asynchronous repository-indexing worker."""
 
 __version__ = "0.0.0"

@@ -1,0 +1,47 @@
+{
+  "decision": "unsupported",
+  "threshold": 0.05,
+  "scoring_protocol": "uniform_final_verified_evidence_v2",
+  "compared_taxonomies": [
+    "L2",
+    "L3"
+  ],
+  "comparisons": {
+    "L2": {
+      "B2_composite": 0.6849637845303433,
+      "B3_composite": 0.7672468223313116,
+      "B4_composite": 0.7941932220347756,
+      "margin_vs_B2": 0.10922943750443226,
+      "margin_vs_B3": 0.02694639970346402,
+      "supported": false
+    },
+    "L3": {
+      "B2_composite": 0.5416233602362731,
+      "B3_composite": 0.6323612211088397,
+      "B4_composite": 0.7408582908590255,
+      "margin_vs_B2": 0.19923493062275244,
+      "margin_vs_B3": 0.1084970697501858,
+      "supported": true
+    }
+  },
+  "note": "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 composite points on both L2 and L3.",
+  "diagnostics": {
+    "about": "Diagnostic only. B3.5 is B4 with the call-graph and reference tools disabled and everything else identical. These margins decompose B4 - B3 into a graph term and an agent-loop term; they do not enter the H1 decision.",
+    "per_taxonomy": {
+      "L2": {
+        "B3_composite": 0.7672468223313116,
+        "B3.5_composite": 0.7680089123397327,
+        "B4_composite": 0.7941932220347756,
+        "graph_margin_B4_vs_B3.5": 0.02618430969504293,
+        "agent_loop_margin_B3.5_vs_B3": 0.0007620900084210902
+      },
+      "L3": {
+        "B3_composite": 0.6323612211088397,
+        "B3.5_composite": 0.6768248764292009,
+        "B4_composite": 0.7408582908590255,
+        "graph_margin_B4_vs_B3.5": 0.06403341442982469,
+        "agent_loop_margin_B3.5_vs_B3": 0.04446365532036112
+      }
+    }
+  }
+}

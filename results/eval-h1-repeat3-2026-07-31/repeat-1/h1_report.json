@@ -1,0 +1,63 @@
+{
+  "decision": "unsupported",
+  "threshold": 0.05,
+  "scoring_protocol": "uniform_final_verified_evidence_v2",
+  "compared_taxonomies": [
+    "L2",
+    "L3"
+  ],
+  "comparisons": {
+    "L2": {
+      "B2_composite": 0.5799517127071244,
+      "B3_composite": 0.6879899462156693,
+      "B4_composite": 0.7255909627130341,
+      "margin_vs_B2": 0.14563925000590972,
+      "margin_vs_B3": 0.0376010164973648,
+      "supported": false,
+      "four_term": {
+        "B2_composite": 0.6849637845303433,
+        "B3_composite": 0.765992459661752,
+        "B4_composite": 0.7941932220347756,
+        "margin_vs_B2": 0.10922943750443226,
+        "margin_vs_B3": 0.028200762373023602,
+        "supported": false
+      }
+    },
+    "L3": {
+      "B2_composite": 0.38694453823470243,
+      "B3_composite": 0.4920361500098571,
+      "B4_composite": 0.6236672686528513,
+      "margin_vs_B2": 0.23672273041814884,
+      "margin_vs_B3": 0.13163111864299415,
+      "supported": true,
+      "four_term": {
+        "B2_composite": 0.5402084036760268,
+        "B3_composite": 0.6190271125073928,
+        "B4_composite": 0.7177504514896385,
+        "margin_vs_B2": 0.1775420478136116,
+        "margin_vs_B3": 0.09872333898224561,
+        "supported": true
+      }
+    }
+  },
+  "note": "H1 is supported only if B4 beats both B2 and B3 by at least 0.05 composite points on both L2 and L3.",
+  "diagnostics": {
+    "about": "Diagnostic only. B3.5 is B4 with the call-graph and reference tools disabled and everything else identical. These margins decompose B4 - B3 into a graph term and an agent-loop term; they do not enter the H1 decision.",
+    "per_taxonomy": {
+      "L2": {
+        "B3_composite": 0.6879899462156693,
+        "B3.5_composite": 0.6936562130898332,
+        "B4_composite": 0.7255909627130341,
+        "graph_margin_B4_vs_B3.5": 0.031934749623200975,
+        "agent_loop_margin_B3.5_vs_B3": 0.005666266874163828
+      },
+      "L3": {
+        "B3_composite": 0.4920361500098571,
+        "B3.5_composite": 0.5993033187786746,
+        "B4_composite": 0.6236672686528513,
+        "graph_margin_B4_vs_B3.5": 0.02436394987417667,
+        "agent_loop_margin_B3.5_vs_B3": 0.10726716876881748
+      }
+    }
+  }
+}

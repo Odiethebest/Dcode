@@ -1,17 +1,18 @@
-"""Baseline abstract base — DESIGN.md §2.4.3.
+"""Abstract contracts shared by evaluation baselines B0 through B4.
 
 Every baseline exposes two contracts:
   - `retrieve(repo_id, query, k)` → ranked chunks (for Recall@k / MRR / nDCG)
   - `answer(repo_id, query)`      → full answer (for judge + groundedness)
 
 The split lets us compute pure-retrieval deltas independently from
-answer-quality deltas — which is how the §2.4.3 ladder makes its case.
+answer-quality deltas.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from dcode_shared.events import CitationEvent
 from dcode_shared.schemas import Chunk
 
 
@@ -20,6 +21,7 @@ class AnswerResult:
     answer: str
     citations: list[str] = field(default_factory=list)
     groundedness: float = 1.0
+    evidence: list[CitationEvent] = field(default_factory=list)
 
 
 class Baseline(ABC):

@@ -1,7 +1,7 @@
 """Tool: `grep(pattern)` → List[Location].
 
-Implements DESIGN.md §2.3.2 row 7. Backed by ripgrep against the cloned
-repo workdir — cheap, precise, and complementary to semantic search.
+Backed by ripgrep against the cloned repository workdir — cheap, precise, and
+complementary to semantic search.
 """
 
 import asyncio

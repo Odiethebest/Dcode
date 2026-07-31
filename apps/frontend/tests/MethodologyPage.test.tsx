@@ -2,7 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { h1Report, levelSummary, suiteSummary } from '@/demo/evalSnapshot';
+import {
+  demoCases,
+  h1Report,
+  levelSummary,
+  snapshotSource,
+  suiteSummary,
+} from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import MethodologyPage from '@/pages/MethodologyPage';
 
 function renderMethodology() {
@@ -21,53 +28,96 @@ describe('MethodologyPage', () => {
     expect(screen.getAllByText(suiteSummary.B4.groundedness.toFixed(3)).length).toBeGreaterThan(0);
   });
 
-  it('discloses the B4 groundedness dip instead of burying it', () => {
+  it('reports that B4 clears the recorded groundedness guardrail', () => {
     renderMethodology();
-    // The real run put B4 under the 0.95 guardrail; the page has to say so.
-    expect(suiteSummary.B4.groundedness).toBeLessThan(0.95);
-    expect(screen.getByText(/below bar/i)).toBeInTheDocument();
+    expect(suiteSummary.B4.groundedness).toBeGreaterThanOrEqual(RUN_GROUNDEDNESS_BAR);
+    expect(screen.queryByText(/below bar/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/every rung clears/i)).toBeInTheDocument();
   });
 
-  it('names B3 as the retrieval leader, not B4', () => {
-    // B4 matches B3 exactly on retrieval — the page must not imply B4 won.
-    expect(suiteSummary.B4.ndcgAtK).toBe(suiteSummary.B3.ndcgAtK);
+  it('does not present B4 leading retrieval as a clean win', () => {
+    // B4 out-scores B3 for the first time, but on the same retrieved
+    // candidates under a different scoring rule. The page may say B4 leads
+    // only while it also says why the two rows are not comparable.
+    expect(suiteSummary.B4.ndcgAtK).toBeGreaterThan(suiteSummary.B3.ndcgAtK);
     renderMethodology();
-    expect(screen.getByText(/B3 leads retrieval/i)).toBeInTheDocument();
+    expect(screen.getByText(/B3 and B4 retrieved the same candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/scored on the evidence it ends up citing/i)).toBeInTheDocument();
   });
 
-  it('flags L3 as statistically fragile at n=3', () => {
-    expect(h1Report.comparisons.L3.questions).toBe(3);
+  it('states each level\'s single-question weight, whether or not it cleared', () => {
+    // L3 now clears, so "it missed by less than one question" no longer applies
+    // to it. The weight is still what a reader needs to judge either level, and
+    // it is still larger than the bar on both.
+    for (const level of ['L2', 'L3'] as const) {
+      expect(1 / h1Report.comparisons[level].questions).toBeGreaterThan(h1Report.threshold);
+    }
     renderMethodology();
-    expect(screen.getByText(/significance isn’t computable/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/one question moves this level by up to/i).length).toBe(2);
   });
 
-  it('frames the graph as unmeasured, never as failed', () => {
+  it('states the graph contribution as measured and small, not as unmeasured', () => {
+    // The page said "unmeasured" for two runs. That became false the moment
+    // the harness started counting structural ground-truth hits, so the
+    // guardrail now pins the opposite claim and forbids the stale one.
     renderMethodology();
-    // Pin the framing positively rather than blacklisting phrasings: the page
-    // legitimately quotes "the graph didn't work" in order to disclaim it.
-    expect(screen.getByText('unmeasured')).toBeInTheDocument();
-    expect(screen.getByText(/diagnosed limitation of the measurement design/i)).toBeInTheDocument();
+    expect(screen.queryByText('unmeasured')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/14 new ground-truth hits across 10 of the 33 questions/i)
+    ).toBeInTheDocument();
+    // The ablation now exists, so the page must attribute the split rather than
+    // decline to. Claiming the whole B4-B3 gap for the graph is the easy lie
+    // here, and B3.5 is what makes it a checkable one.
+    expect(
+      screen.getByText(/Without that ablation the \+0\.147 would have been reported/i)
+    ).toBeInTheDocument();
   });
 
-  it('features the validated hybrid-retrieval ladder', () => {
-    // B1 < B2 < B3 on cross-file questions — the finding that did land.
-    const l2 = levelSummary.L2;
-    expect(l2.B1.recallAtK).toBeLessThan(l2.B2.recallAtK);
-    expect(l2.B2.recallAtK).toBeLessThan(l2.B3.recallAtK);
+  it('reports the surviving ladder inversion instead of smoothing it', () => {
+    // The ladder climbs on L2 now. It did not before test code was excluded,
+    // and one inversion is left on L3 — sparse still edges dense. Reporting the
+    // fixed ordering while quietly dropping the leftover would be the tidy lie.
+    const { L2, L3 } = levelSummary;
+    expect(L2.B1.recallAtK).toBeLessThan(L2.B3.recallAtK);
+    expect(L3.B1.recallAtK).toBeGreaterThan(L3.B2.recallAtK);
     renderMethodology();
-    expect(screen.getByText(/hybrid retrieval works/i)).toBeInTheDocument();
+    expect(screen.getByText(/The BM25 rerun/i)).toBeInTheDocument();
+    expect(screen.getByText(/One inversion survives/i)).toBeInTheDocument();
+  });
+
+  it('publishes that the verdict depends on the scoring rule', () => {
+    // The single most omittable fact in this run: the pre-registered mixed
+    // rule fails L3, the symmetric rule would clear it. If this sentence ever
+    // disappears, the page is quietly reporting the convenient half.
+    renderMethodology();
+    expect(screen.getByText(/Scoring B3 by B4’s rule would clear/i)).toBeInTheDocument();
+    expect(screen.getByText(/pre-registered rule is the one reported/i)).toBeInTheDocument();
   });
 
   it('does not claim the page matches an unarchived run', () => {
     renderMethodology();
     // The old copy said "the numbers here match the recorded run" while matching
     // no committed artifact. It now names the directory it was generated from.
-    expect(screen.getAllByText(/results\/eval-real\//).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(snapshotSource.path).length).toBeGreaterThan(0);
   });
 
   it('routes the demo CTA into the workbench', () => {
     renderMethodology();
-    expect(screen.getByRole('link', { name: /Open the demo/i })).toHaveAttribute('href', '/workbench');
+    expect(screen.getByRole('link', { name: /Open the demo/i })).toHaveAttribute(
+      'href',
+      '/workbench'
+    );
+  });
+
+  it('titles the transcripts with their real scope, not the whole suite', () => {
+    // The section renders a fixed excerpt but was headed "Every question, every
+    // baseline." The honest scope existed in the footnote; the prominent line
+    // was the flattering one. Both counts come from the generated snapshot.
+    expect(demoCases.length).toBeLessThan(suiteSummary.B4.questions);
+    const { container } = renderMethodology();
+    const copy = container.textContent ?? '';
+    expect(copy).not.toMatch(/every question, every baseline/i);
+    expect(copy).toContain(`${demoCases.length} of ${suiteSummary.B4.questions} questions`);
   });
 
   it('switches question transcripts by taxonomy', () => {

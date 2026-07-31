@@ -1,7 +1,7 @@
 [project]
 name = "dcode-worker"
 version = "0.0.0"
-description = "Dcode index worker — implements DESIGN.md §2.1 Indexing Pipeline"
+description = "Dcode asynchronous repository-indexing worker"
 requires-python = ">=3.11"
 dependencies = [
     "aio-pika>=9.4.0",

@@ -1,7 +1,6 @@
 """Tool: `get_file_outline(path)` → List[Location].
 
-Implements DESIGN.md §2.3.2 row 6. List the symbols (classes / functions)
-defined in a single file.
+Lists indexed classes and functions defined in one file.
 """
 
 from dcode_shared.schemas import Location

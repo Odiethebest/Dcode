@@ -1,3 +1,3 @@
-"""Dcode API Gateway — implements DESIGN.md §2 (Overview) and §4 (Interface Contracts)."""
+"""Dcode public API gateway package."""
 
 __version__ = "0.0.0"

@@ -1,0 +1,17 @@
+{
+  "baseline": "B4",
+  "questions": 33,
+  "k": 5,
+  "recall_at_k": 0.6272727272727273,
+  "mrr": 0.8737373737373737,
+  "ndcg_at_k": 0.6532652406046557,
+  "candidate_recall_at_k": 0.5601010101010101,
+  "candidate_mrr": 0.7762626262626262,
+  "candidate_ndcg_at_k": 0.5672695948080332,
+  "final_evidence_recall_at_k": 0.6272727272727273,
+  "final_evidence_mrr": 0.8737373737373737,
+  "final_evidence_ndcg_at_k": 0.6532652406046557,
+  "groundedness": 1.0,
+  "answers_without_citations": 0,
+  "pairwise_win_rate": null
+}

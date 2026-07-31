@@ -1,4 +1,4 @@
-"""Self-hosted embedding sidecar for OD-2 (jina-code and compatible models)."""
+"""Self-hosted HTTP embedding sidecar for Jina-code and compatible models."""
 
 from __future__ import annotations
 

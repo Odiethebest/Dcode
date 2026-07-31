@@ -1,7 +1,9 @@
 """Alembic environment for Dcode.
 
-Uses `dcode_shared.db.models.Base.metadata` as the autogenerate source so
-DESIGN.md §3.2 stays the single source of truth.
+Uses `dcode_shared.db.models.Base.metadata` as the autogenerate comparison for
+runtime ORM tables. The migration chain under ``infra/migrations/versions`` is
+the schema authority and also contains migration-managed objects that are not
+declared in ORM metadata.
 
 The DB URL is read from `shared_settings.database_url` (env-driven) and
 the `+asyncpg` driver suffix is stripped because Alembic runs synchronously

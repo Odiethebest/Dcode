@@ -1,4 +1,4 @@
-"""Dcode Agent Orchestrator — implements DESIGN.md §2.3.
+"""Dcode agent orchestration service.
 
 A standalone FastAPI service that the API gateway proxies query traffic to.
 Exposes `/internal/query` (SSE) + `/healthz` + `/internal/tools` (manifest).

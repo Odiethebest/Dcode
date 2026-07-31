@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate every artifact that restates the evaluation numbers.
 
-    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+    python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-repeat3-2026-07-31]
 
 Targets:
   - apps/frontend/src/demo/evalSnapshot.ts   (read by /methodology and the landing ladder)
@@ -16,8 +16,14 @@ state what we can prove" cannot restate its own numbers by hand.
 
 So every figure lives in exactly one place — the results directory — and
 everything that displays it is generated from there. Prose carries qualitative
-conclusions only ("H1 unsupported", "hybrid retrieval validated", "the graph's
-contribution is unmeasured"); specific numbers belong inside a generated block.
+conclusions only ("H1 unsupported", "the corrected BM25 path is measured",
+"the graph's measured contribution is small"); specific numbers belong inside a
+generated block.
+
+That claim only holds while this script is a pure function of the bytes under
+the run directory. Taking a value from an mtime, the wall clock, or a constant
+in here breaks it *without* breaking the check — the check would happily
+compare two outputs of the same lie. See docs/en/Honesty_Constraints.md §11.
 
 `--check` regenerates in memory and fails if any target is stale, so a future
 re-run cannot silently desync the documentation. Wired into `make check`.
@@ -34,13 +40,14 @@ contains what.
 
 from __future__ import annotations
 
-import datetime
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+DEFAULT_RUN = "results/eval-h1-repeat3-2026-07-31"
 TS_OUT = ROOT / "apps/frontend/src/demo/evalSnapshot.ts"
 DOC_TARGETS = [
     ROOT / "README.md",
@@ -49,21 +56,22 @@ DOC_TARGETS = [
 ]
 
 BASELINES = ["B1", "B2", "B3", "B4"]
+# B0 is recorded separately and deliberately. It queries a live external index,
+# so its figures cannot be regenerated from committed bytes the way every other
+# number here can, and it retrieves files rather than chunks, so it has no
+# chunk-level result to place in the main ladder. Emitted when the directory is
+# present, `null` when it is not — an unmeasured baseline stays a visible blank.
+B0_RUN = "results/eval-b0-2026-07-31"
 LEVELS = ["L1", "L2", "L3"]
 H1_LEVELS = ["L2", "L3"]
 # Architectural flows, deliberately clear of the corpus's credential-handling
 # vocabulary (see CLAUDE.md on the environment's cyber safeguard).
 DEMO_QUESTIONS = ["q-008", "q-010", "q-015", "q-016"]
 
-# The pre-registered groundedness guardrail. A baseline under it is disclosed in
-# the generated table rather than left for a reader to notice on their own.
-GUARDRAIL = 0.95
-
-CORPUS = "psf/requests"
-MODELS = {
-    "embedding": "Jina v2-base-code (768-dim)",
-    "reranker": "BGE reranker v2-m3",
-    "synthesis": "gpt-4o-mini",
+TS_BASELINE_LABELS = {
+    "B2": "Dense RAG",
+    "B3": "Hybrid + rerank",
+    "B4": "Dcode + graph + agent",
 }
 
 LABELS = {
@@ -88,8 +96,16 @@ LABELS = {
             "`{threshold}` composite points on **both** L2 and L3."
         ),
         "source": (
-            "Source: `{path}` · recorded {recorded} · {corpus} · k={k} · embedding "
-            "{embedding} · reranker {reranker} · synthesis {synthesis}"
+            "Source: `{path}` · verdict written {verdict_written} · {corpus} · k={k} · "
+            "embedding {embedding} · reranker {reranker} · synthesis {synthesis}"
+        ),
+        # The word "recorded" was claiming trust it had not earned: the harness
+        # writes no timestamp at all, so the date is reconstructed. Markdown has
+        # room to say where from; the TypeScript snapshot keeps it to one line.
+        "recovered": (
+            "The date is **committed provenance, not harness output** — the harness "
+            "writes no timestamp. Its observation basis and limits are recorded in "
+            "`{path}provenance.json`."
         ),
     },
     "ch": {
@@ -113,8 +129,12 @@ LABELS = {
             "composite 分，H1 才算被支持。"
         ),
         "source": (
-            "数据来源：`{path}` · 记录于 {recorded} · {corpus} · k={k} · embedding "
-            "{embedding} · reranker {reranker} · 合成 {synthesis}"
+            "数据来源：`{path}` · 裁决写盘于 {verdict_written} · {corpus} · k={k} · "
+            "embedding {embedding} · reranker {reranker} · 合成 {synthesis}"
+        ),
+        "recovered": (
+            "该日期是**已提交的 provenance，而非 harness 输出** —— harness 完全不写"
+            "时间戳。其观测依据与限制见 `{path}provenance.json`。"
         ),
     },
 }
@@ -146,18 +166,61 @@ def load_run(run: pathlib.Path) -> dict:
                 per_question[record["question_id"]] = record
         rows[baseline] = per_question
 
+    # The date used to be derived from h1_report.json's mtime. git does not
+    # preserve mtimes, so that input changed on every clone and checkout: the
+    # drift check was anchored to a value the repository cannot reproduce, and
+    # regenerating on a fresh tree would have written the checkout date into the
+    # artifacts as though it were the run's. A run that has been archived has a
+    # date that will never move again, so it is safe to pin — see the
+    # recovered-vs-recorded rule in docs/en/Honesty_Constraints.md.
+    if not (run / "provenance.json").exists():
+        raise SystemExit(
+            f"No provenance.json under {run}.\n"
+            "Run metadata must be committed bytes under the run directory — the "
+            "generator may not read it from mtimes, the clock, or its own constants."
+        )
+    provenance = read("provenance.json")
+
     return {
         "suite": read("suite_summary.json"),
         "h1": read("h1_report.json"),
         "config": read("run_config.json"),
+        "provenance": provenance,
+        "display": provenance["display"],
+        "groundedness_guardrail": float(provenance["groundedness_guardrail"]),
         "levels": {b: read(f"{b}/taxonomy_breakdown.json") for b in BASELINES},
         "rows": rows,
         "path": f"{run.relative_to(ROOT).as_posix()}/",
-        # The date the run wrote its verdict, not the date this script ran.
-        "recorded": datetime.date.fromtimestamp(
-            (run / "h1_report.json").stat().st_mtime
-        ).isoformat(),
+        # When the verdict file was written. Recorded in provenance outside the
+        # harness — every surface that displays it has to preserve that distinction.
+        "verdict_written": provenance["verdict_written_at"],
     }
+
+
+def sparse_retrieval(run: dict) -> dict:
+    """Return recorded config first, then explicitly recovered legacy metadata."""
+
+    recorded = run["config"].get("sparse_retrieval")
+    if isinstance(recorded, dict):
+        return recorded
+    recovered = run["provenance"].get("sparse_retrieval")
+    if isinstance(recovered, dict):
+        return recovered
+    return {"implementation": "unrecorded"}
+
+
+def baseline_label(run: dict, lang: str, baseline: str) -> str:
+    if baseline != "B1":
+        return str(LABELS[lang][baseline])
+
+    implementation = sparse_retrieval(run).get("implementation")
+    if implementation == "okapi_bm25_v1":
+        return "BM25 sparse" if lang == "en" else "BM25 稀疏检索"
+    if implementation == "legacy_ilike_weighted_substring":
+        return "legacy lexical heuristic" if lang == "en" else "旧版词法启发式检索"
+    return (
+        "sparse retrieval (implementation unrecorded)" if lang == "en" else "稀疏检索（实现未记录）"
+    )
 
 
 def m3(value: object) -> str:
@@ -175,13 +238,18 @@ def signed3(value: object) -> str:
 
 
 def block_provenance(run: dict, lang: str) -> str:
-    return LABELS[lang]["source"].format(
+    t = LABELS[lang]
+    display = run["display"]
+    source = t["source"].format(
         path=run["path"],
-        recorded=run["recorded"],
-        corpus=CORPUS,
+        verdict_written=run["verdict_written"],
+        corpus=display["corpus"],
         k=run["config"]["k"],
-        **MODELS,
+        embedding=display["embedding"],
+        reranker=display["reranker"],
+        synthesis=display["synthesis"],
     )
+    return f"{source}\n\n{t['recovered'].format(path=run['path'])}"
 
 
 def block_suite_metrics(run: dict, lang: str) -> str:
@@ -194,10 +262,11 @@ def block_suite_metrics(run: dict, lang: str) -> str:
     for baseline in BASELINES:
         row = run["suite"][baseline]
         grounded = m3(row["groundedness"])
-        if row["groundedness"] < GUARDRAIL:
+        if row["groundedness"] < run["groundedness_guardrail"]:
             grounded = f"**{grounded}** ⚠️ {t['below']}"
         lines.append(
-            f"| `{baseline}` {t[baseline]} | {m3(row['recall_at_k'])} | "
+            f"| `{baseline}` {baseline_label(run, lang, baseline)} | "
+            f"{m3(row['recall_at_k'])} | "
             f"{m3(row['mrr'])} | {m3(row['ndcg_at_k'])} | {grounded} |"
         )
     lines += ["", block_provenance(run, lang)]
@@ -269,6 +338,7 @@ def render_doc(path: pathlib.Path, run: dict) -> str:
 def render_ts(run: dict) -> str:
     out: list[str] = []
     w = out.append
+    display = run["display"]
 
     def num(value: object) -> str:
         return repr(float(value))  # type: ignore[arg-type]
@@ -286,8 +356,9 @@ def render_ts(run: dict) -> str:
 
     w(f"""/**
  * H1 evaluation snapshot — generated from `{run["path"]}`, the full real-model run
- * ({MODELS["embedding"]} + {MODELS["reranker"]} + {MODELS["synthesis"]})
- * recorded {run["recorded"]} against the {CORPUS} corpus.
+ * ({display["embedding"]} + {display["reranker"]} + {display["synthesis"]})
+ * against the {display["corpus"]} corpus. Verdict written {run["verdict_written"]} — a provenance
+ * date, not one the harness recorded; see `{run["path"]}provenance.json`.
  *
  * Every number below is copied verbatim from a committed artifact in that
  * directory. Nothing here is rounded, adjusted, or hand-entered: `/methodology`
@@ -302,6 +373,16 @@ def render_ts(run: dict) -> str:
     w("export type Level = 'L1' | 'L2' | 'L3';")
     w("/** The levels H1 is actually evaluated on — L1 is single-hop and out of scope. */")
     w("export type Taxonomy = 'L2' | 'L3';\n")
+    w("/** Labels describe this recorded run, not every future implementation. */")
+    w("export const baselineLabels: Record<BaselineName, string> = {")
+    for baseline in BASELINES:
+        label = (
+            baseline_label(run, "en", baseline)
+            if baseline == "B1"
+            else TS_BASELINE_LABELS[baseline]
+        )
+        w(f"  {baseline}: {s(label)},")
+    w("};\n")
 
     w("""export interface BaselineSummary {
   baseline: BaselineName;
@@ -344,11 +425,19 @@ export interface DemoQuestionCase {
     w("/** Where these numbers come from, so the page can point at it. */")
     w("export const snapshotSource = {")
     w(f"  path: '{run['path']}',")
-    w(f"  recorded: '{run['recorded']}',")
-    w(f"  corpus: '{CORPUS}',")
+    w("  /**")
+    w("   * When the verdict file was written. Provenance metadata, not harness output —")
+    w("   * the harness writes no timestamp, so every surface must preserve that distinction.")
+    w(f"   * Observation basis and limits: `{run['path']}provenance.json`.")
+    w("   */")
+    w(f"  verdictWritten: '{run['verdict_written']}',")
+    w(f"  corpus: {s(display['corpus'])},")
     w(f"  repoId: {s(config['repo_id_override'])},")
     w(f"  k: {config['k']},")
-    for key, value in MODELS.items():
+    w(f"  groundednessGuardrail: {num(run['groundedness_guardrail'])},")
+    w(f"  sparseRetrieval: {json.dumps(sparse_retrieval(run), ensure_ascii=False)} as const,")
+    for key in ("embedding", "reranker", "synthesis"):
+        value = display[key]
         w(f"  {key}: '{value}',")
     w("} as const;\n")
 
@@ -406,7 +495,54 @@ export interface DemoQuestionCase {
         w(f"      supported: {'true' if c['supported'] else 'false'},")
         w("    },")
     w("  } satisfies Record<Taxonomy, H1Comparison>,")
+    # Repeats and their individual verdicts. A surface that shows a mean margin
+    # without the spread it came from is claiming a precision the run does not
+    # have — on this suite the L2 margin ranged wider than the bar itself.
+    w(f"  repeats: {int(h1.get('repeats', 1))},")
+    w("  perRepeat: [")
+    for entry in h1.get("per_repeat", []):
+        w("    {")
+        w(f"      repeat: {int(entry['repeat'])},")
+        w(f"      decision: {s(entry['decision'])},")
+        w("      marginVsB3: {")
+        for level in H1_LEVELS:
+            w(f"        {level}: {num(entry['comparisons'][level]['margin_vs_B3'])},")
+        w("      },")
+        w("    },")
+    w("  ],")
     w("};\n")
+
+    b0_dir = ROOT / B0_RUN
+    b0_metrics = (
+        json.loads((b0_dir / "metrics.json").read_text())
+        if (b0_dir / "metrics.json").exists()
+        else None
+    )
+    w("""/**
+ * B0 — GitHub code search, an external keyword control.
+ *
+ * Separate from the ladder above on purpose. It retrieves FILES, not chunks:
+ * the API returns a path and no line, so it has no chunk-level result and is
+ * compared on the file-level metric every arm records. And it queries a live
+ * external index, so unlike every other figure here it cannot be regenerated
+ * from committed bytes — only re-queried, against an index that may have moved.
+ *
+ * `null` means unmeasured, which is a blank rather than a zero.
+ */""")
+    if b0_metrics is None:
+        w("export const externalKeywordBaseline = null;\n")
+    else:
+        b0_levels = json.loads((b0_dir / "taxonomy_breakdown.json").read_text())
+        w("export const externalKeywordBaseline = {")
+        w(f"  runPath: {s(B0_RUN + '/')},")
+        w(f"  questions: {int(b0_metrics['questions'])},")
+        w(f"  fileRecallAtK: {num(b0_metrics['file_recall_at_k'])},")
+        w("  byLevel: {")
+        for level in LEVELS:
+            w(f"    {level}: {num(b0_levels[level]['file_recall_at_k'])},")
+        w("  },")
+        w("  reproducible: false,")
+        w("};\n")
 
     w("""/**
  * Per-question transcripts, straight out of each baseline's per_question.jsonl.
@@ -437,6 +573,25 @@ export interface DemoQuestionCase {
     return "\n".join(out) + "\n"
 
 
+def format_ts(source: str) -> str:
+    """Return the generated snapshot in the frontend's locked Prettier format."""
+
+    prettier = ROOT / "apps/frontend/node_modules/.bin/prettier"
+    if not prettier.exists():
+        raise SystemExit(
+            "Frontend Prettier is not installed. Run `npm ci` in apps/frontend "
+            "before synchronizing evaluation artifacts."
+        )
+    completed = subprocess.run(
+        [str(prettier), "--stdin-filepath", str(TS_OUT)],
+        input=source,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return completed.stdout
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -446,9 +601,9 @@ def main() -> int:
     argv = sys.argv[1:]
     check = "--check" in argv
     positional = [arg for arg in argv if not arg.startswith("--")]
-    run = load_run(ROOT / (positional[0] if positional else "results/eval-real"))
+    run = load_run(ROOT / (positional[0] if positional else DEFAULT_RUN))
 
-    targets: list[tuple[pathlib.Path, str]] = [(TS_OUT, render_ts(run))]
+    targets: list[tuple[pathlib.Path, str]] = [(TS_OUT, format_ts(render_ts(run)))]
     targets += [(path, render_doc(path, run)) for path in DOC_TARGETS]
     stale = [path for path, rendered in targets if path.read_text() != rendered]
 
@@ -471,7 +626,11 @@ def main() -> int:
     print("\nsuite  recall  mrr    ndcg   grounded")
     for baseline in BASELINES:
         row = run["suite"][baseline]
-        flag = "  <- below guardrail" if row["groundedness"] < GUARDRAIL else ""
+        flag = (
+            "  <- below guardrail"
+            if row["groundedness"] < run["groundedness_guardrail"]
+            else ""
+        )
         print(
             f"  {baseline}  {row['recall_at_k']:.4f}  {row['mrr']:.4f}  "
             f"{row['ndcg_at_k']:.4f}  {row['groundedness']:.4f}{flag}"

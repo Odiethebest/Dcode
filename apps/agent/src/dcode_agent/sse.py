@@ -8,6 +8,7 @@ the FastAPI handler drains them as bytes via `iter_bytes()`.
 import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
+from uuid import UUID
 
 from dcode_shared.events import (
     CitationEvent,
@@ -28,9 +29,7 @@ class SSEEmitter:
         self._queue: asyncio.Queue[bytes | None] = asyncio.Queue()
 
     async def emit_thought(self, step: int, content: str) -> None:
-        await self._queue.put(
-            sse_encode("thought", ThoughtEvent(step=step, content=content))
-        )
+        await self._queue.put(sse_encode("thought", ThoughtEvent(step=step, content=content)))
 
     async def emit_tool_call(self, step: int, tool: str, args: dict[str, Any]) -> None:
         await self._queue.put(
@@ -46,19 +45,33 @@ class SSEEmitter:
         )
 
     async def emit_citation(
-        self, symbol: str, file_path: str, line: int, verified: bool
+        self,
+        symbol: str,
+        file_path: str,
+        line: int,
+        verified: bool,
+        *,
+        chunk_id: UUID | None = None,
+        evidence_id: str | None = None,
+        origins: list[str] | None = None,
     ) -> None:
         await self._queue.put(
             sse_encode(
                 "citation",
-                CitationEvent(symbol=symbol, file_path=file_path, line=line, verified=verified),
+                CitationEvent(
+                    symbol=symbol,
+                    file_path=file_path,
+                    line=line,
+                    verified=verified,
+                    chunk_id=chunk_id,
+                    evidence_id=evidence_id,
+                    origins=origins or [],
+                ),
             )
         )
 
     async def emit_partial_answer(self, delta: str) -> None:
-        await self._queue.put(
-            sse_encode("partial_answer", PartialAnswerEvent(delta=delta))
-        )
+        await self._queue.put(sse_encode("partial_answer", PartialAnswerEvent(delta=delta)))
 
     async def emit_final_answer(
         self, answer: str, citations: list[CitationEvent], groundedness: float
@@ -66,16 +79,12 @@ class SSEEmitter:
         await self._queue.put(
             sse_encode(
                 "final_answer",
-                FinalAnswerEvent(
-                    answer=answer, citations=citations, groundedness=groundedness
-                ),
+                FinalAnswerEvent(answer=answer, citations=citations, groundedness=groundedness),
             )
         )
 
     async def emit_error(self, code: str, message: str) -> None:
-        await self._queue.put(
-            sse_encode("error", ErrorEvent(code=code, message=message))
-        )
+        await self._queue.put(sse_encode("error", ErrorEvent(code=code, message=message)))
 
     async def close(self) -> None:
         """Signal end-of-stream; iter_bytes() will exit on the next loop."""

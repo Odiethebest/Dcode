@@ -1,7 +1,7 @@
 [project]
 name = "dcode-api"
 version = "0.0.0"
-description = "Dcode API Gateway — implements DESIGN.md §4.1 / §4.3"
+description = "Dcode public API gateway and agent SSE proxy"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",

@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { h1Report, suiteSummary } from '@/demo/evalSnapshot';
+import { externalKeywordBaseline, h1Report, suiteSummary } from '@/demo/evalSnapshot';
+import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
 import LandingPage from '@/pages/LandingPage';
 
 // Reduced motion so the proof card jumps straight to its verified end state
@@ -53,6 +54,21 @@ describe('LandingPage', () => {
     expect(screen.getAllByText(/^verified$/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/verifying/i)).not.toBeInTheDocument();
   });
+
+  /**
+   * The card mimics the product on four axes — real file:line coordinates, a
+   * plausible answer, the same stamps, the same seal — so unlabelled it is
+   * indistinguishable from a screenshot of a real answer. Nothing on it was
+   * false, which is why the "generated numbers" and "never fabricate" rules both
+   * had nothing to say about it. See Honesty_Constraints §12.
+   */
+  it('identifies the proof card as an illustration and shows no metric-shaped figure', () => {
+    renderLanding();
+    expect(screen.getByText(/not a live answer/i)).toBeInTheDocument();
+    // 1.00 was arithmetically right for its own mock citations and still the
+    // most flattering figure on a page arguing that it reports its misses.
+    expect(screen.queryByText('1.00')).not.toBeInTheDocument();
+  });
 });
 
 /**
@@ -77,10 +93,15 @@ describe('LandingPage baseline ladder', () => {
     expect(widths).not.toContain('100.0%');
   });
 
-  it('never shows B4 beating B3 — they tie on retrieval', () => {
-    expect(suiteSummary.B4.ndcgAtK).toBe(suiteSummary.B3.ndcgAtK);
+  it('discloses that B3 and B4 are scored by different rules', () => {
+    // B4 now out-scores B3, so the old guardrail ("they tie") is gone. The
+    // claim that has to stay pinned is the reason the rows differ: identical
+    // retrieval, different scoring. A ladder showing B4 ahead without that
+    // sentence would read as a clean win the run did not produce.
+    expect(suiteSummary.B4.ndcgAtK).toBeGreaterThan(suiteSummary.B3.ndcgAtK);
     renderLanding();
-    expect(screen.getByText(/B4 ties B3 on retrieval/i)).toBeInTheDocument();
+    expect(screen.getByText(/B4 and B3 retrieve the same candidates/i)).toBeInTheDocument();
+    expect(screen.getByText(/two scoring rules as well as two systems/i)).toBeInTheDocument();
   });
 
   it('states the H1 verdict plainly and links to the methodology', () => {
@@ -93,10 +114,46 @@ describe('LandingPage baseline ladder', () => {
     );
   });
 
-  it('renders B0 as not measured, with no bar', () => {
+  it('renders B0 without a bar, in the unit it actually retrieves in', () => {
+    // B0 is measured now, and still gets no bar. The ladder plots nDCG over
+    // chunks; B0 returns files and has no chunk-level result, so a bar would be
+    // the invented number this section exists to avoid. The row states the
+    // file-level figure and that it came from a live external index — the one
+    // number on this page that cannot be regenerated from committed bytes.
+    expect(externalKeywordBaseline).not.toBeNull();
     renderLanding();
-    // A concrete bar for a baseline that was never run is the least defensible
-    // number on the page — B0 gets a row and an explanation instead.
-    expect(screen.getByText(/not measured · requires an API token/i)).toBeInTheDocument();
+    expect(screen.getByText(/file-level only/i)).toBeInTheDocument();
+    expect(screen.getByText(/not reproducible/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not measured/i)).not.toBeInTheDocument();
   });
+});
+
+/**
+ * The pipeline section used to assert "the guardrail holds it at ≥ 95%" and tag a
+ * principle `groundedness ≥ 95%`, turning a threshold into a guarantee. The
+ * current run clears that bar, but the copy still states the measured outcome
+ * rather than promising that every future run must do so.
+ */
+describe('LandingPage groundedness guardrail claim', () => {
+  beforeEach(() => mockReducedMotion());
+
+  it('reports that the current run cleared the pre-registered bar', () => {
+    expect(suiteSummary.B4.groundedness).toBeGreaterThanOrEqual(RUN_GROUNDEDNESS_BAR);
+
+    const { container } = renderLanding();
+    const copy = container.textContent ?? '';
+    expect(copy).not.toMatch(/guardrail holds it at/i);
+    expect(copy).not.toMatch(/groundedness\s*≥\s*95\s*%/i);
+    // The bar is named as a pre-registered commitment, and this run's outcome is stated.
+    expect(copy).toContain(`fixed at ${RUN_GROUNDEDNESS_BAR.toFixed(2)} before the run`);
+    expect(copy).toMatch(/cleared it/i);
+  });
+
+  it('reads the measured value from the snapshot rather than restating it', () => {
+    const { container } = renderLanding();
+    expect(container.textContent ?? '').toContain(
+      `cleared it at ${suiteSummary.B4.groundedness.toFixed(3)}`
+    );
+  });
+
 });

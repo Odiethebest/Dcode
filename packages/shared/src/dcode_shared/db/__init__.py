@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 ORM layer for Dcode (DESIGN.md §3 Data Model)."""
+"""SQLAlchemy 2.0 ORM layer for Dcode's runtime data model."""
 
 from dcode_shared.db.models import (
     Base,

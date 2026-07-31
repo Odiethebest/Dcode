@@ -1,4 +1,4 @@
-"""Initial schema — DESIGN.md §3.2 verbatim.
+"""Initial Dcode runtime schema.
 
 Tables: repos / chunks / symbols / edges.
 Extension: pgvector (HNSW index on chunks.embedding).

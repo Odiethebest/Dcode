@@ -1,6 +1,6 @@
 """Tool: `get_dependencies(module)` → List[Location].
 
-Implements DESIGN.md §2.3.2 row 5. Module-level import-edge query.
+Runs the module-level outgoing import-edge query.
 """
 
 from dcode_shared.schemas import Location

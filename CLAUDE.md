@@ -28,9 +28,27 @@ its numbers are generated rather than translated.
 
 ## 1. Two standing constraints
 
-1. **Do not resume the H1 re-run.** It is paused for environment reasons (§5).
-   Criteria set 2 in `docs/en/Final_Report.md` is approved and unimplemented; it
-   stays that way until someone runs it deliberately.
+1. **Do not chase the L2 margin with more system tweaks.** The current verdict
+   is `unsupported` with three of four comparisons clear; `B4 vs B3` on L2 falls
+   0.006 short. **Across three identical repeats that margin was +0.038, +0.006
+   and +0.088** — a range wider than the 0.050 bar, and repeat 3 returned
+   `supported` on its own. The shortfall is a fifth of the between-repeat
+   standard deviation, so another round of tuning cannot be attributed to the
+   tuning. Four single runs before this one each "just missed", in alternating
+   levels, for exactly this reason.
+
+   The remedy is more L2 questions — 16 is too few for the effect size — or a
+   second corpus. Not more repeats (it would take ~100) and not more tweaks.
+
+   **The agent's source is baked into its image, not live-mounted.**
+   `docker compose restart agent` runs the old code; use
+   `docker compose up -d --build agent api`. A stale image answers `422` to any
+   new `AgentMode` literal, which is how this was found.
+
+   Also: **flush Redis before any recorded run** (`docker exec dcode-redis-1
+   redis-cli FLUSHALL`). Agent tool results cache for 24h, and a warm cache can
+   serve graph results produced by older agent code. The 2026-07-31 run was
+   aborted mid-B3 and restarted over exactly this.
 2. **Avoid bulk-reading or restating credential-related source symbols from the
    indexed corpus.** That keyword density repeatedly false-tripped the
    environment's cyber safeguard and killed a session three times in a row.
@@ -41,7 +59,7 @@ its numbers are generated rather than translated.
 ## 2. Where things are
 
 ```
-apps/frontend/   React 18 + TS strict + Vite + Tailwind + Router v6 + TanStack Query (~2k lines)
+apps/frontend/   React 18 + TS strict + Vite + Tailwind + Router v6 + TanStack Query (~4.2k TS/TSX lines)
 apps/api/        FastAPI gateway — the SPA's only contact point
 apps/agent/      LangGraph agent, emits SSE as it runs
 apps/worker/     RabbitMQ consumer, indexing pipeline
@@ -53,9 +71,12 @@ scripts/         helper scripts, incl. sync_eval_artifacts.py
 docs/en/         five authoritative documents (table above); docs/archive/ is history
 ```
 
-**Numbers are generated, never typed.** Every evaluation figure in the UI and the
-docs comes from `results/eval-real/` via `scripts/sync_eval_artifacts.py`, and
-`make check` fails if any of them drifts. Markdown targets use
+**Official snapshot numbers are generated, never typed.** Every H1 snapshot
+figure in the UI and generated documentation blocks comes from
+`results/eval-h1-repeat3-2026-07-31/` via `scripts/sync_eval_artifacts.py`, and `make check` fails
+if any of those surfaces drifts. A separately labelled experiment report may
+derive figures from its own committed run directories and must name that
+authority. Markdown targets use
 `<!-- BEGIN generated: … -->` markers. If you need to change a displayed number,
 change the run and regenerate — do not edit the number. Prose is *not* generated,
 so re-read the narrative after any regeneration.
@@ -70,7 +91,8 @@ those paths render nothing so they cannot return.
 `apps/frontend/src/api/types.ts`, a **hand-mirrored** copy of the
 `dcode_shared` schemas. It has drifted before; a compile-time test pins it, and
 adopting `openapi-typescript` remains the durable fix. Re-checked field by field
-on 2026-07-29: no drift at that point.
+on 2026-07-30, including `QueryTurn` and `QueryRequest.history`: no drift at that
+point.
 
 `streamQuery` is a hand-written SSE parser over `fetch` + `getReader()` — the query
 is a POST with a JSON body, so `EventSource` is unusable. It splits on `\n\n`,
@@ -115,7 +137,27 @@ rails (262px left, 384px right) are correct as-is.
 ## 4. Current state
 
 Everything below is committed and green: `make check`, `make frontend-build`,
-62 frontend tests, full pytest suite.
+71 frontend tests, full pytest suite.
+
+**The current H1 result is `unsupported` with a caveat worth internalising before
+you touch anything evaluation-adjacent.** L2 cleared, L3 missed by 0.005, and the
+verdict flips if B3 is scored by B4's rule instead of its own. The call graph —
+the whole hypothesis — accounts for 4 new ground-truth hits across 3 of 33
+questions. A previous session's pre-registered claim that B4's scoring rule
+"handicaps B4" was falsified: it helps B4. If you find yourself about to write
+that the graph's contribution is unmeasured, that sentence was true for two runs
+and is now false.
+
+Current interaction contracts added on 2026-07-30:
+
+- query history is client-supplied, bounded by the gateway, and part of the
+  cache key; the agent contextualizes follow-ups without persisting a session;
+- English/Chinese caller and callee questions route explicitly, and synthesis
+  answers in the current question's supported language;
+- LLM citations use request-local server-owned evidence IDs; explicit
+  `file.py:line` claims are still independently verified;
+- answer Markdown supports KaTeX, with legacy LaTeX delimiters normalized only
+  outside inline and fenced code.
 
 **Known open regression — accessibility live regions.** The pre-rebuild query page
 had `aria-live="polite"` on the status region and `role="log" aria-live="polite"`

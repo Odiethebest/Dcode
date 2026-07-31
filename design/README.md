@@ -32,3 +32,19 @@ verification.
 The brief that drove the rebuild is archived at
 [`../docs/archive/frontend-redesign-brief.md`](../docs/archive/frontend-redesign-brief.md).
 Its four phases are all complete, so it is history rather than instruction.
+
+## Recorded divergences
+
+Where the shipped UI has deliberately departed from a prototype, it is listed
+here. These are **not** sync debt, and the HTML is deliberately left alone: a
+prototype that has to be kept in step is itself a hand-maintained copy, which is
+the defect this repository keeps paying for. The prototypes are the historical
+visual reference for the rebuild, not a live mirror. Recording a divergence
+turns it into a fact; back-porting it would turn it into an obligation.
+
+| Prototype | Shipped | Why |
+|---|---|---|
+| `dcode-workbench.html` inspector header always shows a `verified` badge | badge only where a citation actually passed verification | The prototype had no backend to fail against. [Honesty_Constraints.md](../docs/en/Honesty_Constraints.md) §5 |
+| `dcode-landing.html:225,402,410` — hero seal resolves to `groundedness 1.00` | seal resolves to a word; no figure | A metric-shaped number with no run behind it, and the first groundedness value on a page whose argument is that it reports its misses. §12 |
+| `dcode-landing.html` hero card carries no marker | card leads with `Example — not a live answer` | The card mimics the product down to real `file:line` coordinates; unlabelled it is indistinguishable from a screenshot of a real answer. §12 |
+| `dcode-landing.html:286,310` — `the guardrail holds it at ≥ 95%` | states the bar was pre-registered and that this run missed it | The recorded run came in under the bar. §11 |

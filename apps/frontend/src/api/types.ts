@@ -1,8 +1,8 @@
 /**
- * Mirror of dcode_shared.schemas (DESIGN.md §4 Interface Contracts).
+ * Hand-maintained mirror of the canonical dcode_shared.schemas contracts.
  *
- * Kept in sync manually for now. M2 swaps this for auto-generated types
- * from the FastAPI OpenAPI document via `openapi-typescript`.
+ * Kept in sync manually for now. Replacing it with types generated from the
+ * FastAPI OpenAPI document via `openapi-typescript` remains outstanding.
  */
 
 export type UUID = string;
@@ -18,7 +18,7 @@ export type RepoStatus =
 
 export type StageState = 'pending' | 'in_progress' | 'done' | 'failed';
 
-// --- Indexing API (DESIGN.md §4.1) ---
+// --- Public indexing API ---
 
 export interface RepoCreateRequest {
   url: string;
@@ -51,7 +51,7 @@ export interface RepoStatusResponse {
   warnings: string[];
 }
 
-// --- Query API (DESIGN.md §4.3) ---
+// --- Public query API ---
 
 export interface QueryTurn {
   role: 'user' | 'assistant';

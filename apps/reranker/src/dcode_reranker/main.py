@@ -1,4 +1,4 @@
-"""Self-hosted reranker sidecar for OD-3 (BGE cross-encoder)."""
+"""Self-hosted HTTP reranker sidecar for BGE and compatible cross-encoders."""
 
 from __future__ import annotations
 

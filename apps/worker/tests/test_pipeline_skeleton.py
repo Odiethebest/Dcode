@@ -25,13 +25,13 @@ def test_pipeline_context_default_construction() -> None:
 
 
 def test_all_stages_expose_run_coroutine() -> None:
-    """Every stage module must expose `run` (filled in at M1/M2)."""
+    """Every implemented stage module exposes the shared `run` contract."""
     for mod in (clone, parse, chunk, embed, graph):
         assert callable(mod.run)
 
 
 async def test_handle_job_tolerates_malformed_message() -> None:
-    """Skeleton: malformed JSON must not crash the consumer loop."""
+    """Malformed JSON must not crash the consumer loop."""
     await pipeline.handle_job(b"not-json")
     await pipeline.handle_job(b'{"missing":"fields"}')
 
@@ -168,7 +168,7 @@ async def test_handle_job_discards_when_repo_row_missing(caplog) -> None:
     session_factory = FakeSessionFactory(None)  # repo row does not exist
     redis = FakeRedis()
 
-    # Must complete without raising — a raise would nack the message (P3-9).
+    # Must complete without raising — a raise would nack the message.
     await pipeline.handle_job(
         json.dumps({"repo_id": str(repo_id), "url": "https://x.git"}).encode(),
         session_factory=session_factory,
@@ -183,7 +183,7 @@ async def test_handle_job_discards_when_repo_row_missing(caplog) -> None:
 
 
 async def test_handle_job_does_not_raise_when_failure_persist_fails(caplog) -> None:
-    """If persisting the failed state also fails (repo deleted mid-run), swallow it (P3-9)."""
+    """If failure persistence also fails because the repo vanished, swallow it."""
     caplog.set_level(logging.ERROR, logger="dcode.worker.pipeline")
     repo = Repo(id=uuid4(), url="https://example.com/repo.git", status="queued", progress=0)
     session_factory = _DisappearingSessionFactory(repo)  # present for run, gone for failure-persist

@@ -1,7 +1,7 @@
 [project]
 name = "dcode-reranker"
 version = "0.0.0"
-description = "Dcode reranker sidecar — self-hosted cross-encoder (OD-3)"
+description = "Dcode self-hosted cross-encoder reranker sidecar"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",

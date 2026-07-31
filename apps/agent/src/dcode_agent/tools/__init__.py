@@ -1,13 +1,15 @@
-"""Agent tools — implements DESIGN.md §2.3.2 tool clinic.
+"""Canonical tool set exposed by the Dcode agent.
 
-`default_registry()` returns a ToolRegistry containing all 9 tools.
+`default_registry()` returns a ToolRegistry containing all canonical tools.
 Used by the agent's plan / tool_call nodes and exposed for debugging
 via the agent service's `/internal/tools` endpoint.
 """
 
 from dcode_agent.tools.base import Tool, ToolRegistry
+from dcode_agent.tools.find_call_path import FindCallPathTool
 from dcode_agent.tools.find_definition import FindDefinitionTool
 from dcode_agent.tools.find_references import FindReferencesTool
+from dcode_agent.tools.get_call_neighbors import GetCallNeighborsTool
 from dcode_agent.tools.get_dependencies import GetDependenciesTool
 from dcode_agent.tools.get_dependents import GetDependentsTool
 from dcode_agent.tools.get_file_outline import GetFileOutlineTool
@@ -18,13 +20,15 @@ from dcode_agent.tools.search_code import SearchCodeTool
 
 
 def default_registry() -> ToolRegistry:
-    """Construct the canonical 9-tool registry."""
+    """Construct the canonical 11-tool registry."""
     registry = ToolRegistry()
     for tool_cls in (
         SearchCodeTool,
         ReadFileTool,
         FindDefinitionTool,
         FindReferencesTool,
+        FindCallPathTool,
+        GetCallNeighborsTool,
         GetDependenciesTool,
         GetDependentsTool,
         GetFileOutlineTool,

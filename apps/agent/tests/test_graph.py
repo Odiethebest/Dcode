@@ -1,17 +1,21 @@
 """LangGraph node tests for the agent's first-pass orchestration."""
 
+import json
 import logging
 from typing import Any, ClassVar
 from uuid import uuid4
 
+from dcode_agent import graph as graph_module
 from dcode_agent.graph import (
     build_graph,
     contextualize_node,
+    groundedness_node,
     plan_node,
     synthesize_node,
     tool_call_node,
 )
-from dcode_agent.state import AgentState
+from dcode_agent.settings import agent_settings
+from dcode_agent.state import STRUCTURAL_TOOLS, AgentState
 from dcode_agent.tools.base import Tool, ToolRegistry
 from dcode_shared.db.models import Chunk, Symbol
 from pydantic import BaseModel
@@ -120,6 +124,57 @@ class DummyReferencesTool(Tool[DummyArgs, DummyResult]):
         )
 
 
+class DummyCallArgs(BaseModel):
+    symbol: str
+    direction: str
+
+
+class DummyCallResult(BaseModel):
+    found: bool
+    symbol: str
+    direction: str
+    matches: list[dict[str, Any]]
+    callers: list[dict[str, Any]]
+    callees: list[dict[str, Any]]
+    source_calls: list[dict[str, Any]]
+
+
+class DummyCallNeighborsTool(Tool[DummyCallArgs, DummyCallResult]):
+    name: ClassVar[str] = "get_call_neighbors"
+    description: ClassVar[str] = "Dummy call-neighbor tool for graph tests."
+    ArgsSchema: ClassVar[type[BaseModel]] = DummyCallArgs
+
+    async def execute(self, repo_id: str, args: DummyCallArgs) -> DummyCallResult:
+        target = {
+            "symbol": "requests.auth.HTTPBasicAuth",
+            "file_path": "src/requests/auth.py",
+            "line": 85,
+            "chunk_id": None,
+        }
+        caller = {
+            "symbol": "requests.models.PreparedRequest.prepare_auth",
+            "file_path": "src/requests/models.py",
+            "line": 589,
+            "chunk_id": None,
+        }
+        return DummyCallResult(
+            found=True,
+            symbol=args.symbol,
+            direction=args.direction,
+            matches=[target],
+            callers=[caller],
+            callees=[],
+            source_calls=[
+                {
+                    "expression": "self.client.retrieve",
+                    "file_path": "src/requests/auth.py",
+                    "line": 90,
+                    "resolved_target": None,
+                }
+            ],
+        )
+
+
 class DummyOutlineArgs(BaseModel):
     path: str
 
@@ -178,28 +233,110 @@ def _registry(*tools: Tool[Any, Any]) -> ToolRegistry:
 async def test_plan_node_routes_definition_queries() -> None:
     state = AgentState(repo_id=str(uuid4()), query="Where is `HTTPBasicAuth` defined?")
 
+    first = await plan_node(state)
+    assert first.pending_tool_name == "search_code"
+    state.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": state.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
     updated = await plan_node(state)
 
     assert updated.pending_tool_name == "find_definition"
     assert updated.pending_tool_args == {"symbol": "HTTPBasicAuth"}
-    assert "find_definition" in updated.thoughts[0]
+    assert "find_definition" in updated.thoughts[-1]
 
 
-async def test_plan_node_extracts_symbols_from_reference_queries() -> None:
+async def test_plan_node_routes_call_queries_with_explicit_direction() -> None:
     queries = [
-        "Who calls send in requests?",
-        "who references send",
-        "find callers of send",
-        "Who calls `send`?",
+        ("Who calls send in requests?", "callers"),
+        ("find callers of send", "callers"),
+        ("Which functions call send?", "callers"),
+        ("Who calls `send`?", "callers"),
+        ("What does send call?", "callees"),
     ]
 
-    for query in queries:
+    for query, direction in queries:
         state = AgentState(repo_id=str(uuid4()), query=query)
 
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
+        updated = await plan_node(state)
+
+        assert updated.pending_tool_name == "get_call_neighbors"
+        assert updated.pending_tool_args == {"symbol": "send", "direction": direction}
+
+
+async def test_plan_node_routes_reference_queries_separately_from_calls() -> None:
+    for query in ("who references send", "references to `send`"):
+        state = AgentState(repo_id=str(uuid4()), query=query)
+
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
         updated = await plan_node(state)
 
         assert updated.pending_tool_name == "find_references"
         assert updated.pending_tool_args == {"symbol": "send"}
+
+
+async def test_plan_node_understands_chinese_bidirectional_call_queries() -> None:
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="HybridRetriever.retrieve 被哪些函数调用，又调用哪些函数？",
+    )
+
+    first = await plan_node(state)
+    assert first.pending_tool_name == "search_code"
+    state.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": state.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
+    updated = await plan_node(state)
+
+    assert updated.pending_tool_name == "get_call_neighbors"
+    assert updated.pending_tool_args == {
+        "symbol": "HybridRetriever.retrieve",
+        "direction": "both",
+    }
+
+
+async def test_pronoun_only_chinese_call_query_searches_before_graph_walk() -> None:
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="它被哪些函数调用，又调用哪些函数？",
+    )
+
+    updated = await plan_node(state)
+
+    assert updated.pending_tool_name == "search_code"
+    assert updated.pending_tool_args == {
+        "query": "它被哪些函数调用，又调用哪些函数？",
+        "k": 5,
+        "mode": "hybrid",
+    }
 
 
 async def test_plan_node_defaults_to_search_code() -> None:
@@ -208,7 +345,7 @@ async def test_plan_node_defaults_to_search_code() -> None:
     updated = await plan_node(state)
 
     assert updated.pending_tool_name == "search_code"
-    assert updated.pending_tool_args == {"query": "auth related code", "k": 5}
+    assert updated.pending_tool_args == {"query": "auth related code", "k": 5, "mode": "hybrid"}
 
 
 async def test_plan_node_routes_dependents_queries() -> None:
@@ -220,8 +357,71 @@ async def test_plan_node_routes_dependents_queries() -> None:
     ]
     for query in queries:
         state = AgentState(repo_id=str(uuid4()), query=query)
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
         updated = await plan_node(state)
         assert updated.pending_tool_name == "get_dependents", query
+
+
+async def test_multihop_expands_three_distinct_hybrid_seeds() -> None:
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/module_{index}.py",
+            "symbol_name": f"symbol_{index}",
+            "start_line": index * 10 + 1,
+            "end_line": index * 10 + 5,
+            "content": f"def symbol_{index}(): ...",
+            "score": 1.0 - index / 10,
+            "score_components": {"dense": 0.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for index in range(3)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="How is the architecture wired end-to-end?",
+        observations=[
+            {
+                "tool": "search_code",
+                "args": {"query": "How is the architecture wired end-to-end?", "k": 5},
+                "result": {"chunks": chunks},
+                "cached": False,
+            }
+        ],
+    )
+
+    for chunk in chunks:
+        planned = await plan_node(state)
+        assert planned.pending_tool_name == "read_file"
+        assert planned.pending_tool_args["path"] == chunk["file_path"]
+        state.tool_calls.append(
+            {
+                "tool": "read_file",
+                "args": {
+                    "path": chunk["file_path"],
+                    "line_range": [chunk["start_line"], chunk["end_line"]],
+                },
+            }
+        )
+
+    for chunk in chunks:
+        planned = await plan_node(state)
+        assert planned.pending_tool_name == "find_references"
+        assert planned.pending_tool_args == {"symbol": chunk["symbol_name"]}
+        state.tool_calls.append(
+            {
+                "tool": "find_references",
+                "args": {"symbol": chunk["symbol_name"]},
+            }
+        )
 
 
 async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
@@ -294,7 +494,7 @@ async def test_synthesize_node_formats_search_observation() -> None:
     assert updated.citations[0]["symbol"] == "HTTPBasicAuth"
 
 
-async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
+async def test_build_graph_runs_shared_search_then_specialised_tool() -> None:
     repo_id = str(uuid4())
     emitter = FakeEmitter()
     registry = _registry(DummyTool(), DummySearchTool())
@@ -309,16 +509,32 @@ async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
     )
 
     assert result["final_answer"] is not None
-    assert "Definition matches" in result["final_answer"]
+    assert "Agent trace" in result["final_answer"]
     assert result["groundedness_score"] == 0.0
     # Guardrail: with no db the single citation is unverified, so the file:line
     # reference is redacted from the answer and a warning footer is appended.
     assert "src/requests/auth.py:85" not in result["final_answer"]
     assert "[unverified reference removed]" in result["final_answer"]
-    assert len(result["tool_calls"]) == 1
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "find_definition",
+    ]
     assert emitter.thoughts
     assert emitter.tool_calls
     assert emitter.tool_results
+
+
+class FakeScalars:
+    """The slice of SQLAlchemy's Result that `_verify_symbol` uses."""
+
+    def __init__(self, rows: list[Symbol]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> "FakeScalars":
+        return self
+
+    def all(self) -> list[Symbol]:
+        return list(self._rows)
 
 
 class FakeGroundednessSession:
@@ -327,6 +543,15 @@ class FakeGroundednessSession:
     def __init__(self, *, chunks: list[Chunk], symbols: list[Symbol]) -> None:
         self.chunks = chunks
         self.symbols = symbols
+
+    async def execute(self, stmt: object) -> FakeScalars:
+        """Superset for the repo; the name filter is deliberately not emulated.
+
+        See the same method in `test_groundedness.py` — reimplementing the SQL
+        narrowing in a fake would be a third copy of the matching rule.
+        """
+        params = stmt.compile().params  # type: ignore[attr-defined]
+        return FakeScalars([s for s in self.symbols if s.repo_id == params["repo_id_1"]])
 
     async def scalar(self, stmt: object) -> Chunk | Symbol | None:
         compiled = stmt.compile()
@@ -410,6 +635,24 @@ def _grounded_session(repo_id: Any) -> FakeGroundednessSession:
     )
 
 
+async def test_groundedness_node_resolves_evidence_ids_without_treating_code_as_citations() -> None:
+    repo_uuid = uuid4()
+    state = AgentState(
+        repo_id=str(repo_uuid),
+        query="它调用了哪些函数？",
+        draft_answer="源码中出现 `self.client.retrieve`，证据见 [C1]。",
+        evidence_catalog={"C1": "src/requests/auth.py:85"},
+        runtime={"db": _grounded_session(repo_uuid)},
+    )
+
+    updated = await groundedness_node(state)
+
+    assert updated.groundedness_score == 1.0
+    assert "`self.client.retrieve`" in (updated.final_answer or "")
+    assert "`src/requests/auth.py:85`" in (updated.final_answer or "")
+    assert "[C1]" not in (updated.final_answer or "")
+
+
 async def test_build_graph_runs_multihop_for_architecture_query() -> None:
     repo_uuid = uuid4()
     repo_id = str(repo_uuid)
@@ -453,6 +696,72 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
     assert len(emitter.thoughts) == 4
     assert len(emitter.tool_calls) == 4
     assert len(emitter.tool_results) == 4
+
+
+async def test_build_graph_reads_source_after_bidirectional_call_lookup() -> None:
+    repo_uuid = uuid4()
+    emitter = FakeEmitter()
+    registry = _registry(DummySearchTool(), DummyCallNeighborsTool(), DummyReadFileTool())
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=str(repo_uuid),
+            query="`HTTPBasicAuth` 被哪些函数调用，又调用哪些函数？",
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": {},
+                "emitter": emitter,
+                "db": _grounded_session(repo_uuid),
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "get_call_neighbors",
+        "read_file",
+    ]
+    assert "静态调用边按方向分组" in result["final_answer"]
+    assert "src/requests/auth.py:85" in result["final_answer"]
+    assert "self.client.retrieve" in result["final_answer"]
+    assert "静态目标未解析" in result["final_answer"]
+    assert result["groundedness_score"] == 1.0
+
+
+async def test_exact_chinese_pronoun_query_retrieves_then_walks_both_call_directions() -> None:
+    repo_uuid = uuid4()
+    emitter = FakeEmitter()
+    registry = _registry(
+        DummySearchTool(),
+        DummyReadFileTool(),
+        DummyCallNeighborsTool(),
+    )
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=str(repo_uuid),
+            query="它被哪些函数调用，又调用哪些函数？",
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": {},
+                "emitter": emitter,
+                "db": _grounded_session(repo_uuid),
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "read_file",
+        "get_call_neighbors",
+    ]
+    assert result["tool_calls"][-1]["args"] == {
+        "symbol": "HTTPBasicAuth",
+        "direction": "both",
+    }
+    assert result["groundedness_score"] == 1.0
 
 
 class DummyFailingSearchTool(Tool[DummySearchArgs, DummySearchResult]):
@@ -542,3 +851,454 @@ async def test_contextualize_node_is_noop_without_llm() -> None:
 
     assert updated.query == "who calls it?"
     assert updated.raw_query is None
+
+
+async def test_contextualize_binds_chinese_call_pronoun_to_recent_user_symbol() -> None:
+    query = "它被哪些函数调用，又调用哪些函数？"
+    llm = _RewriteLLM(query)  # reproduces a contextualizer that returns it unchanged
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        history=[
+            {"role": "user", "content": "请解释 HybridRetriever.retrieve 的实现。"},
+            {
+                "role": "assistant",
+                "content": "里面还能看到 `self.faiss.retrieve` 和 `self.bm25.retrieve`。",
+            },
+        ],
+        runtime={"llm": llm},
+    )
+
+    contextualized = await contextualize_node(state)
+    first = await plan_node(contextualized)
+    assert first.pending_tool_name == "search_code"
+    contextualized.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": contextualized.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
+    planned = await plan_node(contextualized)
+
+    assert contextualized.raw_query == query
+    assert contextualized.query == "`HybridRetriever.retrieve` 它被哪些函数调用，又调用哪些函数？"
+    assert planned.pending_tool_name == "get_call_neighbors"
+    assert planned.pending_tool_args == {
+        "symbol": "HybridRetriever.retrieve",
+        "direction": "both",
+    }
+
+
+async def test_hybrid_only_mode_stops_after_shared_search() -> None:
+    repo_id = str(uuid4())
+    emitter = FakeEmitter()
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=repo_id,
+            query="How is authentication wired end-to-end?",
+            mode="hybrid_only",
+            runtime={
+                "tool_registry": _registry(DummySearchTool()),
+                "tool_cache": {},
+                "emitter": emitter,
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == ["search_code"]
+    assert "Top code hits" in result["draft_answer"]
+
+
+# ---------------------------------------------------------------------------
+# Evaluation arm modes
+#
+# Each mode is one row of the H1 ladder. If a mode silently behaves like
+# another, the ladder still runs, every higher-level test still passes, and the
+# resulting comparison is meaningless — so the invariants are pinned here.
+# ---------------------------------------------------------------------------
+
+
+def _search_observation(query: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "tool": "search_code",
+        "args": {"query": query, "k": 5, "mode": "hybrid"},
+        "result": {"chunks": chunks},
+        "cached": False,
+    }
+
+
+def _seed_chunk(path: str, symbol: str, start: int) -> dict[str, Any]:
+    return {
+        "chunk_id": str(uuid4()),
+        "file_path": path,
+        "symbol_name": symbol,
+        "start_line": start,
+        "end_line": start + 20,
+        "content": f"def {symbol}(): ...",
+        "score": 1.0,
+        "score_components": {"dense": 0.5, "sparse": 0.5, "rerank": 0.5},
+    }
+
+
+def _record(state: AgentState, planned: AgentState) -> None:
+    """Mirror what tool_call_node persists, so the planner's dedup works.
+
+    Dedup reads `tool_calls`; appending only to `observations` makes the
+    planner re-pick the same tool forever and quietly turns any walk assertion
+    into a test of nothing.
+    """
+    # tool_call_node persists JSON-normalized args; dedup compares against
+    # that form, so a tuple line_range recorded raw would never match.
+    entry = {
+        "tool": planned.pending_tool_name,
+        "args": json.loads(json.dumps(planned.pending_tool_args)),
+    }
+    state.tool_calls.append(entry)
+    state.observations.append({**entry, "result": {"locations": []}, "cached": False})
+
+
+async def test_each_mode_opens_with_its_own_retrieval_mode() -> None:
+    expected = {
+        "full": "hybrid",
+        "agent_no_graph": "hybrid",
+        "hybrid_only": "hybrid",
+        "dense_only": "dense",
+    }
+    for mode, search_mode in expected.items():
+        state = AgentState(repo_id=str(uuid4()), query="how are proxies resolved", mode=mode)
+
+        planned = await plan_node(state)
+
+        assert planned.pending_tool_name == "search_code"
+        assert planned.pending_tool_args["mode"] == search_mode, mode
+
+
+async def test_no_expansion_modes_stop_after_one_retrieval() -> None:
+    """B2 and B3 are single-retrieval arms; a follow-up tool would make them B4."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    for mode in ("hybrid_only", "dense_only"):
+        state = AgentState(
+            repo_id=str(uuid4()),
+            query="Explain the end-to-end redirect flow across the session stack",
+            mode=mode,
+            observations=[_search_observation("redirect flow", chunks)],
+        )
+
+        planned = await plan_node(state)
+
+        assert planned.pending_tool_name is None, mode
+
+
+async def test_no_graph_mode_never_selects_a_structural_tool() -> None:
+    """The B3.5 ablation is exactly this exclusion, so it gets an explicit net."""
+    chunks = [
+        _seed_chunk("src/requests/sessions.py", "resolve_redirects", 186),
+        _seed_chunk("src/requests/models.py", "prepare_body", 576),
+        _seed_chunk("src/requests/utils.py", "rewind_body", 1139),
+    ]
+    queries = [
+        "Explain how a streaming request body is rewound across redirects",
+        "Who calls `resolve_redirects`?",
+        "什么函数调用了 `rewind_body`？",
+        "What does `resolve_redirects` depend on?",
+        "Who imports `requests.sessions`?",
+    ]
+    for query in queries:
+        state = AgentState(
+            repo_id=str(uuid4()),
+            query=query,
+            mode="agent_no_graph",
+            observations=[_search_observation(query, chunks)],
+        )
+        for _ in range(agent_settings.max_steps):
+            planned = await plan_node(state)
+            if planned.pending_tool_name is None:
+                break
+            assert planned.pending_tool_name not in STRUCTURAL_TOOLS, (query, planned.pending_tool_name)
+            _record(state, planned)
+
+
+async def test_no_graph_mode_still_reaches_the_file_outline() -> None:
+    """B3.5 must be as strong as it can be without a graph.
+
+    A truncated walk would understate the no-graph arm and so overstate the
+    call graph in `B4 - B3.5` — an error in the direction that flatters the
+    hypothesis, which is the direction that matters.
+    """
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="Explain the end-to-end redirect flow across the session stack",
+        mode="agent_no_graph",
+        observations=[_search_observation("redirect flow", chunks)],
+    )
+
+    selected: list[str] = []
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        selected.append(planned.pending_tool_name)
+        _record(state, planned)
+
+    assert "read_file" in selected
+    assert "get_file_outline" in selected
+    assert not STRUCTURAL_TOOLS.intersection(selected)
+
+
+async def test_full_mode_does_use_the_graph_on_the_same_query() -> None:
+    """The control for the test above: without it, an always-empty walk passes."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "resolve_redirects", 186)]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="Explain the end-to-end redirect flow across the session stack",
+        mode="full",
+        observations=[_search_observation("redirect flow", chunks)],
+    )
+
+    selected: list[str] = []
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        selected.append(planned.pending_tool_name)
+        _record(state, planned)
+
+    assert STRUCTURAL_TOOLS.intersection(selected)
+
+
+async def test_flow_question_traces_a_call_path_before_listing_references() -> None:
+    """L3 questions ask how control reaches B from A.
+
+    find_references answers "everything that mentions A", which on the 33-question
+    suite cost the full arm 0.23 composite on two architecture questions. The path
+    tool has to be reached for that to change.
+    """
+    chunks = [
+        _seed_chunk("src/requests/sessions.py", "request", 557),
+        _seed_chunk("src/requests/adapters.py", "cert_verify", 307),
+    ]
+    query = (
+        "Explain how verify and client-certificate settings travel from "
+        "`Session.request` to `cert_verify`"
+    )
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        mode="full",
+        observations=[_search_observation(query, chunks)],
+    )
+
+    planned = await plan_node(state)
+
+    assert planned.pending_tool_name == "find_call_path"
+    assert planned.pending_tool_args["start"] == "Session.request"
+    assert planned.pending_tool_args["end"] == "cert_verify"
+
+
+async def test_no_graph_mode_never_traces_a_call_path() -> None:
+    """find_call_path is a graph tool, so B3.5 must not reach it."""
+    chunks = [_seed_chunk("src/requests/sessions.py", "request", 557)]
+    query = "Explain how settings travel from `Session.request` to `cert_verify`"
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        mode="agent_no_graph",
+        observations=[_search_observation(query, chunks)],
+    )
+
+    for _ in range(agent_settings.max_steps):
+        planned = await plan_node(state)
+        if planned.pending_tool_name is None:
+            break
+        assert planned.pending_tool_name != "find_call_path"
+        _record(state, planned)
+
+
+async def test_a_question_naming_one_endpoint_does_not_invent_the_other() -> None:
+    """Guessing a target would send the search somewhere never asked about."""
+    assert (
+        graph_module._extract_flow_endpoints(
+            "Explain how the redirect flow works from `resolve_redirects`",
+            [
+                {
+                    "file_path": "src/requests/sessions.py",
+                    "symbol_name": "__module_doc__",
+                    "start_line": 1,
+                }
+            ],
+        )
+        is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evidence hydration and unified ranking
+# ---------------------------------------------------------------------------
+
+
+def _graph_observation(chunk_id: str) -> dict[str, Any]:
+    return {
+        "tool": "find_references",
+        "args": {"symbol": "resolve_redirects"},
+        "result": {
+            "locations": [
+                {
+                    "symbol": "requests.sessions.Session.resolve_redirects",
+                    "file_path": "src/requests/sessions.py",
+                    "line": 186,
+                    "chunk_id": chunk_id,
+                }
+            ]
+        },
+        "cached": False,
+    }
+
+
+async def test_graph_evidence_is_hydrated_with_source(monkeypatch) -> None:
+    """Bare file:line names cannot compete with chunks that carry code.
+
+    Before hydration the structural half of B4's evidence reached the prompt as
+    a list of locations with no source at all, which is a large part of why it
+    was rarely cited.
+    """
+    chunk_id = str(uuid4())
+    requested: dict[str, Any] = {}
+
+    async def fake_fetch(endpoint: str, repo_id: str, params: dict[str, Any]) -> Any:
+        requested.update(endpoint=endpoint, params=params)
+        return [{"chunk_id": chunk_id, "content": "def resolve_redirects(self): ..."}]
+
+    monkeypatch.setattr(graph_module.tool_common, "fetch_internal_json", fake_fetch)
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: None)
+
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="how are redirects resolved",
+        observations=[_graph_observation(chunk_id)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert requested["endpoint"] == "get_chunks"
+    assert requested["params"]["chunk_ids"] == [chunk_id]
+    hydrated = [t for t in catalog.values() if t.chunk_id == chunk_id]
+    assert hydrated and "resolve_redirects" in hydrated[0].content
+    context = graph_module._build_llm_context(state, evidence_catalog=catalog)
+    assert "def resolve_redirects" in context
+
+
+async def test_evidence_is_ordered_by_relevance_not_by_tool_order(monkeypatch) -> None:
+    """The whole point of the change: graph and retrieval compete on one scale."""
+    graph_chunk = str(uuid4())
+
+    async def fake_fetch(endpoint: str, repo_id: str, params: dict[str, Any]) -> Any:
+        return [{"chunk_id": graph_chunk, "content": "the graph hit, highly relevant"}]
+
+    class FakeReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            # Score the graph-derived passage above the retrieved one.
+            return [0.1 if "search hit" in p else 0.9 for p in passages]
+
+    monkeypatch.setattr(graph_module.tool_common, "fetch_internal_json", fake_fetch)
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: FakeReranker())
+
+    search_chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": "src/requests/models.py",
+            "symbol_name": "prepare",
+            "start_line": 424,
+            "end_line": 440,
+            "content": "the search hit",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="how are redirects resolved",
+        observations=[
+            _search_observation("redirects", search_chunks),
+            _graph_observation(graph_chunk),
+        ],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    # C1 is the first thing the model reads. Tool order would have put the
+    # search hit there; relevance puts the graph hit there.
+    assert catalog["C1"].chunk_id == graph_chunk
+
+
+async def test_context_budget_is_capped_and_overflow_stays_citable(monkeypatch) -> None:
+    """Beyond the budget a target loses its content, never its ID.
+
+    Dropping it from the catalog would leave the structural narrative
+    referencing evidence IDs that no longer exist, and would silently make
+    verified citations unverifiable.
+    """
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: None)
+
+    budget = graph_module._EVIDENCE_CONTEXT_BUDGET
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/mod{i}.py",
+            "symbol_name": f"sym{i}",
+            "start_line": i + 1,
+            "end_line": i + 5,
+            "content": f"body {i}",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for i in range(budget + 4)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="anything",
+        observations=[_search_observation("anything", chunks)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert len(catalog) == budget + 4
+    with_content = [t for t in catalog.values() if t.content]
+    assert len(with_content) == budget
+
+
+async def test_ranking_failure_degrades_to_observation_order(monkeypatch) -> None:
+    """An unavailable reranker must not cost the user their answer."""
+
+    class BrokenReranker:
+        async def rerank(self, query: str, passages: list[str]) -> list[float]:
+            raise RuntimeError("reranker down")
+
+    monkeypatch.setattr(graph_module, "_get_reranker_client", lambda: BrokenReranker())
+
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/mod{i}.py",
+            "symbol_name": f"sym{i}",
+            "start_line": i + 1,
+            "end_line": i + 5,
+            "content": f"body {i}",
+            "score": 1.0,
+            "score_components": {"dense": 1.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for i in range(2)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="anything",
+        observations=[_search_observation("anything", chunks)],
+    )
+
+    catalog = await graph_module._ranked_evidence_catalog(state)
+
+    assert catalog["C1"].display_token == "src/requests/mod0.py:1"

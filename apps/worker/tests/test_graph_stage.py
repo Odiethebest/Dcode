@@ -10,7 +10,7 @@ from dcode_shared.db.models import Chunk as DBChunk
 from dcode_shared.db.models import Edge, Symbol
 from dcode_shared.schemas import EdgeType, SymbolKind
 from dcode_worker.context import PipelineContext
-from dcode_worker.models import CodeChunk
+from dcode_worker.models import CodeChunk, ParsedPythonFile
 from dcode_worker.stages import chunk, graph, parse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -275,3 +275,173 @@ class FakeSessionFactory:
 
     def __call__(self) -> AbstractAsyncContextManager[AsyncSession]:
         return self.session
+
+
+# ---------------------------------------------------------------------------
+# Call resolution beyond the same class body
+# ---------------------------------------------------------------------------
+
+
+def _call_targets(source: str, module_name: str, extra_symbols: set[str]) -> set[str]:
+    """Resolve calls in one synthetic module, with inheritance available."""
+    parsed = ParsedPythonFile(
+        file_path=f"{module_name.replace('.', '/')}.py",
+        source=source,
+        tree=ast.parse(source),
+    )
+    internal_symbols = extra_symbols
+    inherits = graph._inherits_for_file(
+        parsed,
+        module_name,
+        internal_symbols=internal_symbols,
+        internal_modules={module_name},
+    )
+    records = graph._calls_for_file(
+        parsed,
+        module_name,
+        internal_symbols=internal_symbols,
+        internal_modules={module_name},
+        bases_by_class=graph._bases_by_class(inherits),
+    )
+    return {record.target_symbol for record in records}
+
+
+def test_self_call_resolves_through_a_base_class() -> None:
+    """The miss that hid the whole redirect machinery from Session.
+
+    `resolve_redirects` lives on a mixin, so `self.resolve_redirects()` inside
+    `Session.send` used to resolve to nothing at all.
+    """
+    source = """
+class RedirectMixin:
+    def resolve_redirects(self):
+        return None
+
+
+class Session(RedirectMixin):
+    def send(self):
+        return self.resolve_redirects()
+"""
+    targets = _call_targets(
+        source,
+        "pkg.sessions",
+        {
+            "pkg.sessions",
+            "pkg.sessions.RedirectMixin",
+            "pkg.sessions.RedirectMixin.resolve_redirects",
+            "pkg.sessions.Session",
+            "pkg.sessions.Session.send",
+        },
+    )
+
+    assert "pkg.sessions.RedirectMixin.resolve_redirects" in targets
+
+
+def test_own_method_still_wins_over_an_inherited_one_of_the_same_name() -> None:
+    """Nearest definition, not just any definition."""
+    source = """
+class Base:
+    def handle(self):
+        return None
+
+
+class Child(Base):
+    def handle(self):
+        return None
+
+    def run(self):
+        return self.handle()
+"""
+    targets = _call_targets(
+        source,
+        "pkg.mod",
+        {
+            "pkg.mod",
+            "pkg.mod.Base",
+            "pkg.mod.Base.handle",
+            "pkg.mod.Child",
+            "pkg.mod.Child.handle",
+            "pkg.mod.Child.run",
+        },
+    )
+
+    assert "pkg.mod.Child.handle" in targets
+    assert "pkg.mod.Base.handle" not in targets
+
+
+def test_a_locally_constructed_object_resolves_its_method_calls() -> None:
+    """`p = PreparedRequest()` then `p.prepare()` — how these flows are written."""
+    source = """
+class PreparedRequest:
+    def prepare(self):
+        return None
+
+
+class Session:
+    def prepare_request(self):
+        p = PreparedRequest()
+        p.prepare()
+        return p
+"""
+    targets = _call_targets(
+        source,
+        "pkg.models",
+        {
+            "pkg.models",
+            "pkg.models.PreparedRequest",
+            "pkg.models.PreparedRequest.prepare",
+            "pkg.models.Session",
+            "pkg.models.Session.prepare_request",
+        },
+    )
+
+    assert "pkg.models.PreparedRequest.prepare" in targets
+
+
+def test_a_reassigned_local_is_not_given_a_type() -> None:
+    """Two constructors for one name is ambiguous; guessing would invent an edge."""
+    source = """
+class Alpha:
+    def go(self):
+        return None
+
+
+class Beta:
+    def go(self):
+        return None
+
+
+class Runner:
+    def run(self, flag):
+        handler = Alpha()
+        handler = Beta()
+        return handler.go()
+"""
+    targets = _call_targets(
+        source,
+        "pkg.mod",
+        {
+            "pkg.mod",
+            "pkg.mod.Alpha",
+            "pkg.mod.Alpha.go",
+            "pkg.mod.Beta",
+            "pkg.mod.Beta.go",
+            "pkg.mod.Runner",
+            "pkg.mod.Runner.run",
+        },
+    )
+
+    assert "pkg.mod.Alpha.go" not in targets
+    assert "pkg.mod.Beta.go" not in targets
+
+
+def test_a_cyclic_hierarchy_does_not_stall_resolution() -> None:
+    assert (
+        graph._resolve_self_attribute(
+            "pkg.A",
+            "missing",
+            internal_symbols={"pkg.A", "pkg.B"},
+            bases_by_class={"pkg.A": ["pkg.B"], "pkg.B": ["pkg.A"]},
+        )
+        is None
+    )

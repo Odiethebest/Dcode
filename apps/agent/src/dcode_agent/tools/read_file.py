@@ -1,7 +1,7 @@
 """Tool: `read_file(path, line_range)` → file slice.
 
-Implements DESIGN.md §2.3.2 row 2. Reads a specific line range from a
-file the indexer has already cloned — never opens external files.
+Reads a specific line range from a file the indexer has already cloned — never
+opens external files.
 """
 
 from pydantic import BaseModel, Field, model_validator

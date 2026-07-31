@@ -43,7 +43,7 @@ exclusively; internal retrieval, graph, and agent routes are not public surfaces
 ### Frontend surfaces
 
 `apps/frontend` is a React 18 + TypeScript (strict) + Vite + Tailwind SPA of
-roughly 2k lines, with four routes:
+roughly 4.2k TypeScript/TSX lines, with four routes:
 
 | Route | Surface |
 |---|---|
@@ -63,7 +63,7 @@ user's task — nobody hand-copies a repository UUID between pages.
 | `src/components/ui/` | Six shared primitives, consuming design tokens only |
 | `src/components/workbench/` | Thread, trace, inspector, switcher, history rail |
 | `src/hooks/useThread.ts` | Conversation state; derives each turn's state from arrived events |
-| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-real/` — do not edit |
+| `src/demo/evalSnapshot.ts` | **Generated** from `results/eval-h1-repeat3-2026-07-31/` — do not edit |
 | `tests/` | Includes guardrail tests pinning the rules in [Honesty_Constraints.md](Honesty_Constraints.md) |
 
 ## Runtime Architecture
@@ -75,7 +75,7 @@ The deployed local stack contains the following services:
 | API | Public FastAPI gateway for repository submission, status reads, query SSE, and internal retrieval routes |
 | Worker | RabbitMQ consumer that clones repositories, parses Python code, chunks files, writes embeddings, and builds graph edges |
 | Agent | Internal LangGraph service that plans tool calls, executes retrieval and graph tools, synthesizes answers, and verifies citations |
-| Frontend | React/Vite UI for indexing, querying, and comparing evaluation results |
+| Frontend | React/Vite landing, exploration workbench, generated methodology view, and component preview |
 | Embedding sidecar | Optional self-hosted HTTP embedding model service |
 | Reranker sidecar | Optional self-hosted HTTP cross-encoder reranker service |
 | Postgres | Durable repository, chunk, symbol, and edge storage with pgvector |
@@ -86,25 +86,31 @@ The API is the only public backend entry point. The frontend talks to `/api/v1/*
 
 ## Data Model
 
-The authoritative schema is the Alembic migration under `infra/alembic/`; the
-SQLAlchemy models in `packages/shared/src/dcode_shared/db/models.py` mirror it.
-This section covers the shape and the reasoning, not the DDL.
+The authoritative schema is the Alembic migration chain under
+`infra/migrations/`. The SQLAlchemy models in
+`packages/shared/src/dcode_shared/db/models.py` cover the four tables used by the
+current runtime, but they do **not** mirror every migration object:
+migration-managed indexes and the unfinished `index_runs` provenance integration
+are absent from the ORM. This section covers the shape and the reasoning, not the
+DDL.
 
 ### Storage topology
 
 | Store | Role | Durable? |
 |---|---|---|
-| **PostgreSQL 15 + pgvector** | `repos`, `chunks`, `symbols`, `edges` — vectors *and* graph in one instance | Yes (`postgres_data` volume) |
+| **PostgreSQL 15 + pgvector** | Runtime tables `repos`, `chunks`, `symbols`, `edges`, plus the currently runtime-unintegrated `index_runs` provenance table | Yes (`postgres_data` volume) |
 | **Redis 7** | Embedding cache, tool cache, query-SSE cache, live job-state snapshot | No — cache, TTL per key |
 | **RabbitMQ** | Durable indexing job queue (`dcode.index_jobs`) — transport, not storage | Message-durable |
 | **Repo workdir volume** | Cloned repository source on disk, read by the agent's filesystem tools | Yes (`repo_workdirs`) |
 
 **Why vectors and the graph share one PostgreSQL instance** rather than adding a
-dedicated vector service: one connection pool, one backup boundary, and one
-consistency model. A citation's chunk and its graph neighbours are read in the
-same transaction, so the inspector cannot show source from one snapshot and
-edges from another. The cost is that vector search is bounded by what pgvector
-does, which at this corpus size is not the constraint.
+dedicated vector service: one connection pool and one backup boundary. This does
+not make a whole index generation atomic. The embed stage commits `chunks`
+before the graph stage separately commits `symbols` and `edges`, while source
+and graph-neighbour inspector calls are separate requests. A failure between
+stages can therefore expose new chunks beside stale or missing graph rows until
+the next successful re-index. The cost is custom consistency handling, and
+vector search remains bounded by what pgvector does.
 
 Redis holds only derived state. Losing it costs cache warmth and the live
 per-stage progress snapshot; nothing authoritative. That is why indexing status
@@ -114,14 +120,23 @@ merges a durable Postgres row with an optional Redis overlay.
 
 | Table | Purpose |
 |---|---|
-| `repos` | Repository metadata, indexing status, progress, and failure state |
-| `chunks` | Code and documentation chunks, sparse `tsv`, and dense embedding vectors |
+| `repos` | Repository metadata, indexing status, progress, failure state, and `index_revision` |
+| `chunks` | Code and documentation chunks plus dense embedding vectors |
 | `symbols` | Module, class, function, and method definitions extracted from Python AST |
 | `edges` | Static relationships such as imports, calls, inheritance, and references |
+| `index_runs` | Append-only provenance records introduced by migration; the current worker and ORM do not populate or expose them yet |
 
-`chunks` carries both retrieval surfaces on the same row — an HNSW index on
-`embedding` for dense search and a GIN index on `tsv` for full-text — so hybrid
-retrieval fuses two rankings over one table rather than joining two stores.
+`repos.current_index_run_id` is likewise present in the migration schema but is
+not wired into the current runtime. Existing indexes continue to use
+`repos.commit_sha` and `index_revision`; no documentation or UI should imply
+that an executor-backed provenance record exists for a completed index today.
+
+Dense retrieval uses the HNSW index on `chunks.embedding`. Sparse retrieval
+builds an application-side Okapi BM25 corpus from each chunk's symbol, path,
+signature, and content. That immutable corpus is cached by
+`(repo_id, index_revision)`; replacing a repository's chunks increments the
+revision in the same transaction, so an API process cannot silently reuse the
+previous generation. The older `tsv` column and GIN index remain dormant.
 `edges` is indexed in both directions (`source_id` and `target_id`), which is what
 makes reverse lookups such as *who calls this?* a single indexed query.
 
@@ -145,7 +160,8 @@ Any failed stage moves the repository to `failed` with an error reason. The pipe
 1. Clone the target repository with a shallow git checkout.
 2. Discover Python files and parse them with the standard library `ast` module.
 3. Build chunks at module, class, function, and method boundaries.
-4. Write sparse text vectors and dense embeddings.
+4. Replace the repository's chunks and dense embeddings, incrementing its
+   retrieval-corpus revision.
 5. Extract symbols and graph edges.
 6. Mark the repository ready for search and agent queries.
 
@@ -155,11 +171,19 @@ The default local environment uses stub embeddings and an identity-compatible re
 
 The internal search API combines sparse and dense retrieval:
 
-- sparse retrieval uses PostgreSQL full-text search;
+- sparse retrieval uses standard Okapi BM25 with corpus-wide IDF, term-frequency
+  saturation, length normalization, and a versioned source-code tokenizer;
 - dense retrieval uses pgvector similarity search when real embeddings are available;
-- hybrid ranking combines sparse and dense candidates;
+- hybrid ranking combines sparse and dense candidates with weighted reciprocal
+  rank fusion (`k=60`, dense weight `2.0`, sparse weight `1.0` by default);
 - reranking can call the BGE reranker sidecar;
 - `score_components` exposes sparse, dense, and rerank components when those paths are active.
+
+BM25 treats `symbol_name`, `file_path`, `signature`, and `content` as one
+unweighted document. Its tokenizer keeps the compact identifier and also splits
+snake_case and camelCase, so exact names and their component words share one
+ranking model. The fixed methodology parameters are `k1=1.2` and `b=0.75`;
+evaluation artifacts record those values and the tokenizer version.
 
 The route contract is intentionally stable so the agent and evaluation harness can consume the same internal API in stub and real-model modes.
 
@@ -175,20 +199,40 @@ The graph stage currently extracts:
 
 Graph v1 is intentionally conservative. It may miss dynamic calls, complex attribute chains, and mixin or MRO-based `self.method` references. Those gaps are graph coverage limits, not API contract breaks.
 
+`get_call_neighbors` supplements resolved graph edges with call expressions read
+from the indexed source. A source call whose static target cannot be resolved is
+returned explicitly as `unresolved_target` rather than silently discarded.
+Caller/callee intent routing recognises both English and Chinese question forms;
+the graph data and limitations remain the same in either language.
+
 ## Agent Design
 
-The agent is a bounded LangGraph loop with rule-based planning. It can call registered tools for search, definitions, references, dependencies, dependents, file context, and repository status.
+The agent is a bounded LangGraph loop with rule-based planning. Its ten
+registered tools are `search_code`, `read_file`, `find_definition`,
+`find_references`, `get_call_neighbors`, `get_dependencies`, `get_dependents`,
+`get_file_outline`, `grep`, and `list_directory`.
 
 The answer path is:
 
-1. classify the query intent;
-2. choose one or more tools;
-3. execute internal API calls;
-4. synthesize a response from tool results — a rule-based template by default, or an optional LLM (`SYNTHESIS_MODEL`) that streams a grounded, citation-formatted answer;
-5. verify citations against indexed evidence;
-6. stream typed SSE events through the API gateway.
+1. contextualize a follow-up from the bounded client history, with a narrow
+   deterministic symbol-binding fallback for caller/callee pronouns;
+2. classify the query intent;
+3. choose one or more tools;
+4. execute internal API calls;
+5. synthesize a response from tool results — a rule-based template by default,
+   or an optional LLM (`SYNTHESIS_MODEL`) that cites request-local server-owned
+   evidence IDs such as `[C1]`;
+6. verify citations against indexed evidence;
+7. stream typed SSE events through the API gateway.
 
-Groundedness is a hard product requirement. Unsupported citations must be removed or flagged instead of being presented as verified evidence.
+Groundedness is a hard product requirement. The server resolves LLM evidence IDs back to indexed locations or symbols before verification; ordinary backticked code is formatting, not a citation. Unsupported IDs and explicit file-line citations must be removed or flagged instead of being presented as verified evidence.
+
+LLM synthesis follows the natural language of the current question rather than
+the source code or prior turns. Chinese questions receive Chinese answers and
+English questions receive English answers; code identifiers stay verbatim.
+Math uses Markdown `$...$` / `$$...$$` delimiters and is rendered by the
+frontend through KaTeX, which also normalizes common LaTeX delimiters outside
+code spans and fences.
 
 ## API Contracts
 
@@ -199,6 +243,14 @@ The public API includes:
 | `POST /api/v1/repos` | Submit a GitHub repository for indexing |
 | `GET /api/v1/repos/{repo_id}/status` | Read indexing status and progress |
 | `POST /api/v1/query` | Stream an agent answer over SSE |
+| `GET /api/v1/repos/{repo_id}/source` | Resolve indexed source for a citation, with explicit degradation when that granularity is unavailable |
+| `GET /api/v1/repos/{repo_id}/neighbors` | Resolve caller, callee, and reference neighbours for a symbol |
+
+`POST /api/v1/query` accepts `repo_id`, `query`, and optional client-supplied
+`history` turns (`role` + `content`). The gateway keeps the most recent history
+within configurable budgets (defaults: 6 turns, 2,000 total characters, 4,000
+characters per turn), incorporates the bounded history into the query-cache key,
+and proxies it to the agent. The API and agent remain stateless between requests.
 
 The internal API includes:
 
@@ -207,11 +259,130 @@ The internal API includes:
 | `/internal/search` | Hybrid retrieval over indexed chunks |
 | `/internal/find_definition` | Locate symbol definitions |
 | `/internal/find_references` | Locate callers or references |
+| `/internal/get_call_neighbors` | Return resolved callers/callees plus source call expressions with explicit unresolved targets |
 | `/internal/get_dependencies` | Outgoing graph dependencies (what a module imports) |
 | `/internal/get_dependents` | Incoming graph dependents (what imports a module) |
 | `/internal/get_file_outline` | File-level symbol outline |
 
 Internal routes are shared by agent tools and evaluation baselines. Route names, schemas, and error semantics should not be changed without updating all consumers.
+
+## Evaluation Design
+
+### Question set construction
+
+The versioned question set lives at
+`apps/eval/src/dcode_eval/questions/data/questions.jsonl`. The current
+`psf/requests` set contains 16 manually reviewed questions: 5 single-file L1,
+8 cross-file L2, and 3 architecture-level L3. Ground truth uses stable
+`file_path + symbol_name + start_line` anchors which the harness resolves
+against the selected `--repo-id`; recorded chunk UUIDs are retained only for
+backwards compatibility with archived runs.
+
+The target remains 50–80 reviewed questions drawn from manual annotation,
+function reverse-synthesis, and issue or commit mining. The current 16-question
+set is reproducible but too small, and its L3 subset is too fragile, to serve as
+a general benchmark.
+
+### Baseline and result contract
+
+The harness exposes five baseline tiers:
+
+| Baseline | Current meaning |
+|---|---|
+| B0 | External code search; requires a provider token and is unmeasured in the recorded run |
+| B1 | Application-side Okapi BM25 over the complete chunk corpus. Retrieval reference, template answer, **not in the H1 decision** |
+| B2 | Dense-only retrieval through the shared Agent path (`dense_only`) |
+| B3 | Weighted BM25 + dense RRF and reranking, then the shared Agent path with no tool expansion (`hybrid_only`) |
+| B3.5 | B4 with the graph and reference tools disabled (`agent_no_graph`). **Diagnostic only**, reported beside the decision, never inside it |
+| B4 | The same hybrid start and Agent path, plus bounded graph/structure expansion (`full`) |
+
+Every arm from B2 up shares one synthesis model, prompt, citation protocol,
+groundedness verifier and step budget. They differ only along two axes, and the
+mapping lives in one table (`dcode_agent.state._MODE_TABLE`) so the claim that
+the arms are comparable is checkable in one place:
+
+| Mode | Retrieval | Tool expansion |
+|---|---|---|
+| `dense_only` | dense | none |
+| `hybrid_only` | hybrid | none |
+| `agent_no_graph` | hybrid | `read_file`, `get_file_outline` |
+| `full` | hybrid | all tools |
+
+Retrieval mode is a `search_code` **tool argument**, not ambient request state,
+because the tool cache key is `(tool, repo_id, args)` — a mode held outside the
+args would let a dense and a hybrid search for the same query collide on one
+cache entry and make two arms silently identical.
+
+The current `results/eval-h1-repeat3-2026-07-31/` snapshot exercises
+`okapi_bm25_v1` in B1 and in the sparse component of B3/B4, over the 33-question
+suite. `results/eval-h1-bm25-2026-07-30/` is the superseded previous complete
+run, and `results/eval-real/` before it used the legacy lexical heuristic; both
+remain available as historical snapshots.
+
+B1 and B2 still answer from a template, so their groundedness is the constant
+`1.0` and they emit no citation events. Only B3 and B4 exercise the real
+verifier. Since groundedness is one of the four composite terms, that constant
+is load-bearing in the H1 decision — a `dense_only` agent mode for B2 is the
+recorded fix.
+
+Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
+per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
+record the formula, tokenizer, document fields, `k1`, `b`, and corpus revision,
+and reject the result if that revision changes during execution.
+
+The scoring protocol is `uniform_final_verified_evidence_v2`. Each question
+records three auditable views: the initial candidate list, the verified final
+evidence list, and the list used for the official metric. **The official list is
+the ordered verified final evidence for every agent arm — B2, B3, B3.5 and B4
+alike.** B0/B1 emit no citations and stay on candidate top-`k`, outside the
+decision. Structural origins are retained so a row can show whether a new
+ground-truth hit came from a graph or outline tool. All three metrics see at most
+the first `k` IDs, including MRR; the complete final-evidence list is retained
+separately for audit.
+
+`v1` applied the final-evidence rule to B4 only and left the other arms on
+top-`k`. That asymmetry decided the 2026-07-31 `L3` result — +0.045 mixed against
++0.051 symmetric, across a 0.05 bar — which is why the rule is now uniform rather
+than resolved in whichever direction happened to be convenient.
+
+### H1 decision and additional gates
+
+The executable `h1_report` decision compares B4 with B2 and B3 on L2 and L3.
+For each level it computes the mean of **Recall@k, MRR and nDCG@k**; H1 is
+`supported` only if B4 exceeds **both** baselines by at least `0.05` composite
+points on **both** levels.
+
+Groundedness was a fourth term until 2026-07-31. It is 1.000 for every arm in
+every recorded run, so it added no discrimination — but because it is identical
+across arms, removing it multiplies every margin by 4/3, which is arithmetically
+the same as lowering the threshold to `0.0375`. **It was removed after four runs
+had missed the four-term bar.** Every `h1_report.json` carries the four-term
+reading under `four_term` for exactly this reason. Full disclosure in
+[Final_Report.md](Final_Report.md).
+
+Two additional product-quality gates are reported separately from that
+executable decision:
+
+- pairwise win rate against B2 should exceed 60%, but the judge is currently a
+  stub and the metric is unmeasured;
+- programmatic groundedness should reach 95%; the current B4 run clears that
+  guardrail.
+
+The committed `results/eval-h1-repeat3-2026-07-31/` snapshot is the first to
+measure the graph's own contribution, through
+`new_gt_hits_from_structural_evidence`: 4 new ground-truth hits across 3 of 33
+questions. The verdict stays `unsupported`, with L2 cleared and L3 short by
+0.005.
+
+**Two properties of that decision a reader has to know.** B2/B3 are scored on
+retrieved top-k while B4 is scored on verified final evidence, so the arms use
+different rules, and applying B4's rule to B3 as well flips L3 from fail to pass.
+The pre-registered mixed rule is the reported verdict; the symmetric alternative
+is published beside it rather than substituted for it. Unifying the rule across
+arms — which first requires a `dense_only` mode so B2 can produce final evidence
+at all — is criteria set 3 in [Final_Report.md](Final_Report.md), along with the
+`B3.5` diagnostic arm needed to separate call-graph gain from multi-step agent
+evidence selection.
 
 ## Non-Functional Requirements
 

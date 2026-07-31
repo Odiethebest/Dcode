@@ -1,7 +1,6 @@
 """Tool: `list_directory(path)` → List[FileEntry].
 
-Implements DESIGN.md §2.3.2 row 8. Filesystem listing of the cloned
-repo workdir — for repo-tree navigation.
+Lists the cloned repository workdir for repository-tree navigation.
 """
 
 from pathlib import Path

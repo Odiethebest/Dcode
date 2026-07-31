@@ -1,0 +1,35 @@
+{
+  "L1": {
+    "baseline": "B4",
+    "questions": 5,
+    "k": 5,
+    "recall_at_k": 1.0,
+    "mrr": 0.9,
+    "ndcg_at_k": 0.9261859507142916,
+    "groundedness": 0.9333333333333333,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  },
+  "L2": {
+    "baseline": "B4",
+    "questions": 8,
+    "k": 5,
+    "recall_at_k": 0.3958333333333333,
+    "mrr": 0.55625,
+    "ndcg_at_k": 0.39185977135293965,
+    "groundedness": 0.8854166666666666,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  },
+  "L3": {
+    "baseline": "B4",
+    "questions": 3,
+    "k": 5,
+    "recall_at_k": 0.16666666666666666,
+    "mrr": 0.19444444444444445,
+    "ndcg_at_k": 0.12110585375572276,
+    "groundedness": 0.9047619047619048,
+    "answers_without_citations": 0,
+    "pairwise_win_rate": null
+  }
+}

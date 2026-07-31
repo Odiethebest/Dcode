@@ -14,7 +14,25 @@ from dcode_shared.db.models import (
 from dcode_shared.settings import shared_settings
 
 _MIGRATION_PATH = (
-    Path(__file__).resolve().parents[3] / "infra" / "migrations" / "versions" / "001_initial_schema.py"
+    Path(__file__).resolve().parents[3]
+    / "infra"
+    / "migrations"
+    / "versions"
+    / "001_initial_schema.py"
+)
+_BM25_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "infra"
+    / "migrations"
+    / "versions"
+    / "002_bm25_index_revision.py"
+)
+_MIGRATION_MERGE_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "infra"
+    / "migrations"
+    / "versions"
+    / "004_merge_bm25_and_index_runs.py"
 )
 
 
@@ -28,6 +46,7 @@ def test_model_metadata_exposes_expected_tables_and_columns() -> None:
         "status",
         "progress",
         "error",
+        "index_revision",
         "created_at",
         "updated_at",
     }
@@ -72,3 +91,19 @@ def test_initial_migration_keeps_pgvector_bootstrap_idempotent() -> None:
     migration = _MIGRATION_PATH.read_text(encoding="utf-8")
     assert "CREATE EXTENSION IF NOT EXISTS vector" in migration
     assert "DROP TYPE IF EXISTS edge_type" in migration
+
+
+def test_bm25_migration_adds_the_repository_index_revision() -> None:
+    migration = _BM25_MIGRATION_PATH.read_text(encoding="utf-8")
+
+    assert 'down_revision: str | None = "001_initial_schema"' in migration
+    assert (
+        'sa.Column("index_revision", sa.Integer(), nullable=False, server_default="0")' in migration
+    )
+
+
+def test_bm25_migration_merges_with_the_existing_index_run_history() -> None:
+    migration = _MIGRATION_MERGE_PATH.read_text(encoding="utf-8")
+
+    assert '"002_bm25_index_revision"' in migration
+    assert '"003_nonzero_embedding_count"' in migration

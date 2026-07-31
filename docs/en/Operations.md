@@ -5,9 +5,12 @@ harness, and the failure modes worth recognising before you hit them.
 
 ## Bringing the stack up
 
-`.env` points `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` at
-`host.docker.internal:8002`/`8003`, so the models run as **host** sidecars. That
-means three processes, not one:
+A fresh `cp .env.example .env` uses stub embedding and identity reranking, so
+`make up` is sufficient for lightweight development. For the real-model path,
+set `EMBEDDING_ENDPOINT` / `RERANKER_ENDPOINT` to
+`host.docker.internal:8002`/`8003` and select the Jina/BGE model names described
+below. The models then run as **host** sidecars, which means three processes, not
+one:
 
 ```bash
 make embedding-host   # :8002 — wait for "Embedding model ready"
@@ -24,7 +27,7 @@ make migrate                            # Alembic upgrade head inside the api co
 make check                              # lint + typecheck + tests + eval-artifact drift check
 make frontend-build
 npm --prefix apps/frontend run dev      # → http://localhost:5173/
-python3 scripts/sync_eval_artifacts.py [--check] [results/eval-real]
+python3 scripts/sync_eval_artifacts.py [--check] [results/eval-h1-repeat3-2026-07-31]
 make eval-smoke                         # single-baseline harness smoke
 ```
 
@@ -35,8 +38,9 @@ embedding stage — that is real work, not a hang.**
 
 ### Two startup failure modes
 
-- **`make up` alone** gives a stack whose API reports healthy while every query
-  dies at the embedding step. The sidecars are not optional in this configuration.
+- **With real-model endpoint values configured, `make up` alone** gives a stack
+  whose API reports healthy while every query dies at the embedding step. The
+  sidecars are not optional in that configuration. Stub mode does not need them.
 - **A wall of Vite `ECONNREFUSED` on `/api/v1/*`** in the dev-server log means the
   backend is down, not that the frontend broke.
 
@@ -58,9 +62,10 @@ These have each cost someone real time.
    SELECT vector_dims(embedding), left(embedding::text, 20) FROM chunks LIMIT 1;
    ```
 
-3. **`tsv` and its GIN index are idle.** The full-text column and index exist but
-   are unused; keyword search goes through `ILIKE`. Do not assume the GIN index is
-   being hit.
+3. **`tsv` and its GIN index are idle.** The retained full-text column is not the
+   sparse path. Sparse search builds a code-tokenized Okapi BM25 corpus in the
+   API and caches it by `repo_id + index_revision`; the worker increments that
+   revision whenever it atomically replaces the chunks.
 4. **Graph coverage is name-based static analysis only.** No type inference, no
    MRO resolution for inherited `self.method()` calls, no nested-function or
    nested-class symbols, and decorators are excluded from chunk and symbol line
@@ -282,6 +287,18 @@ Expected references include:
 - `src.requests.sessions.SessionRedirectMixin.resolve_redirects`
 - `src.requests.sessions.Session.request`
 
+Directed call lookup keeps incoming and outgoing `calls` edges separate:
+
+```bash
+curl -fsS "http://localhost:8000/internal/get_call_neighbors?repo_id=${REPO_ID}&symbol=send&direction=both" \
+  -H "X-Dcode-Internal-Key: ${INTERNAL_API_KEY}" \
+  | python3 -m json.tool
+```
+
+The response includes `matches`, `callers`, `callees`, and `source_calls`.
+Each source call has a `resolved_target` or an explicit `null`; an empty graph
+group therefore does not conceal dynamic/instance calls present in source.
+
 ## Validate Agent SSE
 
 Clear local Redis query cache:
@@ -300,9 +317,10 @@ curl -fsS -N -X POST http://localhost:8000/api/v1/query \
 
 Expected checkpoints:
 
-- `thought` routes to `find_references`;
-- `tool_call.args.symbol` is `send`;
-- `tool_result` includes at least two locations;
+- `thought` routes to `get_call_neighbors`;
+- `tool_call.args` includes `symbol=send` and `direction=callers`;
+- `tool_result` reports matched symbols and caller/callee counts;
+- a follow-up `read_file` captures source-level calls that the static graph may not resolve;
 - `citation` events include verified references;
 - `final_answer.groundedness` is `1.0`.
 
@@ -310,16 +328,30 @@ Expected checkpoints:
 
 Once the smoke passes:
 
+0. **Flush Redis first** (`docker exec dcode-redis-1 redis-cli FLUSHALL`) and
+   record that you did. The agent caches tool results for 24h under
+   `tool:<name>:<repo_id>:<hash>`, so a run started against a warm cache can be
+   served graph results produced by *older agent code* whose shape the current
+   scoring protocol does not fully read. This is not hypothetical: the 2026-07-31
+   run was aborted mid-B3 and restarted for exactly this reason.
 1. Run B1–B4 under the same real sidecar configuration, writing to a **new**
-   results directory. Do not overwrite `results/eval-real/` — see
-   [`results/README.md`](../../results/README.md).
+   results directory. Do not overwrite any committed snapshot, including
+   `results/eval-h1-repeat3-2026-07-31/`, `results/eval-h1-bm25-2026-07-30/` and
+   `results/eval-real/` — see [`results/README.md`](../../results/README.md).
+   Pass `--repo-id`; the harness then records the database's exact
+   `corpus_revision` together with the BM25 formula, tokenizer, document fields,
+   `k1`, and `b` in both suite and per-baseline `run_config.json` files. It reads
+   the revision again after the run and rejects the result if the repository was
+   re-indexed in between.
 2. Regenerate every artifact that displays the numbers, then verify:
 
    ```bash
    python3 scripts/sync_eval_artifacts.py results/<new-run>
-   npx prettier --write apps/frontend/src/demo/evalSnapshot.ts
    python3 scripts/sync_eval_artifacts.py --check
    ```
+
+   The generator formats the TypeScript snapshot through the frontend's locked
+   Prettier binary before comparing or writing it.
 
 3. **Re-read the prose.** Tests and the drift check follow the data; the narrative
    copy in the README, [`Final_Report.md`](Final_Report.md), and the
@@ -328,9 +360,17 @@ Once the smoke passes:
 4. Reassess H1 against the criteria in [`Final_Report.md`](Final_Report.md), and
    report whichever way it lands.
 
-Before any re-run, read the criteria-set-2 items in `Final_Report.md`. Two of them
-(scoring B4 on its verified evidence set, expanding L3) have to be implemented
-*first* — re-running without them reproduces the same unmeasurable comparison.
+Criteria set 3 items 1–3 are done and were run: one scoring rule for every agent
+arm, a `dense_only` B2, and the `B3.5` no-graph ablation. The composite also
+dropped groundedness, and the suite is now averaged over three repeats. The
+current verdict is `results/eval-h1-repeat3-2026-07-31/`.
+
+**Before the next H1 run, read this.** The L2 shortfall is 0.006 against a
+between-repeat standard deviation of 0.034. Four single runs before the repeated
+one each "just missed", on alternating levels, and repeat 3 of the current run
+cleared everything on its own. **Another round of system tuning cannot be
+attributed to the tuning at this effect size.** What is left is more L2 questions
+or a second corpus — criteria set 3 item 5.
 
 ## Verified Run — 2026-07-27
 
@@ -355,5 +395,73 @@ Docker with `EMBEDDING_MODEL` / `RERANKER_MODEL` pointed at the host sidecars.
   get_file_outline → synthesize`, emitting 14 citations all `verified=True` with
   `groundedness=1.0`.
 
-Caveat unchanged: the agent planner/synthesis are rule-based, so the final
-answer is a grounded, citation-backed trace rather than LLM prose.
+Historical caveat: at the time of this run, planner and synthesis were
+rule-based, so the final answer was a grounded, citation-backed trace rather
+than LLM prose. The planner remains rule-based, but current deployments may set
+`SYNTHESIS_MODEL` to an LLM; do not treat this 2026-07-27 smoke as validation of
+the later citation-ID, language, math, or multi-turn contracts.
+
+## Verified Current Path — 2026-07-30
+
+The current local integration configuration used Jina 768-dimensional
+embeddings, the BGE reranker, and `gpt-4o-mini` synthesis. All seven core Docker
+services and both host model sidecars were healthy. A live
+`POST /api/v1/query` for *"Who calls send?"* exercised the explicit caller route
+and server-owned evidence-ID path, returning:
+
+- `src/requests/sessions.py:186`;
+- `src/requests/sessions.py:557`;
+- both citations with `verified=true`;
+- final groundedness `1.0`.
+
+This is a one-question integration smoke. It proves the current service path
+works end to end; by itself it does not establish suite-level behavior.
+
+## Complete BM25 H1 Re-run — 2026-07-30
+
+The complete B1–B4 harness subsequently ran against repo
+`2543893e-0965-4be7-ac45-5a8e38600bc0`, commit
+`414f0513c33883adf6f2b46901d4f0b38a455851`, with all 726 chunks embedded at
+768 dimensions. Redis was flushed before the run; Jina v2-base-code, BGE
+reranker v2-m3, and `gpt-4o-mini` were healthy and active. The runner completed
+all 16 questions for each baseline, observed the same corpus revision before
+and after, and exited successfully.
+
+The recorded output is `results/eval-h1-bm25-2026-07-30/`, now **superseded**. It
+validated the corrected Okapi BM25 path and the evidence-ID groundedness path.
+H1 was `unsupported`: B4 beat B2 on L2, lost slightly on L3, and tied B3 on both
+levels because that harness gave B3 and B4 the same scored retrieval list.
+
+## L3-expanded single runs — 2026-07-31
+
+Four single runs, all superseded by the repeated run below and all retained:
+`eval-h1-l3x12` (33-question suite, mixed scoring), `eval-h1-uniform-v2` (one
+scoring rule for every arm, `B3.5` added), `eval-h1-ranked-evidence` (graph
+evidence hydrated and reranked), `eval-h1-no-test-evidence` (test code excluded
+from retrieval). Each "just missed" on one level, and which level alternated.
+That pattern is what motivated repeating the suite.
+
+## Repeated H1 Run — 2026-07-31 (current)
+
+Same repo `2543893e-0965-4be7-ac45-5a8e38600bc0`, same commit
+`414f0513c33883adf6f2b46901d4f0b38a455851`, same 726 chunks at 768 dimensions and
+the same `index_revision` as every run above, so differences between them are
+protocol and agent, never corpus.
+
+Five arms including the `B3.5` ablation, the frozen 33-question suite, **three
+repeats averaged**, under `uniform_final_verified_evidence_v2` and the three-term
+composite — both declared and committed before this run existed. Redis was
+flushed once before repeat 1 and deliberately not between repeats: tool results
+are deterministic for a fixed index, and the stochastic stage is synthesis, which
+is never cached. Zero API or agent errors; same corpus revision before and after.
+
+Output: `results/eval-h1-repeat3-2026-07-31/`. H1 is `unsupported` — three of the
+four required comparisons clear, and `B4 vs B3` on L2 falls 0.006 short.
+
+**The number to take from this run is the spread, not the margin.** Across the
+three repeats the L2 margin was +0.038, +0.006 and +0.088 — a range of 0.083,
+wider than the 0.050 bar — and **repeat 3 returned `supported` on its own**. Each
+repeat keeps its complete independent output under `repeat-N/` with its own
+`h1_report.json`, so that is checkable rather than asserted. Read
+`provenance.json` and the *Reading the result honestly* section of
+[`Final_Report.md`](Final_Report.md) before quoting any figure from here.

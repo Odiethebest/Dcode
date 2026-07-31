@@ -1,0 +1,72 @@
+{
+  "about": "Provenance recorded immediately after the foreground evaluation process completed successfully. This file is not harness output; it is kept separate from run_config.json so observed runtime configuration is not misrepresented as data written by the harness.",
+  "verdict_written_at": "2026-07-31",
+  "verdict_written_at_status": "observed live, not recorded by the harness",
+  "verdict_written_at_source": "results/eval-h1-l3x12-2026-07-31/h1_report.json was written during the foreground dcode_eval.run process on 2026-07-31, and that process then exited with status 0.",
+  "git": {
+    "branch": "ziqi_H1_Bm25",
+    "commit": "ae474195ee0593408ad86bcd0b8fb0d8920b31e7",
+    "commit_note": "The question set was frozen by this commit before any baseline ran."
+  },
+  "question_set": {
+    "path": "apps/eval/src/dcode_eval/questions/data/questions.jsonl",
+    "sha256": "db813124a72d85abd66a4dc248de94e6a147b46c3364271d51ddc772d0a28b45",
+    "frozen_before_run": true,
+    "composition": "16 manual (q-001..q-016) + 17 graph_reverse (q-017..q-033)"
+  },
+  "corpus": {
+    "repository": "https://github.com/psf/requests.git",
+    "repo_id": "2543893e-0965-4be7-ac45-5a8e38600bc0",
+    "commit_sha": "414f0513c33883adf6f2b46901d4f0b38a455851",
+    "index_revision_before": 0,
+    "index_revision_after": 0,
+    "chunks": 726,
+    "embedded_chunks": 726,
+    "symbols": 724,
+    "edges": 473,
+    "embedding_dimensions": 768,
+    "identical_to": "results/eval-h1-bm25-2026-07-30 ran against this same index at the same revision, so the difference between the two runs is the question set and the scoring protocol, not the corpus."
+  },
+  "models": {
+    "embedding": "jinaai/jina-embeddings-v2-base-code",
+    "reranker": "BAAI/bge-reranker-v2-m3",
+    "synthesis": "gpt-4o-mini",
+    "judge": "stub"
+  },
+  "display": {
+    "corpus": "psf/requests",
+    "embedding": "Jina v2-base-code (768-dim)",
+    "reranker": "BGE reranker v2-m3",
+    "synthesis": "gpt-4o-mini"
+  },
+  "groundedness_guardrail": 0.95,
+  "execution": {
+    "command": "PYTHONPATH=packages/shared/src:apps/api/src:apps/worker/src:apps/agent/src:apps/eval/src uv run python -m dcode_eval.run --baseline B1 B2 B3 B4 --questions apps/eval/src/dcode_eval/questions/data/questions.jsonl --output results/eval-h1-l3x12-2026-07-31 --k 5 --repo-id 2543893e-0965-4be7-ac45-5a8e38600bc0",
+    "question_counts": {
+      "L1": 5,
+      "L2": 16,
+      "L3": 12,
+      "total": 33
+    },
+    "redis_cache_flushed_before_run": true,
+    "aborted_first_attempt": "An earlier attempt at this same command was stopped during B3 and its partial output was deleted, because Redis still held agent tool-result entries written about two hours earlier, before the current agent code existed. Those entries could have supplied graph results lacking the chunk_id the new scoring protocol reads. Redis was flushed (59 keys) and the whole suite was rerun from B1. The recorded run is the complete rerun; no partial output from the aborted attempt survives in this directory.",
+    "embedding_healthcheck": "healthy; a one-text request returned a 768-dimension vector",
+    "reranker_healthcheck": "healthy; a two-passage request returned two clearly separated scores (0.957 / 0.0000189)",
+    "api_healthcheck": "healthy",
+    "api_agent_errors_observed": 0
+  },
+  "scoring_protocol_note": "run_config.json records scoring_protocol=final_verified_evidence_v1. Under it B2 and B3 are scored on their retrieved top-k while B4 is scored on its ordered verified final evidence. The two arms are therefore scored by different rules; see the limitations below and docs/en/Final_Report.md.",
+  "limitations": [
+    "The verdict is protocol-sensitive at the margin it turns on. Official mixed scoring gives B4 vs B3 margins of +0.083 on L2 and +0.045 on L3, so L3 misses the 0.05 bar by 0.005 and the decision is unsupported. Scoring B3 on its own verified final evidence as well -- a rule the harness already computes but which was never pre-registered symmetrically -- gives +0.057 on L2 and +0.051 on L3, which would clear both. The pre-registered rule is the one reported. The alternative is recorded here so nobody has to rediscover that the answer depends on it.",
+    "The pre-registered justification for that asymmetry is falsified by this run. docs/en/Final_Report.md argued the rule handicaps B4 because its evidence set is smaller than five. B4's verified final evidence scored higher than its own candidate top-5 (recall 0.448 vs 0.401, MRR 0.763 vs 0.634), so the rule helped B4 rather than handicapping it.",
+    "The call graph's own contribution is small and now measured rather than inferred. Structural evidence that was not already in the hybrid top-k produced 4 new ground-truth hits across 3 of 33 questions. B4's margin over B3 therefore cannot be attributed to the call graph; separating graph gain from multi-step agent evidence selection needs the B3.5 ablation, which does not exist yet.",
+    "B1 and B2 answer from a template, so their groundedness of 1.000 is a constant rather than a measurement, and their final-evidence metrics are 0.0 because a template emits no citation events. Any B4-vs-B2 comparison is therefore between two different scoring rules.",
+    "The pairwise judge remains a stub, so pairwise_win_rate is unmeasured.",
+    "L3 has 12 questions, so one question moves the level composite by up to 0.083 -- larger than the 0.005 by which L3 missed the bar. q-033 alone scored -0.156 for B4 against B3.",
+    "17 of the 33 questions are labelled source=graph_reverse: they were reverse-constructed from the indexed call relationships and source of this corpus, so flows the graph cannot resolve are absent from them by construction, which favours B4.",
+    "Three pre-existing L2/L3 question pairs share ground truth at 1.00, 0.75 and 0.50 (q-006/q-014, q-009/q-016, q-010/q-015), so the L2 and L3 strata are not independent samples and the conjunction of the two level tests is weaker evidence than two independent tests.",
+    "The agent's max_steps is 8 and B4's expansion saturates it, so get_file_outline is rarely reached.",
+    "One repository and 33 questions. Nothing measured here generalises.",
+    "Service endpoints and secret values are intentionally not recorded."
+  ]
+}

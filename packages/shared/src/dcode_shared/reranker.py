@@ -1,4 +1,4 @@
-"""Reranker clients for hybrid retrieval (OD-3).
+"""Reranker clients for hybrid retrieval.
 
 ``BAAI/bge-reranker-v2-m3`` is hosted as a sidecar HTTP service;
 the API calls it through :class:`HttpRerankerClient`.
@@ -25,7 +25,7 @@ _DEFAULT_MAX_RETRIES = 3
 
 
 class RerankerClient(ABC):
-    """Abstract cross-encoder reranker client (OD-3)."""
+    """Abstract cross-encoder reranker client."""
 
     @abstractmethod
     async def rerank(self, query: str, passages: list[str]) -> list[float]:
