@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from dcode_agent.groundedness import (
     CitationCheck,
+    EvidenceTarget,
     GroundednessResult,
     enforce_groundedness,
     extract_citations,
@@ -289,6 +290,49 @@ async def test_evidence_id_mode_redacts_unknown_ids() -> None:
     )
     assert "[C999]" not in enforced.answer
     assert "[unverified reference removed]" in enforced.answer
+
+
+async def test_evidence_metadata_survives_verification_in_answer_order() -> None:
+    repo_id = uuid4()
+    chunk_id = uuid4()
+    db = FakeSession(
+        chunks=[
+            Chunk(
+                id=chunk_id,
+                repo_id=repo_id,
+                file_path="src/requests/api.py",
+                chunk_type="function",
+                parent_symbol=None,
+                symbol_name="request",
+                signature="def request(...):",
+                start_line=24,
+                end_line=71,
+                imports=[],
+                content="def request(...): ...",
+                embedding=[0.0],
+            )
+        ],
+        symbols=[],
+    )
+
+    result = await verify(
+        "Explicit `src/requests/api.py:24` appears before catalog evidence [C1].",
+        str(repo_id),
+        db,
+        evidence_catalog={
+            "C1": EvidenceTarget(
+                display_token="src/requests/api.py:24",
+                chunk_id=str(chunk_id),
+                origins=("search_code", "get_call_neighbors"),
+            )
+        },
+    )
+
+    assert [check.source_token for check in result.citations] == ["", "[C1]"]
+    assert result.citations[0].chunk_id == str(chunk_id)
+    assert result.citations[1].chunk_id == str(chunk_id)
+    assert result.citations[1].evidence_id == "C1"
+    assert result.citations[1].origins == ("search_code", "get_call_neighbors")
 
 
 def test_adjacent_evidence_ids_render_as_separate_citations() -> None:

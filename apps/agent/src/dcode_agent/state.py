@@ -7,7 +7,9 @@ synthesize decision.
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+AgentMode = Literal["full", "hybrid_only"]
 
 
 @dataclass
@@ -16,6 +18,10 @@ class AgentState:
 
     repo_id: str
     query: str
+    # ``hybrid_only`` is the fair B3 ablation: run the same hybrid search,
+    # synthesis model, citation protocol, and groundedness guardrail as B4, but
+    # stop before any graph/tool expansion. ``full`` is B4.
+    mode: AgentMode = "full"
     # Prior conversation turns (bounded by the gateway) + the original follow-up
     # text preserved when the contextualize node rewrites `query` for retrieval.
     history: list[dict[str, str]] = field(default_factory=list)
@@ -29,7 +35,7 @@ class AgentState:
     draft_answer: str | None = None
     # ``None`` means template/legacy citation parsing. A dict (including an
     # empty one) means LLM synthesis used the server-owned ``[C#]`` protocol.
-    evidence_catalog: dict[str, str] | None = None
+    evidence_catalog: dict[str, Any] | None = None
     citations: list[dict[str, Any]] = field(default_factory=list)
     groundedness_score: float | None = None
     final_answer: str | None = None

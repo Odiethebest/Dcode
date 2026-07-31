@@ -46,6 +46,7 @@ from dcode_shared.symbols import candidate_filter, select_symbol_matches
 # library's credential-handling vocabulary stay out of test fixtures.
 INDEXED = "src.requests.api.get"
 SHORTENED = "requests.api.get"
+INDEXED_CHUNK_ID = "11111111-1111-1111-1111-111111111111"
 
 
 @dataclass
@@ -65,7 +66,12 @@ def _state_with_definition_locations() -> AgentState:
                 "args": {"symbol": "get"},
                 "result": {
                     "locations": [
-                        {"symbol": INDEXED, "file_path": "src/requests/api.py", "line": 62}
+                        {
+                            "symbol": INDEXED,
+                            "file_path": "src/requests/api.py",
+                            "line": 62,
+                            "chunk_id": INDEXED_CHUNK_ID,
+                        }
                     ]
                 },
                 "cached": False,
@@ -169,11 +175,17 @@ def test_the_evidence_block_offers_ids_instead_of_overloading_inline_code() -> N
     catalog = graph._build_evidence_catalog(state)
     context = graph._build_llm_context(state, evidence_catalog=catalog)
 
-    symbol_id = next(evidence_id for evidence_id, token in catalog.items() if token == INDEXED)
+    symbol_id = next(
+        evidence_id for evidence_id, target in catalog.items() if target.display_token == INDEXED
+    )
     location_id = next(
-        evidence_id for evidence_id, token in catalog.items() if token == "src/requests/api.py:62"
+        evidence_id
+        for evidence_id, target in catalog.items()
+        if target.display_token == "src/requests/api.py:62"
     )
 
     assert f"[{symbol_id}] -> `{INDEXED}`" in context
     assert f"[{location_id}] -> `src/requests/api.py:62`" in context
     assert "Evidence catalog (cite ONLY the [C#] IDs" in context
+    assert catalog[location_id].chunk_id == INDEXED_CHUNK_ID
+    assert catalog[location_id].origins == ("find_definition",)

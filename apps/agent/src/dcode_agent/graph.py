@@ -292,11 +292,13 @@ _LLM_CONTENT_CHARS = 1200  # cap per-chunk content included in the LLM context
 def _build_llm_context(
     state: AgentState,
     *,
-    evidence_catalog: dict[str, str] | None = None,
+    evidence_catalog: dict[str, groundedness.EvidenceTarget] | None = None,
 ) -> str:
     """Render the retrieved evidence (code + graph locations) for the LLM."""
     catalog = evidence_catalog if evidence_catalog is not None else _build_evidence_catalog(state)
-    evidence_id_for = {token: f"[{evidence_id}]" for evidence_id, token in catalog.items()}
+    evidence_id_for = {
+        target.display_token: f"[{evidence_id}]" for evidence_id, target in catalog.items()
+    }
     blocks: list[str] = []
     for observation in state.observations:
         tool_name = observation["tool"]
@@ -377,14 +379,17 @@ def _build_llm_context(
     if catalog:
         blocks.append(
             "Evidence catalog (cite ONLY the [C#] IDs; never copy the target as a citation):\n"
-            + "\n".join(f"- [{evidence_id}] -> `{token}`" for evidence_id, token in catalog.items())
+            + "\n".join(
+                f"- [{evidence_id}] -> `{target.display_token}`"
+                for evidence_id, target in catalog.items()
+            )
         )
     return "\n\n".join(blocks)
 
 
-def _build_evidence_catalog(state: AgentState) -> dict[str, str]:
+def _build_evidence_catalog(state: AgentState) -> dict[str, groundedness.EvidenceTarget]:
     """Assign stable request-local IDs to server-owned evidence tokens."""
-    return {f"C{index}": token for index, token in enumerate(_allowed_citations(state), start=1)}
+    return {f"C{index}": target for index, target in enumerate(_allowed_evidence(state), start=1)}
 
 
 def _allowed_citations(state: AgentState) -> list[str]:
@@ -396,43 +401,109 @@ def _allowed_citations(state: AgentState) -> list[str]:
     Keeping qualified names here preserves the shared symbol-resolution invariant
     without overloading every dotted inline-code token as a citation.
     """
-    allowed: list[str] = []
-    seen: set[str] = set()
+    return [target.display_token for target in _allowed_evidence(state)]
 
-    def add(token: str) -> None:
-        if token and token not in seen:
-            seen.add(token)
-            allowed.append(token)
+
+def _allowed_evidence(state: AgentState) -> list[groundedness.EvidenceTarget]:
+    """Return canonical targets with stable chunk identity and provenance."""
+
+    allowed: list[groundedness.EvidenceTarget] = []
+    index_by_token: dict[str, int] = {}
+
+    def add(
+        token: str,
+        *,
+        chunk_id: object = "",
+        origin: str,
+    ) -> None:
+        if not token:
+            return
+        rendered_chunk_id = str(chunk_id) if chunk_id else ""
+        existing_index = index_by_token.get(token)
+        if existing_index is None:
+            index_by_token[token] = len(allowed)
+            allowed.append(
+                groundedness.EvidenceTarget(
+                    display_token=token,
+                    chunk_id=rendered_chunk_id,
+                    origins=(origin,),
+                )
+            )
+            return
+
+        existing = allowed[existing_index]
+        origins = existing.origins
+        if origin not in origins:
+            origins = (*origins, origin)
+        allowed[existing_index] = groundedness.EvidenceTarget(
+            display_token=token,
+            chunk_id=existing.chunk_id or rendered_chunk_id,
+            origins=origins,
+        )
 
     for observation in state.observations:
         tool_name = observation["tool"]
         result = observation["result"]
         if tool_name == "search_code":
             for chunk in result.get("chunks", []):
-                add(f"{chunk['file_path']}:{chunk['start_line']}")
+                add(
+                    f"{chunk['file_path']}:{chunk['start_line']}",
+                    chunk_id=chunk.get("chunk_id"),
+                    origin=tool_name,
+                )
         elif tool_name == "read_file":
-            add(f"{result['path']}:{result['line_range'][0]}")
+            add(
+                f"{result['path']}:{result['line_range'][0]}",
+                origin=tool_name,
+            )
         elif tool_name == "get_call_neighbors":
             for key in ("matches", "callers", "callees"):
                 for location in result.get(key, []):
-                    add(f"{location['file_path']}:{location['line']}")
+                    add(
+                        f"{location['file_path']}:{location['line']}",
+                        chunk_id=location.get("chunk_id"),
+                        origin=tool_name,
+                    )
                     symbol = str(location["symbol"])
                     if "." in symbol:
-                        add(symbol)
+                        add(
+                            symbol,
+                            chunk_id=location.get("chunk_id"),
+                            origin=tool_name,
+                        )
             for source_call in result.get("source_calls", []):
-                add(f"{source_call['file_path']}:{source_call['line']}")
+                add(
+                    f"{source_call['file_path']}:{source_call['line']}",
+                    origin=tool_name,
+                )
                 resolved_target = source_call.get("resolved_target")
                 if resolved_target is not None:
-                    add(f"{resolved_target['file_path']}:{resolved_target['line']}")
+                    add(
+                        f"{resolved_target['file_path']}:{resolved_target['line']}",
+                        chunk_id=resolved_target.get("chunk_id"),
+                        origin=tool_name,
+                    )
                     symbol = str(resolved_target["symbol"])
                     if "." in symbol:
-                        add(symbol)
+                        add(
+                            symbol,
+                            chunk_id=resolved_target.get("chunk_id"),
+                            origin=tool_name,
+                        )
         elif "locations" in result:
             for location in result["locations"]:
-                add(f"{location['file_path']}:{location['line']}")
+                add(
+                    f"{location['file_path']}:{location['line']}",
+                    chunk_id=location.get("chunk_id"),
+                    origin=tool_name,
+                )
                 symbol = str(location["symbol"])
                 if "." in symbol:
-                    add(symbol)
+                    add(
+                        symbol,
+                        chunk_id=location.get("chunk_id"),
+                        origin=tool_name,
+                    )
     return allowed
 
 
@@ -481,6 +552,9 @@ async def groundedness_node(state: AgentState) -> AgentState:
             "file_path": item.file_path,
             "line": item.line,
             "verified": item.verified,
+            "chunk_id": item.chunk_id,
+            "evidence_id": item.evidence_id,
+            "origins": list(item.origins),
         }
         for item in enforced.citations
     ]
@@ -545,7 +619,16 @@ def build_graph() -> Any:
 
 def _select_next_tool(state: AgentState) -> tuple[str, dict[str, Any], str] | None:
     if not state.observations:
-        return _select_initial_tool(state.query)
+        # B4 is defined as B3 plus optional structural expansion. Both modes
+        # therefore start from the same hybrid retrieval instead of allowing a
+        # direct graph route to replace the B3 evidence.
+        return (
+            "search_code",
+            {"query": state.query.strip(), "k": 5},
+            "Start from the shared B3 hybrid retrieval before optional tool expansion.",
+        )
+    if state.mode == "hybrid_only":
+        return None
     return _select_followup_tool(state)
 
 
@@ -621,40 +704,61 @@ def _select_followup_tool(state: AgentState) -> tuple[str, dict[str, Any], str] 
     if call_direction is not None:
         return _select_call_followup_tool(state, call_direction)
 
+    # Preserve the specialised product routes, but run them *after* the common
+    # hybrid evidence has been collected. Once that one specialised lookup has
+    # completed, synthesize rather than falling into the generic multihop path.
+    specialised = _select_initial_tool(state.query)
+    if specialised[0] != "search_code":
+        tool_name, args, thought = specialised
+        if not _has_tool_call(state, tool_name, args):
+            return tool_name, args, thought
+        return None
+
     if not _needs_multihop(state.query):
         return None
 
     search = _first_observation(state, "search_code")
-    top_chunk = _top_search_chunk(search)
-    if top_chunk is None:
+    seed_chunks = _top_search_chunks(search, limit=3)
+    if not seed_chunks:
         return None
 
-    path = str(top_chunk["file_path"])
-    symbol = str(top_chunk["symbol_name"])
-    line_range = _chunk_line_range(top_chunk)
+    # A top-1 seed makes every later Agent step inherit one retrieval mistake.
+    # Expand up to three distinct high-ranked symbols while the global step cap
+    # keeps the walk bounded.
+    for chunk in seed_chunks:
+        path = str(chunk["file_path"])
+        line_range = _chunk_line_range(chunk)
+        if not _has_tool_call(state, "read_file", {"path": path, "line_range": list(line_range)}):
+            return (
+                "read_file",
+                {"path": path, "line_range": line_range},
+                f"Read retrieved seed `{path}:{line_range[0]}` for local context.",
+            )
 
-    if not _has_tool_call(state, "read_file", {"path": path, "line_range": list(line_range)}):
-        return (
-            "read_file",
-            {"path": path, "line_range": line_range},
-            f"Read the top retrieved chunk `{path}:{line_range[0]}` for local context.",
-        )
+    for chunk in seed_chunks:
+        symbol = str(chunk["symbol_name"])
+        if symbol == "__module_doc__":
+            continue
+        args = {"symbol": symbol}
+        if not _has_tool_call(state, "find_references", args):
+            return (
+                "find_references",
+                args,
+                f"Follow graph references for `{symbol}` to expand cross-file context.",
+            )
 
-    if symbol != "__module_doc__" and not _has_tool_call(
-        state, "find_references", {"symbol": symbol}
-    ):
-        return (
-            "find_references",
-            {"symbol": symbol},
-            f"Follow graph references for `{symbol}` to expand cross-file context.",
-        )
-
-    if not _has_tool_call(state, "get_file_outline", {"path": path}):
-        return (
-            "get_file_outline",
-            {"path": path},
-            f"Inspect file outline for `{path}` to summarize nearby structure.",
-        )
+    seen_paths: set[str] = set()
+    for chunk in seed_chunks:
+        path = str(chunk["file_path"])
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        if not _has_tool_call(state, "get_file_outline", {"path": path}):
+            return (
+                "get_file_outline",
+                {"path": path},
+                f"Inspect file outline for `{path}` to summarize nearby structure.",
+            )
 
     return None
 
@@ -663,6 +767,17 @@ def _select_call_followup_tool(
     state: AgentState,
     direction: CallDirection,
 ) -> tuple[str, dict[str, Any], str] | None:
+    direct_subject = _extract_subject(state.query) or _extract_call_subject(state.query)
+    if direct_subject is not None:
+        direct_args = {"symbol": direct_subject, "direction": direction}
+        if not _has_tool_call(state, "get_call_neighbors", direct_args):
+            return (
+                "get_call_neighbors",
+                direct_args,
+                f"Walk resolved {direction} call edges for `{direct_subject}` "
+                "after the shared hybrid retrieval.",
+            )
+
     neighbors = _last_observation(state, "get_call_neighbors")
     if neighbors is not None:
         matches = neighbors["result"].get("matches", [])
@@ -754,12 +869,30 @@ def _last_observation(state: AgentState, tool_name: str) -> dict[str, Any] | Non
 
 
 def _top_search_chunk(observation: dict[str, Any] | None) -> dict[str, Any] | None:
+    chunks = _top_search_chunks(observation, limit=1)
+    return chunks[0] if chunks else None
+
+
+def _top_search_chunks(observation: dict[str, Any] | None, *, limit: int) -> list[dict[str, Any]]:
     if observation is None:
-        return None
+        return []
     chunks = observation["result"].get("chunks", [])
-    if not chunks:
-        return None
-    return cast(dict[str, Any], chunks[0])
+    selected: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, int]] = set()
+    for raw_chunk in chunks:
+        chunk = cast(dict[str, Any], raw_chunk)
+        key = (
+            str(chunk["file_path"]),
+            str(chunk["symbol_name"]),
+            int(chunk["start_line"]),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(chunk)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def _chunk_line_range(chunk: dict[str, Any]) -> tuple[int, int]:

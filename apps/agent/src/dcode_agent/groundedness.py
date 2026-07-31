@@ -15,6 +15,7 @@ contract.
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from dcode_shared.db.models import Chunk, Symbol
@@ -33,6 +34,15 @@ EVIDENCE_ID_PATTERN = re.compile(r"\[(C\d+)\]")
 
 
 @dataclass
+class EvidenceTarget:
+    """One server-owned target offered to synthesis under a request-local ID."""
+
+    display_token: str
+    chunk_id: str = ""
+    origins: tuple[str, ...] = ()
+
+
+@dataclass
 class CitationCheck:
     symbol: str
     file_path: str
@@ -43,6 +53,14 @@ class CitationCheck:
     source_token: str = ""
     # Server-owned token rendered after verification, e.g. ``src/pkg/mod.py:42``.
     display_token: str = ""
+    # Stable evidence identity used by evaluation. Empty only when the verified
+    # symbol/location cannot be tied to an indexed chunk.
+    chunk_id: str = ""
+    # Request-local ID without brackets, e.g. ``C1``.
+    evidence_id: str = ""
+    # Tools that surfaced this evidence. Multiple origins are retained when the
+    # same chunk appeared in both hybrid retrieval and graph expansion.
+    origins: tuple[str, ...] = ()
 
 
 @dataclass
@@ -77,7 +95,7 @@ async def verify(
     repo_id: str,
     db: AsyncSession | None,
     *,
-    evidence_catalog: Mapping[str, str] | None = None,
+    evidence_catalog: Mapping[str, str | EvidenceTarget] | None = None,
 ) -> GroundednessResult:
     """Verify every citation in ``answer`` against indexed chunks / symbols.
 
@@ -117,7 +135,7 @@ async def _verify_with_evidence_catalog(
     answer: str,
     repo_id: str,
     db: AsyncSession | None,
-    evidence_catalog: Mapping[str, str],
+    evidence_catalog: Mapping[str, str | EvidenceTarget],
 ) -> GroundednessResult:
     """Verify LLM evidence IDs plus explicit file:line references.
 
@@ -125,17 +143,40 @@ async def _verify_with_evidence_catalog(
     that ignores the ID instruction still cannot present an invented location
     as evidence. Dotted inline code is intentionally absent from this extractor.
     """
-    evidence_ids = extract_evidence_ids(answer)
-    file_lines = _extract_file_line_citations(answer)
-    if not evidence_ids and not file_lines:
+    references: list[tuple[int, str, Any]] = []
+    references.extend(
+        (match.start(), "evidence_id", match.group(1))
+        for match in EVIDENCE_ID_PATTERN.finditer(answer)
+    )
+    references.extend(
+        (
+            match.start(),
+            "file_line",
+            (match.group(1), match.group(1), int(match.group(2))),
+        )
+        for match in FILE_LINE_PATTERN.finditer(answer)
+    )
+    references.sort(key=lambda item: item[0])
+    if not references:
         return _uncited_result()
 
     parsed_repo_id = _parse_repo_id(repo_id)
     checks: list[CitationCheck] = []
-    for evidence_id in evidence_ids:
+    for _, reference_kind, payload in references:
+        if reference_kind == "file_line":
+            symbol, path, line = payload
+            if db is None or parsed_repo_id is None:
+                checks.append(
+                    CitationCheck(symbol=symbol, file_path=path, line=line, verified=False)
+                )
+            else:
+                checks.append(await _verify_file_line(db, parsed_repo_id, symbol, path, line))
+            continue
+
+        evidence_id = str(payload)
         source_token = f"[{evidence_id}]"
-        display_token = evidence_catalog.get(evidence_id)
-        if display_token is None:
+        catalog_entry = evidence_catalog.get(evidence_id)
+        if catalog_entry is None:
             checks.append(
                 CitationCheck(
                     symbol=source_token,
@@ -146,6 +187,12 @@ async def _verify_with_evidence_catalog(
                 )
             )
             continue
+        target = (
+            catalog_entry
+            if isinstance(catalog_entry, EvidenceTarget)
+            else EvidenceTarget(display_token=catalog_entry)
+        )
+        display_token = target.display_token
         check = await _verify_catalog_token(db, parsed_repo_id, display_token)
         checks.append(
             CitationCheck(
@@ -155,14 +202,11 @@ async def _verify_with_evidence_catalog(
                 verified=check.verified,
                 source_token=source_token,
                 display_token=display_token,
+                chunk_id=target.chunk_id or check.chunk_id,
+                evidence_id=evidence_id,
+                origins=target.origins,
             )
         )
-
-    for symbol, path, line in file_lines:
-        if db is None or parsed_repo_id is None:
-            checks.append(CitationCheck(symbol=symbol, file_path=path, line=line, verified=False))
-        else:
-            checks.append(await _verify_file_line(db, parsed_repo_id, symbol, path, line))
 
     verified_count = sum(1 for check in checks if check.verified)
     return GroundednessResult(citations=checks, score=verified_count / len(checks))
@@ -235,10 +279,20 @@ async def _verify_file_line(
         .where(Chunk.file_path == file_path)
         .where(Chunk.start_line <= line)
         .where(Chunk.end_line >= line)
+        # Prefer the narrowest/nearest containing chunk deterministically. The
+        # previous unordered LIMIT could map the same citation differently when
+        # a class chunk and a nested method both contained the cited line.
+        .order_by(Chunk.start_line.desc(), Chunk.end_line.asc(), Chunk.id)
         .limit(1)
     )
     row = await db.scalar(stmt)
-    return CitationCheck(symbol=symbol, file_path=file_path, line=line, verified=row is not None)
+    return CitationCheck(
+        symbol=symbol,
+        file_path=file_path,
+        line=line,
+        verified=row is not None,
+        chunk_id=str(row.id) if row is not None else "",
+    )
 
 
 async def _verify_symbol(
@@ -276,6 +330,7 @@ async def _verify_symbol(
         file_path=row.file_path,
         line=row.line,
         verified=True,
+        chunk_id=str(row.chunk_id) if row.chunk_id is not None else "",
     )
 
 

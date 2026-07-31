@@ -230,11 +230,21 @@ def _registry(*tools: Tool[Any, Any]) -> ToolRegistry:
 async def test_plan_node_routes_definition_queries() -> None:
     state = AgentState(repo_id=str(uuid4()), query="Where is `HTTPBasicAuth` defined?")
 
+    first = await plan_node(state)
+    assert first.pending_tool_name == "search_code"
+    state.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": state.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
     updated = await plan_node(state)
 
     assert updated.pending_tool_name == "find_definition"
     assert updated.pending_tool_args == {"symbol": "HTTPBasicAuth"}
-    assert "find_definition" in updated.thoughts[0]
+    assert "find_definition" in updated.thoughts[-1]
 
 
 async def test_plan_node_routes_call_queries_with_explicit_direction() -> None:
@@ -249,6 +259,16 @@ async def test_plan_node_routes_call_queries_with_explicit_direction() -> None:
     for query, direction in queries:
         state = AgentState(repo_id=str(uuid4()), query=query)
 
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
         updated = await plan_node(state)
 
         assert updated.pending_tool_name == "get_call_neighbors"
@@ -259,6 +279,16 @@ async def test_plan_node_routes_reference_queries_separately_from_calls() -> Non
     for query in ("who references send", "references to `send`"):
         state = AgentState(repo_id=str(uuid4()), query=query)
 
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
         updated = await plan_node(state)
 
         assert updated.pending_tool_name == "find_references"
@@ -271,6 +301,16 @@ async def test_plan_node_understands_chinese_bidirectional_call_queries() -> Non
         query="HybridRetriever.retrieve 被哪些函数调用，又调用哪些函数？",
     )
 
+    first = await plan_node(state)
+    assert first.pending_tool_name == "search_code"
+    state.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": state.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
     updated = await plan_node(state)
 
     assert updated.pending_tool_name == "get_call_neighbors"
@@ -313,8 +353,71 @@ async def test_plan_node_routes_dependents_queries() -> None:
     ]
     for query in queries:
         state = AgentState(repo_id=str(uuid4()), query=query)
+        first = await plan_node(state)
+        assert first.pending_tool_name == "search_code"
+        state.observations = [
+            {
+                "tool": "search_code",
+                "args": {"query": query, "k": 5},
+                "result": {"chunks": []},
+                "cached": False,
+            }
+        ]
         updated = await plan_node(state)
         assert updated.pending_tool_name == "get_dependents", query
+
+
+async def test_multihop_expands_three_distinct_hybrid_seeds() -> None:
+    chunks = [
+        {
+            "chunk_id": str(uuid4()),
+            "file_path": f"src/requests/module_{index}.py",
+            "symbol_name": f"symbol_{index}",
+            "start_line": index * 10 + 1,
+            "end_line": index * 10 + 5,
+            "content": f"def symbol_{index}(): ...",
+            "score": 1.0 - index / 10,
+            "score_components": {"dense": 0.0, "sparse": 1.0, "rerank": 1.0},
+        }
+        for index in range(3)
+    ]
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="How is the architecture wired end-to-end?",
+        observations=[
+            {
+                "tool": "search_code",
+                "args": {"query": "How is the architecture wired end-to-end?", "k": 5},
+                "result": {"chunks": chunks},
+                "cached": False,
+            }
+        ],
+    )
+
+    for chunk in chunks:
+        planned = await plan_node(state)
+        assert planned.pending_tool_name == "read_file"
+        assert planned.pending_tool_args["path"] == chunk["file_path"]
+        state.tool_calls.append(
+            {
+                "tool": "read_file",
+                "args": {
+                    "path": chunk["file_path"],
+                    "line_range": [chunk["start_line"], chunk["end_line"]],
+                },
+            }
+        )
+
+    for chunk in chunks:
+        planned = await plan_node(state)
+        assert planned.pending_tool_name == "find_references"
+        assert planned.pending_tool_args == {"symbol": chunk["symbol_name"]}
+        state.tool_calls.append(
+            {
+                "tool": "find_references",
+                "args": {"symbol": chunk["symbol_name"]},
+            }
+        )
 
 
 async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
@@ -387,7 +490,7 @@ async def test_synthesize_node_formats_search_observation() -> None:
     assert updated.citations[0]["symbol"] == "HTTPBasicAuth"
 
 
-async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
+async def test_build_graph_runs_shared_search_then_specialised_tool() -> None:
     repo_id = str(uuid4())
     emitter = FakeEmitter()
     registry = _registry(DummyTool(), DummySearchTool())
@@ -402,13 +505,16 @@ async def test_build_graph_runs_one_tool_then_synthesizes() -> None:
     )
 
     assert result["final_answer"] is not None
-    assert "Definition matches" in result["final_answer"]
+    assert "Agent trace" in result["final_answer"]
     assert result["groundedness_score"] == 0.0
     # Guardrail: with no db the single citation is unverified, so the file:line
     # reference is redacted from the answer and a warning footer is appended.
     assert "src/requests/auth.py:85" not in result["final_answer"]
     assert "[unverified reference removed]" in result["final_answer"]
-    assert len(result["tool_calls"]) == 1
+    assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
+        "find_definition",
+    ]
     assert emitter.thoughts
     assert emitter.tool_calls
     assert emitter.tool_results
@@ -591,7 +697,7 @@ async def test_build_graph_runs_multihop_for_architecture_query() -> None:
 async def test_build_graph_reads_source_after_bidirectional_call_lookup() -> None:
     repo_uuid = uuid4()
     emitter = FakeEmitter()
-    registry = _registry(DummyCallNeighborsTool(), DummyReadFileTool())
+    registry = _registry(DummySearchTool(), DummyCallNeighborsTool(), DummyReadFileTool())
     compiled = build_graph()
 
     result = await compiled.ainvoke(
@@ -608,6 +714,7 @@ async def test_build_graph_reads_source_after_bidirectional_call_lookup() -> Non
     )
 
     assert [call["tool"] for call in result["tool_calls"]] == [
+        "search_code",
         "get_call_neighbors",
         "read_file",
     ]
@@ -759,6 +866,16 @@ async def test_contextualize_binds_chinese_call_pronoun_to_recent_user_symbol() 
     )
 
     contextualized = await contextualize_node(state)
+    first = await plan_node(contextualized)
+    assert first.pending_tool_name == "search_code"
+    contextualized.observations = [
+        {
+            "tool": "search_code",
+            "args": {"query": contextualized.query, "k": 5},
+            "result": {"chunks": []},
+            "cached": False,
+        }
+    ]
     planned = await plan_node(contextualized)
 
     assert contextualized.raw_query == query
@@ -768,3 +885,25 @@ async def test_contextualize_binds_chinese_call_pronoun_to_recent_user_symbol() 
         "symbol": "HybridRetriever.retrieve",
         "direction": "both",
     }
+
+
+async def test_hybrid_only_mode_stops_after_shared_search() -> None:
+    repo_id = str(uuid4())
+    emitter = FakeEmitter()
+    compiled = build_graph()
+
+    result = await compiled.ainvoke(
+        AgentState(
+            repo_id=repo_id,
+            query="How is authentication wired end-to-end?",
+            mode="hybrid_only",
+            runtime={
+                "tool_registry": _registry(DummySearchTool()),
+                "tool_cache": {},
+                "emitter": emitter,
+            },
+        )
+    )
+
+    assert [call["tool"] for call in result["tool_calls"]] == ["search_code"]
+    assert "Top code hits" in result["draft_answer"]

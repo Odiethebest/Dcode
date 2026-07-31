@@ -81,7 +81,9 @@ async def test_synthesis_streams_llm_deltas() -> None:
     llm = _FakeLLM(["Auth is implemented here ", "[C1]", "."])
     state = await synthesize_node(_search_state({"llm": llm, "emitter": emitter}))
     assert state.draft_answer == "Auth is implemented here [C1]."
-    assert state.evidence_catalog == {"C1": "src/requests/auth.py:85"}
+    assert state.evidence_catalog is not None
+    assert state.evidence_catalog["C1"].display_token == "src/requests/auth.py:85"
+    assert state.evidence_catalog["C1"].origins == ("search_code",)
     # every token delta was streamed live, in order
     assert emitter.partials == ["Auth is implemented here ", "[C1]", "."]
     # the LLM was handed the retrieved code content as grounding context

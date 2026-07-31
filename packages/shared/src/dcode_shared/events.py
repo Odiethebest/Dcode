@@ -6,8 +6,9 @@ The encoder helper emits the wire format used over `text/event-stream`.
 """
 
 from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 EventName = Literal[
     "thought",
@@ -42,6 +43,9 @@ class CitationEvent(BaseModel):
     file_path: str
     line: int
     verified: bool
+    chunk_id: UUID | None = None
+    evidence_id: str | None = None
+    origins: list[str] = Field(default_factory=list)
 
 
 class PartialAnswerEvent(BaseModel):
