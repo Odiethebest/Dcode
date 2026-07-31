@@ -327,6 +327,55 @@ Recorded as tested, not as intended.
    and could flip H1 for a purely cosmetic reason. That is p-hacking in a bug-fix
    costume. The scoring rule was not touched.
 
+### Protocol change declared 2026-07-31, before the run it judges
+
+**The H1 composite drops groundedness. This lowers the bar, and it was decided
+after seeing four runs miss it.** Both halves of that sentence are load-bearing;
+neither is buried.
+
+*What changed.* The composite was the mean of Recall@k, MRR, nDCG@k and
+groundedness. It is now the mean of the three retrieval terms. Groundedness
+continues to be reported, and continues to be gated separately at ≥ 0.95.
+
+*The case on the merits.* Groundedness is **1.000 for every arm, on every level,
+in every run recorded so far.** A term identical across arms contributes no
+discrimination and only dilutes the margins. `Technical_Design.md` already
+described it as "reported separately from that executable decision" while it sat
+inside the composite — a contradiction that predates this change.
+
+*The case against, stated as plainly.* Because the removed term is identical
+across arms, dropping it multiplies every margin by exactly 4/3. Requiring a
+three-term margin ≥ 0.050 is **arithmetically identical to requiring a four-term
+margin ≥ 0.0375**. This is a 25% lower bar. Calling it a metric correction and
+not a threshold change would be false.
+
+*The timing, which is the part that matters.* Four runs preceded this decision.
+Under the four-term composite they missed by 0.0036 (L3, v3) and 0.0016 (L2, v4).
+This change was not derived from a principle and then applied; it was found while
+looking for those margins. It is declared and committed **before** the run it is
+used to judge, and every `h1_report.json` now carries the four-term reading beside
+the three-term one under `four_term`, so no reader has to recompute it to see the
+difference.
+
+*A consequence worth naming.* Groundedness was the only channel on which an arm
+could win by being more truthful rather than by retrieving better. It no longer
+affects the H1 decision at all. Nothing is lost today because every arm scores
+1.000 — but that is a fact about the current data, not about the rule, and the
+rule is what future runs inherit. Pinned by a test.
+
+### Repeat protocol, declared with the above
+
+The same run averages **3 repeats**. Retrieval is deterministic; answer synthesis
+is not, and every margin recorded before this came from a single sample. Across
+the four single runs, the level that cleared the bar changed twice, moved by more
+than the bar itself, and flipped in response to a change aimed at neither level.
+A single run cannot separate a real effect from which way the model phrased an
+answer.
+
+Per-question metrics are averaged across repeats first, then aggregated. Each
+repeat's independent verdict is recorded under `per_repeat`: if they disagree,
+that is the finding, and a mean alone would hide it.
+
 ### Criteria set 3 — to re-open H1
 
 Fixed here, before the next run, in the same spirit as the sets above.

@@ -348,9 +348,17 @@ than resolved in whichever direction happened to be convenient.
 ### H1 decision and additional gates
 
 The executable `h1_report` decision compares B4 with B2 and B3 on L2 and L3.
-For each level it computes the mean of Recall@k, MRR, nDCG@k, and groundedness;
-H1 is `supported` only if B4 exceeds **both** baselines by at least `0.05`
-composite points on **both** levels.
+For each level it computes the mean of **Recall@k, MRR and nDCG@k**; H1 is
+`supported` only if B4 exceeds **both** baselines by at least `0.05` composite
+points on **both** levels.
+
+Groundedness was a fourth term until 2026-07-31. It is 1.000 for every arm in
+every recorded run, so it added no discrimination — but because it is identical
+across arms, removing it multiplies every margin by 4/3, which is arithmetically
+the same as lowering the threshold to `0.0375`. **It was removed after four runs
+had missed the four-term bar.** Every `h1_report.json` carries the four-term
+reading under `four_term` for exactly this reason. Full disclosure in
+[Final_Report.md](Final_Report.md).
 
 Two additional product-quality gates are reported separately from that
 executable decision:

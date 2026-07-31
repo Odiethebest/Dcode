@@ -380,7 +380,26 @@ async def test_run_suite_writes_h1_report(tmp_path: Path, monkeypatch, caplog) -
 
         async def answer(self, repo_id: str, query: str) -> AnswerResult:
             if self.id == "B4":
-                return await super().answer(repo_id, query)
+                # The margin has to come from evidence quality. It used to come
+                # from groundedness, which the three-term composite no longer
+                # scores -- and that made this fixture pass for a reason it was
+                # not testing.
+                return AnswerResult(
+                    answer="Auth flow [C1]",
+                    citations=["`src/requests/auth.py:85`"],
+                    groundedness=1.0,
+                    evidence=[
+                        CitationEvent(
+                            symbol="requests.auth.HTTPBasicAuth",
+                            file_path="src/requests/auth.py",
+                            line=85,
+                            verified=True,
+                            chunk_id="05f376f2-fdb5-4c20-8ed1-80e9f3da8c55",
+                            evidence_id="C1",
+                            origins=["search_code"],
+                        )
+                    ],
+                )
             return AnswerResult(answer="weak baseline", citations=[], groundedness=0.0)
 
     monkeypatch.setattr(
@@ -594,8 +613,19 @@ async def test_b3_5_is_reported_as_a_diagnostic_and_never_in_the_decision(
 
     report = result["h1_report"]
     # The decision reads B2/B3/B4 only. Promoting the diagnostic arm into the
-    # rule would be changing the pass criteria after the fact.
+    # rule would be changing the pass criteria after the fact. Pinned as an
+    # exact key set so an arm cannot be added quietly; `four_term` is the
+    # superseded composite carried alongside, and is not an arm.
     assert set(report["comparisons"]["L2"]) == {
+        "B2_composite",
+        "B3_composite",
+        "B4_composite",
+        "margin_vs_B2",
+        "margin_vs_B3",
+        "supported",
+        "four_term",
+    }
+    assert set(report["comparisons"]["L2"]["four_term"]) == {
         "B2_composite",
         "B3_composite",
         "B4_composite",
@@ -629,3 +659,51 @@ async def test_h1_report_omits_diagnostics_when_b3_5_was_not_run(
     )
 
     assert "diagnostics" not in result["h1_report"]
+
+
+async def test_groundedness_no_longer_moves_the_h1_decision(tmp_path: Path, monkeypatch) -> None:
+    """A consequence of the three-term composite, pinned so it is not a surprise.
+
+    Dropping groundedness removes the one channel on which an arm could win by
+    being more truthful rather than by retrieving better. Every arm currently
+    scores 1.000, so nothing is lost today -- but the rule, not the current
+    data, is what a future run inherits. If this ever needs to change, it should
+    be a decision, not a discovery.
+    """
+    gt_chunk_id = "11111111-1111-1111-1111-111111111111"
+    _one_question(tmp_path / "questions.jsonl", gt_chunk_id)
+
+    def arm(baseline_id: str, groundedness: float) -> Baseline:
+        base = _agent_arm(baseline_id, gt_chunk_id, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        # Bind the original before replacing it, or the wrapper calls itself.
+        original = base.answer
+
+        async def answer(repo_id: str, query: str, _orig=original, _g=groundedness) -> AnswerResult:
+            result = await _orig(repo_id, query)
+            return AnswerResult(
+                answer=result.answer,
+                citations=result.citations,
+                groundedness=_g,
+                evidence=result.evidence,
+            )
+
+        base.answer = answer  # type: ignore[method-assign]
+        return base
+
+    # Identical evidence everywhere; only truthfulness differs, hugely.
+    monkeypatch.setattr(
+        "dcode_eval.run.build_baseline",
+        lambda bid: arm(bid, 1.0 if bid == "B4" else 0.0),
+    )
+
+    result = await run_suite(
+        baseline_ids=["B2", "B3", "B4"],
+        questions_path=str(tmp_path / "questions.jsonl"),
+        output_dir=str(tmp_path / "out"),
+        k=5,
+    )
+
+    l2 = result["h1_report"]["comparisons"]["L2"]
+    assert l2["margin_vs_B3"] == 0.0
+    # The superseded composite would have handed B4 the whole bar on this alone.
+    assert l2["four_term"]["margin_vs_B3"] == pytest.approx(0.25)
