@@ -4,22 +4,35 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from dcode_agent.graph import synthesize_node
+from dcode_agent.llm import ResponseLanguage
 from dcode_agent.state import AgentState
 
 
 class _FakeLLM:
     def __init__(self, chunks: list[str]) -> None:
         self.chunks = chunks
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, ResponseLanguage]] = []
 
-    async def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
-        self.calls.append((question, context))
+    async def stream(
+        self,
+        *,
+        question: str,
+        context: str,
+        response_language: ResponseLanguage,
+    ) -> AsyncIterator[str]:
+        self.calls.append((question, context, response_language))
         for chunk in self.chunks:
             yield chunk
 
 
 class _BoomLLM:
-    async def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        *,
+        question: str,
+        context: str,
+        response_language: ResponseLanguage,
+    ) -> AsyncIterator[str]:
         raise RuntimeError("boom")
         yield ""  # unreachable; makes this an async generator
 
@@ -72,6 +85,21 @@ async def test_synthesis_streams_llm_deltas() -> None:
     assert emitter.partials == ["Auth is in ", "`src/requests/auth.py:85`", "."]
     # the LLM was handed the retrieved code content as grounding context
     assert "HTTPBasicAuth" in llm.calls[0][1]
+    assert llm.calls[0][2] == "English"
+
+
+async def test_synthesis_uses_original_followup_language_after_contextualization() -> None:
+    emitter = _FakeEmitter()
+    llm = _FakeLLM(["认证逻辑见 ", "`src/requests/auth.py:85`", "。"])
+    state = _search_state({"llm": llm, "emitter": emitter})
+    state.query = "How does HTTPBasicAuth work?"
+    state.raw_query = "它的认证逻辑是怎样的？"
+
+    updated = await synthesize_node(state)
+
+    assert updated.draft_answer == "认证逻辑见 `src/requests/auth.py:85`。"
+    assert llm.calls[0][0] == "How does HTTPBasicAuth work?"
+    assert llm.calls[0][2] == "Chinese"
 
 
 async def test_synthesis_falls_back_to_template_without_llm() -> None:
@@ -82,6 +110,19 @@ async def test_synthesis_falls_back_to_template_without_llm() -> None:
     assert "`src/requests/auth.py:85`" in answer
     # template path emits the whole answer as a single partial delta
     assert emitter.partials == [answer]
+
+
+async def test_template_fallback_matches_a_chinese_question() -> None:
+    emitter = _FakeEmitter()
+    state = _search_state({"emitter": emitter})
+    state.query = "认证逻辑是怎样的？"
+
+    updated = await synthesize_node(state)
+    answer = updated.draft_answer or ""
+
+    assert answer.startswith("与 `认证逻辑是怎样的？` 最相关的代码结果：")
+    assert "位于 `src/requests/auth.py:85`" in answer
+    assert "Top code hits" not in answer
 
 
 async def test_synthesis_degrades_to_template_when_llm_fails() -> None:

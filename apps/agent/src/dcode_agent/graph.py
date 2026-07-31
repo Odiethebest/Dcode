@@ -11,7 +11,7 @@ from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
 
 from dcode_agent import groundedness
-from dcode_agent.llm import LLMClient
+from dcode_agent.llm import LLMClient, response_language_for
 from dcode_agent.settings import agent_settings
 from dcode_agent.state import AgentState
 
@@ -218,7 +218,11 @@ async def synthesize_node(state: AgentState) -> AgentState:
             streamed = True
 
     if state.error is not None:
-        answer = _prepend_tool_failure_notice(answer, state.error)
+        answer = _prepend_tool_failure_notice(
+            answer,
+            state.error,
+            chinese=_answer_in_chinese(state),
+        )
     state.draft_answer = answer
     state.citations = citations
     if not streamed:
@@ -240,7 +244,11 @@ async def _llm_stream(state: AgentState, llm: LLMClient) -> str | None:
     await _emit_thought(state, "Synthesize a grounded answer from the retrieved evidence.")
     parts: list[str] = []
     try:
-        async for delta in llm.stream(question=state.query, context=context):
+        async for delta in llm.stream(
+            question=state.query,
+            context=context,
+            response_language=response_language_for(state.raw_query or state.query),
+        ):
             if not delta:
                 continue
             parts.append(delta)
@@ -352,8 +360,16 @@ def _clip(text: object) -> str:
     return rendered[:_LLM_CONTENT_CHARS] + "\n... [truncated]"
 
 
-def _prepend_tool_failure_notice(answer: str, error: str) -> str:
-    notice = f"⚠️ {error}. The answer below is based on the evidence gathered before the failure."
+def _answer_in_chinese(state: AgentState) -> bool:
+    return response_language_for(state.raw_query or state.query) == "Chinese"
+
+
+def _prepend_tool_failure_notice(answer: str, error: str, *, chinese: bool) -> str:
+    notice = (
+        f"⚠️ {error}。以下回答仅基于故障发生前收集到的证据。"
+        if chinese
+        else f"⚠️ {error}. The answer below is based on the evidence gathered before the failure."
+    )
     return f"{notice}\n\n{answer}" if answer else notice
 
 
@@ -728,8 +744,14 @@ def _summarize_observation(observation: dict[str, Any]) -> str:
 
 
 def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
+    chinese = _answer_in_chinese(state)
     if not state.observations:
-        return ("No observations were produced for this query.", [])
+        message = (
+            "此查询未产生可用的检索结果。"
+            if chinese
+            else "No observations were produced for this query."
+        )
+        return (message, [])
 
     if len(state.observations) > 1:
         return _synthesize_multihop(state)
@@ -741,8 +763,19 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
     if tool_name == "search_code":
         chunks = result["chunks"]
         if not chunks:
-            return (f"No indexed chunks matched `{state.query}`.", [])
-        lines = [f"Top code hits for `{state.query}`:"]
+            message = (
+                f"没有找到与 `{state.query}` 匹配的已索引代码片段。"
+                if chinese
+                else f"No indexed chunks matched `{state.query}`."
+            )
+            return (message, [])
+        lines = [
+            (
+                f"与 `{state.query}` 最相关的代码结果："
+                if chinese
+                else f"Top code hits for `{state.query}`:"
+            )
+        ]
         citations: list[dict[str, Any]] = []
         for chunk in chunks[:3]:
             citation = {
@@ -752,7 +785,9 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
             }
             citations.append(citation)
             lines.append(
-                f"- `{chunk['symbol_name']}` in `{chunk['file_path']}:{chunk['start_line']}`"
+                f"- `{chunk['symbol_name']}`，位于 `{chunk['file_path']}:{chunk['start_line']}`"
+                if chinese
+                else f"- `{chunk['symbol_name']}` in `{chunk['file_path']}:{chunk['start_line']}`"
             )
         return ("\n".join(lines), citations)
 
@@ -766,15 +801,31 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
     }:
         locations = result["locations"]
         if not locations:
-            return (f"No results found for `{state.query}`.", [])
-        heading = {
-            "find_definition": "Definition matches:",
-            "find_references": "Reference matches:",
-            "get_dependencies": "Dependency matches:",
-            "get_dependents": "Dependent matches:",
-            "get_file_outline": "File outline:",
-            "grep": "Exact matches:",
-        }[tool_name]
+            message = (
+                f"没有找到与 `{state.query}` 相关的结果。"
+                if chinese
+                else f"No results found for `{state.query}`."
+            )
+            return (message, [])
+        heading = (
+            {
+                "find_definition": "定义匹配：",
+                "find_references": "引用匹配：",
+                "get_dependencies": "依赖项匹配：",
+                "get_dependents": "被依赖项匹配：",
+                "get_file_outline": "文件结构：",
+                "grep": "精确匹配：",
+            }
+            if chinese
+            else {
+                "find_definition": "Definition matches:",
+                "find_references": "Reference matches:",
+                "get_dependencies": "Dependency matches:",
+                "get_dependents": "Dependent matches:",
+                "get_file_outline": "File outline:",
+                "grep": "Exact matches:",
+            }
+        )[tool_name]
         lines = [heading]
         citations = []
         for location in locations[:5]:
@@ -786,7 +837,9 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
                 }
             )
             lines.append(
-                f"- `{location['symbol']}` at `{location['file_path']}:{location['line']}`"
+                f"- `{location['symbol']}`，位于 `{location['file_path']}:{location['line']}`"
+                if chinese
+                else f"- `{location['symbol']}` at `{location['file_path']}:{location['line']}`"
             )
         return ("\n".join(lines), citations)
 
@@ -798,23 +851,35 @@ def _synthesize_from_observations(state: AgentState) -> tuple[str, list[dict[str
             "line": start_line,
         }
         answer = (
-            f"Excerpt from `{result['path']}:{start_line}`-`{end_line}`:\n"
-            f"```python\n{result['content']}\n```"
-        )
+            f"摘自 `{result['path']}:{start_line}`-`{end_line}`：\n"
+            if chinese
+            else f"Excerpt from `{result['path']}:{start_line}`-`{end_line}`:\n"
+        ) + f"```python\n{result['content']}\n```"
         return (answer, [citation])
 
     if tool_name == "list_directory":
         entries = result["entries"]
-        lines = ["Directory entries:"]
+        lines = ["目录内容：" if chinese else "Directory entries:"]
         for entry in entries[:10]:
-            lines.append(f"- `{entry['name']}` ({entry['kind']})")
+            lines.append(
+                f"- `{entry['name']}`（{entry['kind']}）"
+                if chinese
+                else f"- `{entry['name']}` ({entry['kind']})"
+            )
         return ("\n".join(lines), [])
 
-    return ("Tool execution completed.", [])
+    return ("工具执行完成。" if chinese else "Tool execution completed.", [])
 
 
 def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
-    lines = [f"Agent trace for `{state.query}`:"]
+    chinese = _answer_in_chinese(state)
+    lines = [
+        (
+            f"针对 `{state.query}` 的 Agent 检索过程："
+            if chinese
+            else f"Agent trace for `{state.query}`:"
+        )
+    ]
     citations: list[dict[str, Any]] = []
 
     for observation in state.observations:
@@ -824,14 +889,26 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
         if tool_name == "search_code":
             chunks = result["chunks"]
             if not chunks:
-                lines.append("- `search_code` found no indexed chunks.")
+                lines.append(
+                    "- `search_code` 未找到已索引代码片段。"
+                    if chinese
+                    else "- `search_code` found no indexed chunks."
+                )
                 continue
-            lines.append("- `search_code` found these likely entry points:")
+            lines.append(
+                "- `search_code` 找到以下可能的入口："
+                if chinese
+                else "- `search_code` found these likely entry points:"
+            )
             for chunk in chunks[:3]:
                 citation = _citation_from_chunk(chunk)
                 _append_unique_citation(citations, citation)
                 lines.append(
-                    f"  - `{chunk['symbol_name']}` in `{chunk['file_path']}:{chunk['start_line']}`"
+                    f"  - `{chunk['symbol_name']}`，位于 "
+                    f"`{chunk['file_path']}:{chunk['start_line']}`"
+                    if chinese
+                    else f"  - `{chunk['symbol_name']}` in "
+                    f"`{chunk['file_path']}:{chunk['start_line']}`"
                 )
             continue
 
@@ -844,7 +921,11 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
             }
             _append_unique_citation(citations, citation)
             lines.append(
-                f"- `read_file` inspected `{result['path']}:{start_line}`-`{end_line}` for local implementation context."
+                f"- `read_file` 检查了 `{result['path']}:{start_line}`-"
+                f"`{end_line}`，以了解局部实现。"
+                if chinese
+                else f"- `read_file` inspected `{result['path']}:{start_line}`-"
+                f"`{end_line}` for local implementation context."
             )
             continue
 
@@ -858,27 +939,53 @@ def _synthesize_multihop(state: AgentState) -> tuple[str, list[dict[str, Any]]]:
         }:
             locations = result["locations"]
             if not locations:
-                lines.append(f"- `{tool_name}` found no locations.")
+                lines.append(
+                    f"- `{tool_name}` 未找到位置。"
+                    if chinese
+                    else f"- `{tool_name}` found no locations."
+                )
                 continue
-            heading = {
-                "find_definition": "definition locations",
-                "find_references": "cross-file references",
-                "get_dependencies": "module dependencies",
-                "get_dependents": "reverse dependencies",
-                "get_file_outline": "nearby file symbols",
-                "grep": "exact matches",
-            }[tool_name]
-            lines.append(f"- `{tool_name}` added {heading}:")
+            heading = (
+                {
+                    "find_definition": "定义位置",
+                    "find_references": "跨文件引用",
+                    "get_dependencies": "模块依赖",
+                    "get_dependents": "反向依赖",
+                    "get_file_outline": "附近文件符号",
+                    "grep": "精确匹配",
+                }
+                if chinese
+                else {
+                    "find_definition": "definition locations",
+                    "find_references": "cross-file references",
+                    "get_dependencies": "module dependencies",
+                    "get_dependents": "reverse dependencies",
+                    "get_file_outline": "nearby file symbols",
+                    "grep": "exact matches",
+                }
+            )[tool_name]
+            lines.append(
+                f"- `{tool_name}` 补充了{heading}："
+                if chinese
+                else f"- `{tool_name}` added {heading}:"
+            )
             for location in locations[:5]:
                 citation = _citation_from_location(location)
                 _append_unique_citation(citations, citation)
                 lines.append(
-                    f"  - `{location['symbol']}` at `{location['file_path']}:{location['line']}`"
+                    f"  - `{location['symbol']}`，位于 `{location['file_path']}:{location['line']}`"
+                    if chinese
+                    else f"  - `{location['symbol']}` at "
+                    f"`{location['file_path']}:{location['line']}`"
                 )
             continue
 
         if tool_name == "list_directory":
-            lines.append(f"- `list_directory` returned {len(result['entries'])} entries.")
+            lines.append(
+                f"- `list_directory` 返回了 {len(result['entries'])} 个条目。"
+                if chinese
+                else f"- `list_directory` returned {len(result['entries'])} entries."
+            )
 
     return ("\n".join(lines), citations)
 

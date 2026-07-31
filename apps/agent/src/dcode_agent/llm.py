@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -24,10 +24,22 @@ _DEFAULT_MAX_TOKENS = 700
 _DEFAULT_TEMPERATURE = 0.1
 _DEFAULT_TIMEOUT_SECONDS = 60.0
 
+ResponseLanguage = Literal["Chinese", "English"]
+
 SYSTEM_PROMPT = (
     "You are Dcode, a code-understanding assistant. Answer the developer's "
     "question about a codebase using ONLY the retrieved code evidence provided. "
     "Be concise and concrete, and explain how the pieces fit together.\n\n"
+    "Language and formatting rules:\n"
+    "- Answer in the same natural language as the developer's current question. "
+    "A Chinese question must receive a Chinese answer; an English question must "
+    "receive an English answer.\n"
+    "- Do not let the language of source code, comments, retrieved evidence, or "
+    "conversation history override the current question's language. Keep code "
+    "identifiers and citation tokens verbatim.\n"
+    "- Write inline math as `$...$` and display math as `$$...$$`. Do not use "
+    "`\\(...\\)` or `\\[...\\]` delimiters. Keep the TeX valid for KaTeX; for "
+    "example, escape a literal underscore inside `\\text{...}` as `\\_`.\n\n"
     "Citation rules (mandatory — every citation is machine-verified against the "
     "index; any citation that is NOT in the 'Allowed citations' list is stripped "
     "and lowers the answer's groundedness score below the acceptance bar):\n"
@@ -49,15 +61,53 @@ _CONTEXTUALIZE_SYSTEM_PROMPT = (
     "standalone question answerable without the prior conversation. Resolve "
     'references ("it", "that function", "the same file") using the conversation, '
     "keep it a single question, preserve exact code symbols verbatim, and add no "
-    "new facts. If the follow-up is already standalone, return it unchanged."
+    "new facts. Keep the standalone question in the same natural language as the "
+    "follow-up; do not translate it. If the follow-up is already standalone, "
+    "return it unchanged."
 )
+
+
+def response_language_for(question: str) -> ResponseLanguage:
+    """Choose the answer language from the current user's wording.
+
+    Code identifiers are predominantly Latin even inside Chinese questions, so
+    the presence of a Han character is the reliable signal for this product's
+    Chinese/English language contract. Symbol-only questions default to English.
+    """
+    has_han = any(
+        "\u3400" <= char <= "\u4dbf" or "\u4e00" <= char <= "\u9fff" or "\uf900" <= char <= "\ufaff"
+        for char in question
+    )
+    return "Chinese" if has_han else "English"
+
+
+def _build_synthesis_messages(
+    *, question: str, context: str, response_language: ResponseLanguage
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"Required answer language: {response_language}. This is mandatory "
+                "and was determined from the developer's current question.\n\n"
+                f"Question:\n{question}\n\nRetrieved evidence:\n{context}"
+            ),
+        },
+    ]
 
 
 class LLMClient(ABC):
     """Abstract answer-synthesis LLM used by the agent's synthesize node."""
 
     @abstractmethod
-    def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
+    def stream(
+        self,
+        *,
+        question: str,
+        context: str,
+        response_language: ResponseLanguage,
+    ) -> AsyncIterator[str]:
         """Yield answer-text deltas as the model generates them."""
 
     async def contextualize(self, *, question: str, history: list[dict[str, str]]) -> str | None:
@@ -98,14 +148,18 @@ class OpenAILLMClient(LLMClient):
             timeout=timeout_seconds,
         )
 
-    async def stream(self, *, question: str, context: str) -> AsyncIterator[str]:
-        messages: Any = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Question:\n{question}\n\nRetrieved evidence:\n{context}",
-            },
-        ]
+    async def stream(
+        self,
+        *,
+        question: str,
+        context: str,
+        response_language: ResponseLanguage,
+    ) -> AsyncIterator[str]:
+        messages: Any = _build_synthesis_messages(
+            question=question,
+            context=context,
+            response_language=response_language,
+        )
         completion = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
