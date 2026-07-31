@@ -740,3 +740,31 @@ async def test_contextualize_node_is_noop_without_llm() -> None:
 
     assert updated.query == "who calls it?"
     assert updated.raw_query is None
+
+
+async def test_contextualize_binds_chinese_call_pronoun_to_recent_user_symbol() -> None:
+    query = "它被哪些函数调用，又调用哪些函数？"
+    llm = _RewriteLLM(query)  # reproduces a contextualizer that returns it unchanged
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query=query,
+        history=[
+            {"role": "user", "content": "请解释 HybridRetriever.retrieve 的实现。"},
+            {
+                "role": "assistant",
+                "content": "里面还能看到 `self.faiss.retrieve` 和 `self.bm25.retrieve`。",
+            },
+        ],
+        runtime={"llm": llm},
+    )
+
+    contextualized = await contextualize_node(state)
+    planned = await plan_node(contextualized)
+
+    assert contextualized.raw_query == query
+    assert contextualized.query == "`HybridRetriever.retrieve` 它被哪些函数调用，又调用哪些函数？"
+    assert planned.pending_tool_name == "get_call_neighbors"
+    assert planned.pending_tool_args == {
+        "symbol": "HybridRetriever.retrieve",
+        "direction": "both",
+    }

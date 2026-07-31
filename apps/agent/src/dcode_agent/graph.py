@@ -26,32 +26,41 @@ logger = logging.getLogger("dcode.agent.graph")
 async def contextualize_node(state: AgentState) -> AgentState:
     """Rewrite a follow-up into a standalone query using prior turns.
 
-    Runs only for multi-turn requests when an LLM is available; otherwise a
-    no-op (the raw query flows through unchanged, preserving single-turn
-    behavior). The rewrite feeds retrieval + planning only — the groundedness
-    guardrail is untouched, so history can never introduce an unverifiable
-    citation.
+    The LLM remains the general contextualizer. For an explicit caller/callee
+    question whose pronoun survives that rewrite, a narrow deterministic
+    fallback binds the most recent user-history code symbol. The rewrite feeds
+    retrieval + planning only — groundedness still verifies answer evidence.
     """
     if not state.history:
         return state
+
+    original_query = state.query
+    resolved = original_query
     llm = state.runtime.get("llm")
     contextualize = getattr(llm, "contextualize", None)
-    if contextualize is None:
+    if contextualize is not None:
+        try:
+            rewritten = await contextualize(question=original_query, history=state.history)
+        except Exception as exc:  # noqa: BLE001 — deterministic fallback may still resolve it
+            log_event(
+                logger,
+                "contextualize_error",
+                repo_id=state.repo_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        else:
+            candidate = (rewritten or "").strip()
+            if candidate:
+                resolved = candidate
+
+    resolved = _bind_history_symbol_for_call_followup(
+        original_query=original_query,
+        resolved_query=resolved,
+        history=state.history,
+    )
+    if resolved == original_query:
         return state
-    try:
-        rewritten = await contextualize(question=state.query, history=state.history)
-    except Exception as exc:  # noqa: BLE001 — a rewrite failure degrades to the raw query
-        log_event(
-            logger,
-            "contextualize_error",
-            repo_id=state.repo_id,
-            error=f"{type(exc).__name__}: {exc}",
-        )
-        return state
-    resolved = (rewritten or "").strip()
-    if not resolved or resolved == state.query:
-        return state
-    state.raw_query = state.query
+    state.raw_query = original_query
     state.query = resolved
     await _emit_thought(state, f"Resolved the follow-up into a standalone question: {resolved}")
     return state
@@ -799,6 +808,69 @@ def _extract_subject(query: str) -> str | None:
     if quoted:
         return quoted[0]
     return None
+
+
+def _bind_history_symbol_for_call_followup(
+    *,
+    original_query: str,
+    resolved_query: str,
+    history: list[dict[str, str]],
+) -> str:
+    """Bind a pronoun-only call query to a recent user-mentioned code symbol."""
+    if _call_query_direction(original_query.lower()) is None:
+        return resolved_query
+    if _extract_subject(resolved_query) or _extract_call_subject(resolved_query):
+        return resolved_query
+
+    symbol = _recent_history_symbol(history)
+    if symbol is None:
+        return resolved_query
+    return f"`{symbol}` {resolved_query}"
+
+
+def _recent_history_symbol(history: list[dict[str, str]]) -> str | None:
+    # User turns name the subject; assistant turns often contain many incidental
+    # implementation expressions. Prefer recent user turns, then use assistant
+    # text only as a fallback.
+    recent_user = [
+        turn.get("content", "") for turn in reversed(history) if turn.get("role") == "user"
+    ]
+    recent_other = [
+        turn.get("content", "") for turn in reversed(history) if turn.get("role") != "user"
+    ]
+    for content in [*recent_user, *recent_other]:
+        candidates = _history_symbol_candidates(content)
+        if candidates:
+            return max(candidates, key=_history_symbol_score)
+    return None
+
+
+def _history_symbol_candidates(content: str) -> list[str]:
+    candidates: list[str] = []
+    candidates.extend(re.findall(r"`([A-Za-z_][\w.]*)`", content))
+    candidates.extend(re.findall(r"(?<![\w.])([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)+)", content))
+    candidates.extend(re.findall(r"\b([A-Z][A-Za-z0-9_]+)\b", content))
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if (
+            candidate in seen
+            or candidate.endswith(".py")
+            or candidate.split(".", 1)[0] in {"self", "cls"}
+        ):
+            continue
+        seen.add(candidate)
+        unique.append(candidate)
+    return unique
+
+
+def _history_symbol_score(symbol: str) -> tuple[int, int]:
+    components = symbol.split(".")
+    return (
+        1 if "." in symbol else 0,
+        sum(1 for component in components if component[:1].isupper()),
+    )
 
 
 def _is_reference_query(normalized_query: str) -> bool:
