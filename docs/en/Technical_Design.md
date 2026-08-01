@@ -207,10 +207,11 @@ the graph data and limitations remain the same in either language.
 
 ## Agent Design
 
-The agent is a bounded LangGraph loop with rule-based planning. Its ten
-registered tools are `search_code`, `read_file`, `find_definition`,
-`find_references`, `get_call_neighbors`, `get_dependencies`, `get_dependents`,
-`get_file_outline`, `grep`, and `list_directory`.
+The agent is a bounded LangGraph loop with rule-based planning. Its eleven
+registered tools (`dcode_agent.tools.default_registry`) are `search_code`,
+`read_file`, `find_definition`, `find_references`, `find_call_path`,
+`get_call_neighbors`, `get_dependencies`, `get_dependents`, `get_file_outline`,
+`grep`, and `list_directory`.
 
 The answer path is:
 
@@ -257,8 +258,10 @@ The internal API includes:
 | Route | Purpose |
 |---|---|
 | `/internal/search` | Hybrid retrieval over indexed chunks |
+| `/internal/get_chunks` | Fetch indexed chunks by id, so graph results can carry their source into the answer prompt |
 | `/internal/find_definition` | Locate symbol definitions |
 | `/internal/find_references` | Locate callers or references |
+| `/internal/find_call_path` | Shortest chain of `calls` edges between two symbols, bounded by `max_depth` |
 | `/internal/get_call_neighbors` | Return resolved callers/callees plus source call expressions with explicit unresolved targets |
 | `/internal/get_dependencies` | Outgoing graph dependencies (what a module imports) |
 | `/internal/get_dependents` | Incoming graph dependents (what imports a module) |
@@ -272,24 +275,29 @@ Internal routes are shared by agent tools and evaluation baselines. Route names,
 
 The versioned question set lives at
 `apps/eval/src/dcode_eval/questions/data/questions.jsonl`. The current
-`psf/requests` set contains 16 manually reviewed questions: 5 single-file L1,
-8 cross-file L2, and 3 architecture-level L3. Ground truth uses stable
-`file_path + symbol_name + start_line` anchors which the harness resolves
-against the selected `--repo-id`; recorded chunk UUIDs are retained only for
-backwards compatibility with archived runs.
+`psf/requests` set contains 33 reviewed questions — 5 single-file L1, 16
+cross-file L2, and 12 architecture-level L3 — assembled from 16 manually written
+questions (`source: manual`) and a 17-question expansion reverse-constructed
+from this corpus's indexed call relationships (`source: graph_reverse`). Ground
+truth uses stable `file_path + symbol_name + start_line` anchors which the
+harness resolves against the selected `--repo-id`; recorded chunk UUIDs are
+retained only for backwards compatibility with archived runs. The file is frozen
+per run by sha256 in the run's `provenance.json`.
 
-The target remains 50–80 reviewed questions drawn from manual annotation,
-function reverse-synthesis, and issue or commit mining. The current 16-question
-set is reproducible but too small, and its L3 subset is too fragile, to serve as
-a general benchmark.
+The target remains 50–80 reviewed questions. Two properties of the current set
+keep it from serving as a general benchmark, and both are recorded rather than
+corrected: a suite reverse-constructed from the system's own graph output cannot
+contain a flow that graph misses, which favours B4; and three pre-existing L2/L3
+pairs share ground truth, so the two levels the H1 rule conjoins are not
+independent samples. It is one repository, and it generalises to nothing.
 
 ### Baseline and result contract
 
-The harness exposes five baseline tiers:
+The harness exposes six baseline tiers:
 
 | Baseline | Current meaning |
 |---|---|
-| B0 | External code search; requires a provider token and is unmeasured in the recorded run |
+| B0 | External code search; requires a provider token. Measured 2026-07-31 at **file level only** (`results/eval-b0-2026-07-31/`) — it returns a path and no line, so it has no chunk-level result and stays outside the H1 decision. Its figures query a live external index and cannot be regenerated from committed bytes |
 | B1 | Application-side Okapi BM25 over the complete chunk corpus. Retrieval reference, template answer, **not in the H1 decision** |
 | B2 | Dense-only retrieval through the shared Agent path (`dense_only`) |
 | B3 | Weighted BM25 + dense RRF and reranking, then the shared Agent path with no tool expansion (`hybrid_only`) |
@@ -319,11 +327,12 @@ suite. `results/eval-h1-bm25-2026-07-30/` is the superseded previous complete
 run, and `results/eval-real/` before it used the legacy lexical heuristic; both
 remain available as historical snapshots.
 
-B1 and B2 still answer from a template, so their groundedness is the constant
-`1.0` and they emit no citation events. Only B3 and B4 exercise the real
-verifier. Since groundedness is one of the four composite terms, that constant
-is load-bearing in the H1 decision — a `dense_only` agent mode for B2 is the
-recorded fix.
+B0 and B1 answer from a template, so their groundedness is the constant `1.0`
+and they emit no citation events; they are retrieval references outside the H1
+decision. B2 was in that position until the `dense_only` agent mode gave it the
+same synthesis path, citation protocol and verifier as B4 — every arm in the
+decision now exercises the real verifier. Groundedness is also no longer one of
+the composite terms; see the H1 decision section below.
 
 Each run records `run_config.json`, suite metrics, taxonomy breakdowns, and
 per-question rows. A complete suite also writes `h1_report.json`. New BM25 runs
@@ -368,21 +377,26 @@ executable decision:
 - programmatic groundedness should reach 95%; the current B4 run clears that
   guardrail.
 
-The committed `results/eval-h1-repeat3-2026-07-31/` snapshot is the first to
-measure the graph's own contribution, through
-`new_gt_hits_from_structural_evidence`: 4 new ground-truth hits across 3 of 33
-questions. The verdict stays `unsupported`, with L2 cleared and L3 short by
-0.005.
+The committed `results/eval-h1-repeat3-2026-07-31/` snapshot counts the graph's
+contribution two independent ways: per question through
+`new_gt_hits_from_structural_evidence`, and at the level of the decision through
+the `B3.5` ablation under `h1_report.json` → `diagnostics`. Both say the same
+thing — the effect is real, consistent, and small. The verdict stays
+`unsupported`; the margins are in the generated verdict table in
+[Final_Report.md](Final_Report.md), which reads them straight from
+`h1_report.json`.
 
-**Two properties of that decision a reader has to know.** B2/B3 are scored on
-retrieved top-k while B4 is scored on verified final evidence, so the arms use
-different rules, and applying B4's rule to B3 as well flips L3 from fail to pass.
-The pre-registered mixed rule is the reported verdict; the symmetric alternative
-is published beside it rather than substituted for it. Unifying the rule across
-arms — which first requires a `dense_only` mode so B2 can produce final evidence
-at all — is criteria set 3 in [Final_Report.md](Final_Report.md), along with the
-`B3.5` diagnostic arm needed to separate call-graph gain from multi-step agent
-evidence selection.
+**Two properties of that decision a reader has to know.** The first is that the
+deciding margin is smaller than its own spread across three identical repeats,
+one of which returned `supported` on its own — so the verdict is reported with
+that spread beside it rather than as a settled quantity. The second is that
+`B4 - B3` moves when either the graph or the agent's multi-step reading moves,
+which is why `B3.5` exists; it is a diagnostic and is deliberately excluded from
+the pass criteria, because adding an arm to the decision rule would be changing
+the pass criteria. The asymmetric-scoring caveat that used to sit here is
+resolved: under `uniform_final_verified_evidence_v2` every agent arm is scored by
+one rule, and `candidate_*` remains recorded per question so the other scoring
+stays auditable without being selectable after the fact.
 
 ## Non-Functional Requirements
 

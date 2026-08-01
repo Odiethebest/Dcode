@@ -140,13 +140,24 @@ Everything below is committed and green: `make check`, `make frontend-build`,
 71 frontend tests, full pytest suite.
 
 **The current H1 result is `unsupported` with a caveat worth internalising before
-you touch anything evaluation-adjacent.** L2 cleared, L3 missed by 0.005, and the
-verdict flips if B3 is scored by B4's rule instead of its own. The call graph —
-the whole hypothesis — accounts for 4 new ground-truth hits across 3 of 33
-questions. A previous session's pre-registered claim that B4's scoring rule
-"handicaps B4" was falsified: it helps B4. If you find yourself about to write
-that the graph's contribution is unmeasured, that sentence was true for two runs
-and is now false.
+you touch anything evaluation-adjacent.** See §1: `L3` cleared against both
+rivals, `L2` fell 0.006 short against B3, and that shortfall is a fifth of the
+between-repeat standard deviation. The call graph's own contribution, isolated by
+the `B3.5` ablation, is real, consistent and small — the agent's multi-step
+evidence gathering is worth several times more on `L3`.
+
+Two claims that were true of earlier runs and are now false, so do not restate
+them: *the arms are scored by different rules* (v2 applies one rule to every
+agent arm, and B3 no longer flips the verdict), and *the graph's contribution is
+unmeasured* (it is counted per question by
+`new_gt_hits_from_structural_evidence` and at the decision level by `B3.5`).
+A previous session's pre-registered claim that B4's scoring rule "handicaps B4"
+was falsified: it helps B4.
+
+**Do not hand-type a figure from the run into prose here or anywhere else.** The
+"4 hits across 3 of 33 questions" that used to sit in this paragraph belonged to
+a superseded run and outlived it by two protocol changes. Quote the field name
+and the directory; let the generated blocks carry the numbers.
 
 Current interaction contracts added on 2026-07-30:
 
