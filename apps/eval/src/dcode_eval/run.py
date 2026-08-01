@@ -13,6 +13,7 @@ from uuid import UUID
 from dcode_shared.bm25 import bm25_run_config
 from dcode_shared.db.models import Repo
 from dcode_shared.db.session import SessionLocal
+from dcode_shared.graph_tools import GRAPH_TOOLS
 from dcode_shared.observability import log_event
 
 from dcode_eval.baselines import AGENT_BASELINES, build_baseline
@@ -36,14 +37,6 @@ logger = logging.getLogger("dcode.eval.run")
 # Pre-registered before the arms that require it (B2 via dense_only, B3.5) had
 # ever been run, so no number influenced the selection between the two rules.
 _SCORING_PROTOCOL = "uniform_final_verified_evidence_v2"
-_STRUCTURAL_EVIDENCE_ORIGINS = {
-    "find_definition",
-    "find_references",
-    "get_call_neighbors",
-    "get_dependencies",
-    "get_dependents",
-    "get_file_outline",
-}
 
 
 async def run_eval(
@@ -106,7 +99,7 @@ async def run_eval(
         # chunk-level, and B0 stays out of the decision entirely.
         scored_files = _dedupe(retrieved_files[:k])
         gt_files = set(question.gt_files)
-        structural_evidence_chunk_ids = _structural_evidence_chunk_ids(
+        graph_evidence_chunk_ids = _graph_evidence_chunk_ids(
             answer,
             exclude=set(retrieved_chunk_ids),
         )
@@ -127,9 +120,13 @@ async def run_eval(
             ],
             "final_evidence_chunk_ids": final_evidence_chunk_ids,
             "final_evidence_scored_chunk_ids": final_evidence_scored_chunk_ids,
-            "structural_evidence_chunk_ids": structural_evidence_chunk_ids,
-            "new_gt_hits_from_structural_evidence": [
-                chunk_id for chunk_id in structural_evidence_chunk_ids if chunk_id in gt_chunk_ids
+            # Renamed from `*_structural_evidence` when the origin set was
+            # narrowed to actual graph tools. Runs recorded under the old names
+            # counted `get_file_outline` too and are not comparable to these;
+            # the distinct name is what keeps them from being read as one series.
+            "graph_evidence_chunk_ids": graph_evidence_chunk_ids,
+            "new_gt_hits_from_graph_evidence": [
+                chunk_id for chunk_id in graph_evidence_chunk_ids if chunk_id in gt_chunk_ids
             ],
             "scored_chunk_ids": scored_chunk_ids,
             "scoring_source": (
@@ -491,15 +488,22 @@ def _verified_evidence_chunk_ids(answer: Any) -> list[str]:
     return chunk_ids
 
 
-def _structural_evidence_chunk_ids(answer: Any, *, exclude: set[str]) -> list[str]:
-    """Final evidence newly surfaced by a graph/structure tool."""
+def _graph_evidence_chunk_ids(answer: Any, *, exclude: set[str]) -> list[str]:
+    """Final evidence newly surfaced by a call-graph tool.
+
+    ``exclude`` is the arm's own retrieval, so this counts only what the graph
+    added on top of it. The origin set is `dcode_shared.graph_tools.GRAPH_TOOLS`,
+    shared with the agent's B3.5 definition so this count and the `B4 - B3.5`
+    ablation measure the same thing. They previously did not: this set also
+    contained `get_file_outline`, which B3.5 keeps.
+    """
 
     chunk_ids: list[str] = []
     for citation in answer.evidence:
         if (
             not citation.verified
             or citation.chunk_id is None
-            or not _STRUCTURAL_EVIDENCE_ORIGINS.intersection(citation.origins)
+            or not GRAPH_TOOLS.intersection(citation.origins)
         ):
             continue
         chunk_id = str(citation.chunk_id)

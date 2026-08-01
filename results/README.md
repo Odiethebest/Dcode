@@ -113,9 +113,32 @@ between repeats and one that was stable should not read the same.
 Under `uniform_final_verified_evidence_v2` every per-question row carries three scorings
 side by side — `candidate_*` (retrieved top-k), `final_evidence_*` (verified
 citations the answer stands behind), and the unprefixed official metric — plus
-`scoring_source`, `structural_evidence_chunk_ids`, and
-`new_gt_hits_from_structural_evidence`. That last field is how the call graph's
+`scoring_source`, `graph_evidence_chunk_ids`, and
+`new_gt_hits_from_graph_evidence`. That last field is how the call graph's
 contribution is counted rather than assumed.
+
+**Every run in this directory predates that pair of names.** They record
+`structural_evidence_chunk_ids` / `new_gt_hits_from_structural_evidence`, whose
+origin set also contained `get_file_outline` — a tool that walks no edges and
+that the no-graph `B3.5` arm keeps. Those rows therefore credit the graph with
+hits the ablation attributes to the agent loop. Recomputing this run both ways
+shows how far that goes, and it is checkable from the bytes in this directory:
+
+| arm | old set (incl. `get_file_outline`) | narrowed set |
+|---|---|---|
+| `B3.5` — **graph switched off** | 12 hits, all three repeats | **0**, all three repeats |
+| `B4` — graph on | 14 / 12 / 16 | 4 / 3 / 5 |
+
+`B3.5` is B4 with the graph disabled, so zero is its only correct value. The old
+set gave it 12, against 14 for the arm that does have a graph — it could not
+separate them. The counts are therefore **not comparable** across the rename,
+which is why it is a rename and not a redefinition in place.
+
+No published conclusion moves. Where the two instruments disagreed, `B3.5` was
+always the one the H1 report reads, and it was already reporting the graph's
+contribution as small. The narrowed set is
+`dcode_shared.graph_tools.GRAPH_TOOLS`, now shared with the agent's B3.5
+definition so the two cannot drift apart again.
 
 `h1_report.json` is the file to read first, and it is reported verbatim.
 

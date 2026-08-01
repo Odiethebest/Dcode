@@ -353,7 +353,7 @@ The harness runs five baselines on the same question set and reports stratified 
 | L2 | Cross file structural | **Primary H1 check** |
 | L3 | Architecture level | **Primary H1 check** |
 
-H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. The checked-in suite has **L1 5 / L2 16 / L3 12** — 33 questions after the 2026-07-31 expansion. At n=12, one L3 question still moves the level composite by up to 0.083, which is larger than the 0.005 by which L3 missed the bar; a single question's weight only drops below the 0.05 decision margin at n > 20. Three pre-existing L2/L3 pairs also share ground truth (1.00 / 0.75 / 0.50), so the two levels are not independent samples. See the Final Report before reading either level in either direction.
+H1 was expected to hold most strongly on L2 / L3, where flat similarity retrieval breaks down. The checked-in suite has **L1 5 / L2 16 / L3 12** — 33 questions after the 2026-07-31 expansion. Both levels are still small enough that one question moves the level composite by more than the margin the verdict turns on; a single question's weight only drops below the 0.05 decision margin at n > 20. Three pre-existing L2/L3 pairs also share ground truth (1.00 / 0.75 / 0.50), so the two levels are not independent samples. See the Final Report before reading either level in either direction.
 
 ### Acceptance Thresholds
 
@@ -362,7 +362,7 @@ additional product-quality gates tracked beside it:
 
 | Check | Current rule |
 |---|---|
-| **Recorded H1 decision** | On both L2 and L3, B4 must beat B2 and B3 by at least `0.05` composite points. The composite is the mean of Recall@k, MRR, nDCG@k, and groundedness. |
+| **Recorded H1 decision** | On both L2 and L3, B4 must beat B2 and B3 by at least `0.05` composite points. The composite is the mean of Recall@k, MRR and nDCG@k. Groundedness was a fourth term until 2026-07-31; dropping it multiplies every margin by 4/3, so the four-term reading is carried beside every verdict under `four_term`. |
 | Pairwise Win-Rate vs Vanilla RAG (B2) | > 60% — **unmeasured**, the judge is still a stub and this value is not part of the current `h1_report` decision |
 | Groundedness (programmatic) | ≥ 95% product guardrail — reported separately; the current B4 run clears it |
 

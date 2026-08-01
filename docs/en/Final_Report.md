@@ -266,22 +266,27 @@ because B4's scored retrieval still tied B3 by construction. That snapshot is
 retained at `results/eval-h1-bm25-2026-07-30/` and is now superseded.
 
 **Criteria set 2 (met on 2026-07-31).** Score B4 on its verified final evidence,
-give B3 the same agent synthesis path, and expand L3 from 3 to 12. That is the
-current run.
+give B3 the same agent synthesis path, and expand L3 from 3 to 12. That run is
+`results/eval-h1-l3x12-2026-07-31/`, under the mixed
+`final_verified_evidence_v1` rule, and it is **superseded** by the current
+repeated run — every figure in this subsection describes it, not the recorded
+verdict above.
 
 **What that run showed.** The obstacle the previous run diagnosed is gone: B4's
 scored evidence is no longer B3's retrieval list, so the graph could finally
-reach the metrics. B4 cleared L2 against both rivals and missed L3 by 0.005 — and
-three things became visible that no earlier run could have shown.
+reach the metrics. In that run B4 cleared L2 against both rivals and missed L3
+by 0.005 — and three things became visible that no earlier run could have shown.
 
 The first is that **the correction's own justification was wrong.** Scoring B4 on
 its smaller evidence set was pre-registered as a handicap; measured, it is an
 advantage, because precise selection beats having five slots.
 
 The second is that **the graph is not what is producing B4's margin.** Now that
-structural evidence is tracked by origin, it can be counted: 4 new ground-truth
-hits across 3 of 33 questions. The hypothesis under test is finally measurable
-and its measured effect is small.
+structural evidence is tracked by origin, it can be counted at all: in that run,
+4 new ground-truth hits across 3 of 33 questions. The hypothesis under test is
+finally measurable and its measured effect is small. The current run counts more
+of them and the `B3.5` ablation now bounds the graph directly; both are reported
+in the sections above, and neither changes this conclusion.
 
 The third is that **the verdict depends on a scoring rule that was only ever
 pre-registered for one arm.** Applying the same rule to B3 flips L3 from fail to
@@ -291,16 +296,17 @@ pass. Fixing that is now the top item for the next run, and it must be fixed
 ## H1 Decision
 
 **H1 remains unsupported** on the full real-model run — see the generated verdict
-table above for the margins, read straight from `h1_report.json`. L2 cleared, L3
-missed by 0.005.
+table above for the margins, read straight from `h1_report.json`. `L3` cleared
+against both rivals; `L2` cleared against `B2` and fell short against `B3`.
 
 The decision is no longer scoped to a muted baseline, and no longer scoped to an
-unmeasurable comparison. Real embeddings, a real reranker, a shared synthesis
-path for B3 and B4, and a scoring rule that reaches the graph's output were all
-in place, and B4 still did not clear both levels. What changed is the *reason*
-again: the obstacle is no longer "the harness cannot see the graph" but "the
-graph contributes little, and what margin exists is partly an artefact of scoring
-the two arms by different rules."
+unmeasurable comparison. Real embeddings, a real reranker, one shared synthesis
+path and one scoring rule across every agent arm, and a `B3.5` ablation that
+isolates the graph were all in place, and B4 still did not clear both levels.
+What changed is the *reason* again: the obstacle is no longer "the harness cannot
+see the graph", nor "the arms are scored by different rules", but "the graph
+contributes little, and the margin that decides the verdict is smaller than its
+own run-to-run noise."
 
 ### Criteria set 2 — outcome
 
@@ -313,7 +319,11 @@ Recorded as tested, not as intended.
    answer order, and feeds that list into the **same** metric functions, same
    ground truth, same `k`, same threshold, capped at `k` before MRR as well as
    Recall/nDCG. Candidate, final-evidence and official scorings are logged side
-   by side per question, with structural origins and new structural GT hits.
+   by side per question, with evidence origins and the GT hits the graph added
+   on top of retrieval. That last count was recorded under the name
+   `new_gt_hits_from_structural_evidence` in every run committed here; it has
+   since been narrowed to actual graph tools and renamed, so the two are not one
+   series — see [`results/README.md`](../../results/README.md).
 
    The pre-registration said: "B2 and B3 keep their full top-5, which is their
    best case … the asymmetry handicaps B4 deliberately." **That was wrong.** B4's
@@ -387,13 +397,14 @@ Per-question metrics are averaged across repeats first, then aggregated. Each
 repeat's independent verdict is recorded under `per_repeat`: if they disagree,
 that is the finding, and a mean alone would hide it.
 
-### Criteria set 3 — to re-open H1
+### Criteria set 3 — outcome
 
-Fixed here, before the next run, in the same spirit as the sets above.
-**Items 1–3 are implemented and pre-registered; no suite has been run under
-them.** Everything in this subsection was committed while the current recorded
-verdict was still the 2026-07-31 v1 run, so no number from the new protocol
-influenced how the protocol was defined.
+Fixed before the run, in the same spirit as the sets above. **Items 1–4 are
+implemented and were run: the recorded verdict above is the suite under them.**
+Every item in this subsection was committed while the then-current verdict was
+still the 2026-07-31 v1 run, so no number from the new protocol influenced how
+the protocol was defined. Items 5 and 6 remain open and are restated under
+Outstanding Work.
 
 1. **Implemented — one scoring rule for every arm.** The official metric is
    **verified final evidence**, applied identically to `B2`, `B3`, `B3.5` and
@@ -445,20 +456,30 @@ influenced how the protocol was defined.
    make the graph look better than it is. An early draft truncated the walk at
    the first blocked tool, which would have denied `B3.5` the outline tool purely
    through branch ordering; that is fixed and pinned by a test.
-4. **Unify evidence ordering across sources.** Hybrid chunks carry reranker
-   scores; graph results enter the context in tool-return order. Score the union
-   with one query-aware ranking, with a shared context budget and a shared `k`
-   for both arms, and keep `graph_distance` as a recorded diagnostic that does
-   **not** enter the ranking — a tunable graph prior would be a hyper-parameter
-   fitted on the evaluation set.
+4. **Implemented — one ranking over the union of evidence sources.** Hybrid
+   chunks carried reranker scores while graph results entered the context in
+   tool-return order, and graph results arrived as bare `file:line` with no code
+   to reason about. Graph and reference hits are now hydrated from their
+   `chunk_id` and the whole union is scored by one cross-encoder against the
+   question, under a context budget that is the same number for every arm
+   (`dcode_agent.graph._ranked_evidence_catalog`).
+
+   Evidence **origin is recorded and deliberately excluded from the ranking** — a
+   tunable "prefer graph results" prior fitted on the evaluation set would be a
+   hyper-parameter chosen to make the hypothesis pass. `graph_distance` is named
+   in this item but is not computed anywhere; origin is what the artifacts
+   actually carry, per citation, in every `per_question.jsonl` row.
 5. **Raise `L3` toward n ≈ 22** so one question's weight falls below the 0.05
    decision margin. Do this with a **second corpus** — the indexed
    `encode/httpx` — not with more Requests questions, which restate the same
    flows. This needs per-question repository binding first: the harness records a
-   single `repo_id_override` and reads one `index_revision`.
-6. **Raise `max_steps` or narrow the expansion.** B4 saturates the 8-step budget,
-   so `get_file_outline` is effectively unreachable and the walk is truncated by
-   the cap rather than by the planner.
+   single `repo_id_override` and reads one `index_revision`. **Still open.**
+6. ~~**Raise `max_steps` or narrow the expansion.**~~ **— done before the
+   recorded run.** B4 saturated the 8-step budget, so `get_file_outline` was
+   effectively unreachable and the walk ended at the cap rather than at the
+   planner's decision. `max_steps` is now `14`
+   (`dcode_agent.settings.AgentSettings`), raised in `2379c39`, which precedes
+   the recorded run.
 
 ### Standing commitments
 
@@ -490,22 +511,24 @@ graph-sensitive H1 re-run; everything else is independent of it.
 - ~~Expand L3 beyond n=3~~ **— done, n=12.** Human-reviewed, resolver-verified,
   and frozen with a checksum before any baseline ran.
 - ~~One scoring rule for every arm~~ · ~~`dense_only` mode for B2~~ ·
-  ~~`B3.5` diagnostic arm~~ **— all three implemented and pre-registered, awaiting
-  a run.** Protocol `uniform_final_verified_evidence_v2`; see criteria set 3.
-  **The recorded verdict above predates them**, so it remains the current result
-  until a suite runs under the new protocol. Expect it to move: the rule change
-  alone straddles the bar `L3` missed by.
-- **▲ Run the suite under `uniform_final_verified_evidence_v2`.** The blockers
-  are cleared; nothing about the new protocol is measured until this happens.
+  ~~`B3.5` diagnostic arm~~ · ~~Run the suite under
+  `uniform_final_verified_evidence_v2`~~ **— all done; the recorded verdict above
+  is that run.** See criteria set 3. It did move the numbers, and it moved them
+  in the direction the pre-registration could not predict: `L3` cleared and `L2`
+  became the level that misses.
+
   `B1` remains a retrieval reference outside the decision — giving it a
   `sparse_only` mode would make every displayed row one system with one variable,
   but it would also stop `B1` being a pure retrieval baseline, so it is left as a
   deliberate open choice rather than done quietly.
-- **Unify evidence ordering across sources**, with `graph_distance` recorded but
-  excluded from the ranking. Criteria set 3 item 4.
-- **`max_steps = 8` is saturated by B4's expansion**, so `get_file_outline` is
-  effectively unreachable and the walk ends at the cap rather than at the
-  planner's decision.
+- ~~Unify evidence ordering across sources~~ **— done.** Graph and reference hits
+  are hydrated from their `chunk_id` and the union is ranked by one cross-encoder
+  under a shared context budget; origin is recorded per citation and excluded
+  from the ranking. Criteria set 3 item 4. `graph_distance` as such is not
+  computed — the recorded diagnostic is origin.
+- ~~`max_steps = 8` is saturated by B4's expansion~~ **— done, `max_steps = 14`**
+  (`2379c39`, before the recorded run), so the walk now ends at the planner's
+  decision rather than at the cap.
 - **Judge / pairwise scoring is a stub.** Pairwise win-rate is `null` throughout,
   so the acceptance threshold on it (>60% vs B2) is unmeasured, not failed.
 - ~~B0 is not measured~~ **— measured 2026-07-31, at file level.**
@@ -554,13 +577,17 @@ graph-sensitive H1 re-run; everything else is independent of it.
   (`da2b6bc`) scored *worst* of the three arms once uncited answers stopped scoring
   perfectly, and only looked best while both errors were in place. Full record:
   `results/b4-citation-fix-experiment.md`.
-- **▲ This run's margins are single-run and stochastic, and that now matters.**
-  The previous verdict was structurally fixed by the B3/B4 retrieval tie, so
-  repeats could not have changed it. This one turns on 0.005 with LLM synthesis
-  in the loop and no repeats, so the margin's own noise is unmeasured and could
-  exceed the gap. Any future run reporting a nonzero margin must state how many
-  repeats it averages, and the repeat count is itself a pre-registration
-  decision.
+- ~~This run's margins are single-run and stochastic~~ **— measured, and the
+  noise is larger than the gap.** The suite now averages three repeats and each
+  repeat keeps its own verdict under `per_repeat`. The deciding margin's range
+  across three identical runs exceeded the bar it is compared against, and one
+  repeat returned `supported` by itself — see *Reading the result honestly*. Any
+  future run reporting a nonzero margin must still state how many repeats it
+  averages, and the repeat count is itself a pre-registration decision.
+- **▲ The deciding margin is smaller than its own between-repeat spread.** This
+  is the finding that replaces the entry above, and it blocks attributing any
+  further improvement to a change. More repeats will not fix it at this suite
+  size; more `L2` questions or a second corpus will. Criteria set 3 item 5.
 - **The suite's strata are not independent.** Three pre-existing pairs share
   ground truth at 1.00, 0.75 and 0.50 (`q-006`/`q-014`, `q-009`/`q-016`,
   `q-010`/`q-015`), so every L3 question in the original set restates an L2
@@ -628,10 +655,13 @@ Read these as scope, not as defects.
 - The agent planner is rule-based. Only answer synthesis is LLM-backed, and it is
   opt-in.
 - The H1 decision includes no judge or pairwise metric.
-- `B1` and `B2` answer from a template, so their groundedness is the constant
-  `1.0` rather than a measurement, and they emit no citation events. This is
-  scope, but it is load-bearing scope: groundedness is a quarter of the composite
-  the H1 decision is computed from.
+- `B0` and `B1` answer from a template, so their groundedness is the constant
+  `1.0` rather than a measurement and they emit no citation events. They are
+  retrieval references scored on candidate top-`k` and are **not** in the H1
+  decision. `B2` no longer belongs on this list: it answers through the same
+  agent, prompt, citation protocol and guardrail as `B4` over dense-only
+  retrieval, so its groundedness is measured. Groundedness is also no longer a
+  term in the composite — see the protocol change above.
 - The two levels the H1 rule conjoins are not independent samples; see the
   ground-truth overlap entry under Outstanding Work.
 - Skipped-file warnings live only in Redis on a 7-day TTL, so an older index
