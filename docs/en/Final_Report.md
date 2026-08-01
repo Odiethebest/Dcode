@@ -319,7 +319,11 @@ Recorded as tested, not as intended.
    answer order, and feeds that list into the **same** metric functions, same
    ground truth, same `k`, same threshold, capped at `k` before MRR as well as
    Recall/nDCG. Candidate, final-evidence and official scorings are logged side
-   by side per question, with structural origins and new structural GT hits.
+   by side per question, with evidence origins and the GT hits the graph added
+   on top of retrieval. That last count was recorded under the name
+   `new_gt_hits_from_structural_evidence` in every run committed here; it has
+   since been narrowed to actual graph tools and renamed, so the two are not one
+   series — see [`results/README.md`](../../results/README.md).
 
    The pre-registration said: "B2 and B3 keep their full top-5, which is their
    best case … the asymmetry handicaps B4 deliberately." **That was wrong.** B4's

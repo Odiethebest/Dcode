@@ -242,10 +242,97 @@ async def test_b4_scores_final_verified_evidence_and_keeps_candidate_metrics(
     assert row["recall_at_k"] == 1.0
     assert row["scoring_source"] == "final_verified_evidence"
     assert row["final_evidence_chunk_ids"] == [gt_chunk_id]
-    assert row["structural_evidence_chunk_ids"] == [gt_chunk_id]
-    assert row["new_gt_hits_from_structural_evidence"] == [gt_chunk_id]
+    assert row["graph_evidence_chunk_ids"] == [gt_chunk_id]
+    assert row["new_gt_hits_from_graph_evidence"] == [gt_chunk_id]
     assert result["metrics"]["candidate_recall_at_k"] == 0.0
     assert result["metrics"]["recall_at_k"] == 1.0
+
+
+async def test_graph_evidence_counts_graph_tools_and_not_file_outline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`get_file_outline` is not graph evidence; `find_call_path` is.
+
+    These two names are why this count exists as a separate test. B3.5 — the arm
+    whose whole definition is "B4 without the graph" — keeps `get_file_outline`,
+    so a hit it produced was being credited to the graph here while the ablation
+    correctly credited it to the agent loop; recomputing the recorded 2026-07-31
+    run both ways puts that inflation at 3.5x (14.0 hits per repeat against 4.0).
+    `find_call_path` is the opposite error:
+    the most purely graph-dependent tool the agent has, counted by neither side.
+
+    If this count and the B3.5 ablation ever disagree about which tools are the
+    graph, they stop measuring the same thing and the hypothesis has two answers.
+    """
+    questions_path = tmp_path / "questions.jsonl"
+    outline_chunk_id = "22222222-2222-2222-2222-222222222222"
+    path_chunk_id = "33333333-3333-3333-3333-333333333333"
+    questions_path.write_text(
+        json.dumps(
+            {
+                "id": "q-l3",
+                "repo_id": "repo-1",
+                "question": "Explain the flow.",
+                "taxonomy": "L3",
+                "gt_chunk_ids": [outline_chunk_id, path_chunk_id],
+                "gt_files": ["src/requests/sessions.py"],
+                "source": "manual",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class MixedOriginBaseline(Baseline):
+        id = "B4"
+        description = "outline + call-path evidence stub"
+
+        async def retrieve(self, repo_id: str, query: str, k: int) -> list[Chunk]:
+            return []
+
+        async def answer(self, repo_id: str, query: str) -> AnswerResult:
+            return AnswerResult(
+                answer="Flow [C1] [C2]",
+                citations=[],
+                groundedness=1.0,
+                evidence=[
+                    CitationEvent(
+                        symbol="requests.sessions.Session",
+                        file_path="src/requests/sessions.py",
+                        line=1,
+                        verified=True,
+                        chunk_id=outline_chunk_id,
+                        evidence_id="C1",
+                        origins=["get_file_outline"],
+                    ),
+                    CitationEvent(
+                        symbol="requests.sessions.Session.send",
+                        file_path="src/requests/sessions.py",
+                        line=2,
+                        verified=True,
+                        chunk_id=path_chunk_id,
+                        evidence_id="C2",
+                        origins=["find_call_path"],
+                    ),
+                ],
+            )
+
+    monkeypatch.setattr(
+        "dcode_eval.run.build_baseline", lambda baseline_id: MixedOriginBaseline()
+    )
+
+    result = await run_eval(
+        baseline_id="B4",
+        questions_path=str(questions_path),
+        output_dir=str(tmp_path / "out"),
+        k=5,
+    )
+
+    row = result["per_question"][0]
+    assert row["graph_evidence_chunk_ids"] == [path_chunk_id]
+    assert row["new_gt_hits_from_graph_evidence"] == [path_chunk_id]
+    # Still real evidence and still scored — it is just not the graph's doing.
+    assert outline_chunk_id in row["final_evidence_chunk_ids"]
 
 
 async def test_b4_caps_final_evidence_and_mrr_at_k(tmp_path: Path, monkeypatch) -> None:

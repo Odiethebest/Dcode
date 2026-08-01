@@ -9,6 +9,8 @@ synthesize decision.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from dcode_shared.graph_tools import GRAPH_TOOLS
+
 AgentMode = Literal["full", "agent_no_graph", "hybrid_only", "dense_only"]
 
 SearchMode = Literal["hybrid", "dense", "sparse"]
@@ -43,15 +45,16 @@ _MODE_TABLE: dict[str, tuple[SearchMode, Literal["none", "local", "full"]]] = {
 
 # Tools that consult the graph or the reference index. `local` expansion may not
 # use these; that exclusion is the entire definition of the B3.5 arm.
-STRUCTURAL_TOOLS = frozenset(
-    {
-        "find_definition",
-        "find_references",
-        "get_call_neighbors",
-        "get_dependencies",
-        "get_dependents",
-    }
-)
+#
+# The set itself lives in `dcode_shared.graph_tools` because the evaluation
+# harness has to answer the same question — "did the graph do this?" — when it
+# counts graph-sourced ground-truth hits. The two lists had drifted apart in both
+# directions; that module records what each omission cost.
+#
+# Deliberately absent: `get_file_outline` and `read_file`. B3.5 keeps both. They
+# read more of a file the arm already retrieved, which is the agent loop, not the
+# graph, and a no-graph arm denied them would inflate `B4 - B3.5`.
+STRUCTURAL_TOOLS = GRAPH_TOOLS
 
 
 def search_mode_for(mode: AgentMode) -> SearchMode:

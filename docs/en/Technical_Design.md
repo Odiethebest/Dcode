@@ -379,9 +379,17 @@ executable decision:
 
 The committed `results/eval-h1-repeat3-2026-07-31/` snapshot counts the graph's
 contribution two independent ways: per question through
-`new_gt_hits_from_structural_evidence`, and at the level of the decision through
-the `B3.5` ablation under `h1_report.json` → `diagnostics`. Both say the same
-thing — the effect is real, consistent, and small. The verdict stays
+`new_gt_hits_from_graph_evidence`, and at the level of the decision through the
+`B3.5` ablation under `h1_report.json` → `diagnostics`. Both say the same thing —
+the effect is real, consistent, and small.
+
+The two counts share one definition of "the graph"
+(`dcode_shared.graph_tools.GRAPH_TOOLS`, also what `agent_no_graph` disables), so
+they cannot disagree about the size of the effect under test. They did: the
+per-question field was named `*_structural_evidence` and its origin set included
+`get_file_outline`, which walks no edges and which `B3.5` keeps. Runs recorded
+under the old name are not comparable to runs under the new one — see
+[`results/README.md`](../../results/README.md). The verdict stays
 `unsupported`; the margins are in the generated verdict table in
 [Final_Report.md](Final_Report.md), which reads them straight from
 `h1_report.json`.
