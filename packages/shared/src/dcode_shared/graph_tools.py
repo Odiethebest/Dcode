@@ -16,12 +16,30 @@ did disagree, in both directions:
 
 **``get_file_outline`` was counted as graph evidence but is not disabled for
 B3.5.** It lists the symbols defined in a file; it walks no edges. Because the
-no-graph arm keeps it, every hit it produced was being credited to the graph by
-the counter while the ablation correctly attributed it to the agent loop. On the
-recorded 2026-07-31 run it was the single largest evidence source of any tool,
-and recomputing that run both ways puts the counter at **3.5x** the graph's
-actual contribution: 14.0 new ground-truth hits per repeat under the old set
-against 4.0 under this one.
+no-graph arm keeps it, every hit it produced was credited to the graph by the
+counter while the ablation correctly credited it to the agent loop.
+
+There is a one-line proof that the old set could not have been measuring the
+graph, and it is checkable against committed bytes. Recompute
+``results/eval-h1-repeat3-2026-07-31/`` both ways:
+
+===========  ==========================  ========================
+arm          old set (incl. outline)     this set
+===========  ==========================  ========================
+``B3.5``     12 hits, all three repeats  **0**, all three repeats
+``B4``       14 / 12 / 16                4 / 3 / 5
+===========  ==========================  ========================
+
+``B3.5`` **is** B4 with the graph switched off. An arm with no graph tools has no
+graph contribution by construction, so its only correct value is zero — and the
+old set scored it 12, against 14 for the arm that does have a graph. A measure
+that cannot separate those two is not measuring the graph. On B4 the same set
+read 3.5x this one; that ratio is the visible symptom, the ``B3.5`` row is the
+reason.
+
+Verified live, not only by recomputation: a fresh ``B3.5``/``B4`` run on the same
+index after this change reported 0 graph hits for ``B3.5`` and 3 for ``B4``, with
+every counted chunk carrying a graph origin.
 
 **``find_call_path`` is a graph tool and was in neither list.** Walking a chain
 of ``calls`` edges from one symbol to another is the most purely graph-dependent

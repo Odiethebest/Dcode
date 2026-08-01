@@ -256,8 +256,12 @@ async def test_graph_evidence_counts_graph_tools_and_not_file_outline(
     These two names are why this count exists as a separate test. B3.5 — the arm
     whose whole definition is "B4 without the graph" — keeps `get_file_outline`,
     so a hit it produced was being credited to the graph here while the ablation
-    correctly credited it to the agent loop; recomputing the recorded 2026-07-31
-    run both ways puts that inflation at 3.5x (14.0 hits per repeat against 4.0).
+    correctly credited it to the agent loop. Recomputing the recorded 2026-07-31
+    run both ways shows why that is fatal rather than merely imprecise: the old
+    set scored B3.5 — the arm with no graph tools at all — 12 graph hits in every
+    repeat, against 14 for B4. A measure that cannot separate an arm with the
+    graph from one without it is not measuring the graph.
+
     `find_call_path` is the opposite error:
     the most purely graph-dependent tool the agent has, counted by neither side.
 

@@ -121,15 +121,24 @@ contribution is counted rather than assumed.
 `structural_evidence_chunk_ids` / `new_gt_hits_from_structural_evidence`, whose
 origin set also contained `get_file_outline` — a tool that walks no edges and
 that the no-graph `B3.5` arm keeps. Those rows therefore credit the graph with
-hits the ablation attributes to the agent loop, and on the current run that is
-most of them: recomputing it both ways gives **14.0 hits per repeat under the old
-set against 4.0 under the new one**, a 3.5x difference. The counts are therefore
-**not comparable** across the rename, which is why it is a rename and not a
-redefinition in place. Where the two instruments disagree, `B3.5` is the
-measurement that decides, because it is the one the H1 report reads — and it was
-already saying the graph's contribution is small, so no published conclusion
-changes. The narrowed set is `dcode_shared.graph_tools.GRAPH_TOOLS`, now shared
-with the agent's B3.5 definition so the two cannot drift apart again.
+hits the ablation attributes to the agent loop. Recomputing this run both ways
+shows how far that goes, and it is checkable from the bytes in this directory:
+
+| arm | old set (incl. `get_file_outline`) | narrowed set |
+|---|---|---|
+| `B3.5` — **graph switched off** | 12 hits, all three repeats | **0**, all three repeats |
+| `B4` — graph on | 14 / 12 / 16 | 4 / 3 / 5 |
+
+`B3.5` is B4 with the graph disabled, so zero is its only correct value. The old
+set gave it 12, against 14 for the arm that does have a graph — it could not
+separate them. The counts are therefore **not comparable** across the rename,
+which is why it is a rename and not a redefinition in place.
+
+No published conclusion moves. Where the two instruments disagreed, `B3.5` was
+always the one the H1 report reads, and it was already reporting the graph's
+contribution as small. The narrowed set is
+`dcode_shared.graph_tools.GRAPH_TOOLS`, now shared with the agent's B3.5
+definition so the two cannot drift apart again.
 
 `h1_report.json` is the file to read first, and it is reported verbatim.
 
