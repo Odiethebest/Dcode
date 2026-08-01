@@ -213,6 +213,12 @@ registered tools (`dcode_agent.tools.default_registry`) are `search_code`,
 `get_call_neighbors`, `get_dependencies`, `get_dependents`, `get_file_outline`,
 `grep`, and `list_directory`.
 
+The agent service itself exposes three routes, none of them public: `/healthz`,
+`POST /internal/query` (the SSE stream the gateway proxies), and
+`GET /internal/tools`, which returns the tool manifest — name, description and
+argument schema per tool — for debugging. All three sit behind the internal API
+key except the liveness probe.
+
 The answer path is:
 
 1. contextualize a follow-up from the bounded client history, with a narrow

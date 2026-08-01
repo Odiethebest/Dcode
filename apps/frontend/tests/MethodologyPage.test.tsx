@@ -8,9 +8,10 @@ import {
   levelSummary,
   snapshotSource,
   suiteSummary,
+  type BaselineName,
 } from '@/demo/evalSnapshot';
 import { RUN_GROUNDEDNESS_BAR } from '@/demo/runGuardrail';
-import MethodologyPage from '@/pages/MethodologyPage';
+import MethodologyPage, { leadingBaselineByNdcg } from '@/pages/MethodologyPage';
 
 function renderMethodology() {
   return render(
@@ -119,6 +120,33 @@ describe('MethodologyPage', () => {
       screen.getByText(new RegExp(`${supported} of ${h1Report.repeats} repeats returned`, 'i'))
     ).toBeInTheDocument();
     expect(screen.getByText(/wider than the/i)).toBeInTheDocument();
+  });
+
+  it('names the leading baseline from the data, not from a hardcoded string', () => {
+    // Honesty_Constraints.md lists this among the rules its tests pin. It was
+    // not actually pinned: the page derived the leader correctly, but nothing
+    // stopped someone replacing it with 'B4', which would pass every existing
+    // assertion for exactly as long as B4 kept leading — and then highlight the
+    // wrong row in the run that changed it.
+    //
+    // Synthetic ladders, so a hardcoded answer fails here rather than later.
+    const ladder = (n: Record<string, number>) =>
+      Object.fromEntries(Object.entries(n).map(([k, v]) => [k, { ndcgAtK: v }])) as Record<
+        BaselineName,
+        { ndcgAtK: number }
+      >;
+    expect(leadingBaselineByNdcg(ladder({ B1: 0.1, B2: 0.9, B3: 0.2, B4: 0.3 }))).toBe('B2');
+    expect(leadingBaselineByNdcg(ladder({ B1: 0.9, B2: 0.2, B3: 0.2, B4: 0.3 }))).toBe('B1');
+    // Ties keep the earlier rung rather than silently promoting the last one.
+    expect(leadingBaselineByNdcg(ladder({ B1: 0.1, B2: 0.5, B3: 0.5, B4: 0.4 }))).toBe('B2');
+
+    // And the rendered scoreboard highlights whatever that returns for the
+    // real snapshot — exactly one row, and the right one.
+    const leader = leadingBaselineByNdcg(suiteSummary);
+    const { container } = renderMethodology();
+    const highlighted = Array.from(container.querySelectorAll('tr.bg-brand-wash'));
+    expect(highlighted).toHaveLength(1);
+    expect(highlighted[0].textContent).toContain(leader);
   });
 
   it('does not claim the page matches an unarchived run', () => {

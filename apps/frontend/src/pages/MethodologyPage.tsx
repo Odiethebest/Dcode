@@ -26,10 +26,24 @@ const LEVEL_LABELS: Record<Level, string> = {
   L3: 'architecture',
 };
 
-/** The rung that actually leads the suite on retrieval, read from the data. */
-const retrievalLeader = BASELINE_ORDER.reduce((best, b) =>
-  suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
-);
+/**
+ * The rung that actually leads the suite on retrieval, read from the data.
+ *
+ * Exported so a test can feed it a ladder where a different arm wins. Asserting
+ * only against the current snapshot cannot tell this apart from a hardcoded
+ * `'B4'` — that would pass for exactly as long as B4 happens to lead, and the
+ * highlight would then point at the wrong row in the run that changes it.
+ *
+ * Ties keep the earlier rung, matching the landing page's ladder.
+ */
+export function leadingBaselineByNdcg(
+  summary: Record<BaselineName, { ndcgAtK: number }>,
+  order: BaselineName[] = BASELINE_ORDER
+): BaselineName {
+  return order.reduce((best, b) => (summary[b].ndcgAtK > summary[best].ndcgAtK ? b : best));
+}
+
+const retrievalLeader = leadingBaselineByNdcg(suiteSummary);
 
 /**
  * Repeat spread, derived — never typed.
