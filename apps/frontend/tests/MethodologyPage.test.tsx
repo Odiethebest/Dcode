@@ -58,19 +58,35 @@ describe('MethodologyPage', () => {
 
   it('states the graph contribution as measured and small, not as unmeasured', () => {
     // The page said "unmeasured" for two runs. That became false the moment
-    // the harness started counting structural ground-truth hits, so the
-    // guardrail now pins the opposite claim and forbids the stale one.
+    // the harness started counting graph-sourced ground-truth hits, so the
+    // guardrail pins the opposite claim and forbids the stale one.
     renderMethodology();
     expect(screen.queryByText('unmeasured')).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/14 new ground-truth hits across 10 of the 33 questions/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/positive, consistent across both levels, and small/i)).toBeInTheDocument();
     // The ablation now exists, so the page must attribute the split rather than
     // decline to. Claiming the whole B4-B3 gap for the graph is the easy lie
     // here, and B3.5 is what makes it a checkable one.
     expect(
-      screen.getByText(/Without that ablation the \+0\.147 would have been reported/i)
+      screen.getByText(/multi-step evidence gathering is worth several times the graph/i)
     ).toBeInTheDocument();
+  });
+
+  it('carries no hand-typed snapshot figure in the diagnosis prose', () => {
+    // This paragraph used to read "14 new ground-truth hits across 10 of the 33
+    // questions", "+0.022", "+0.023" and "+0.147" — every one of them typed by
+    // hand, none inside a generated block, and the only thing checking them was
+    // this file asserting the same literals back. Two copies of a number drift
+    // together and the drift check never sees it, which is the exact failure
+    // Honesty_Constraints section 11 exists to prevent.
+    //
+    // So the rule for this section is: qualitative claims in prose, figures
+    // named by their field and their file. If a specific margin has to appear
+    // here, it goes in a generated block first.
+    const { container } = renderMethodology();
+    const diagnosis = screen.getByText(/multi-step evidence gathering/i).closest('div');
+    expect(diagnosis).not.toBeNull();
+    expect(diagnosis!.textContent).not.toMatch(/[+-]0\.\d{3}/);
+    expect(container.textContent).not.toMatch(/\d+ new ground-truth hits/);
   });
 
   it('reports the surviving ladder inversion instead of smoothing it', () => {
@@ -85,13 +101,24 @@ describe('MethodologyPage', () => {
     expect(screen.getByText(/One inversion survives/i)).toBeInTheDocument();
   });
 
-  it('publishes that the verdict depends on the scoring rule', () => {
-    // The single most omittable fact in this run: the pre-registered mixed
-    // rule fails L3, the symmetric rule would clear it. If this sentence ever
-    // disappears, the page is quietly reporting the convenient half.
+  it('publishes that one repeat cleared the bar on its own', () => {
+    // The single most omittable fact in this run, and it replaced a different
+    // one. The page used to say the verdict hinged on B2/B3 being scored by a
+    // different rule than B4 — true under `v1`, false since every agent arm
+    // moved to one rule, and it outlived that change because prose is not
+    // covered by the drift check.
+    //
+    // What makes this verdict fragile now is measured, not asserted: the
+    // deciding margin's spread across identical repeats is wider than the bar,
+    // and one repeat returned `supported` alone. Reporting the mean while
+    // omitting that is reporting the convenient half.
+    const supported = h1Report.perRepeat.filter((r) => r.decision === 'supported').length;
+    expect(supported).toBeGreaterThan(0);
     renderMethodology();
-    expect(screen.getByText(/Scoring B3 by B4’s rule would clear/i)).toBeInTheDocument();
-    expect(screen.getByText(/pre-registered rule is the one reported/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`${supported} of ${h1Report.repeats} repeats returned`, 'i'))
+    ).toBeInTheDocument();
+    expect(screen.getByText(/wider than the/i)).toBeInTheDocument();
   });
 
   it('does not claim the page matches an unarchived run', () => {

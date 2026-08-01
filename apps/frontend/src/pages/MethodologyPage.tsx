@@ -31,6 +31,20 @@ const retrievalLeader = BASELINE_ORDER.reduce((best, b) =>
   suiteSummary[b].ndcgAtK > suiteSummary[best].ndcgAtK ? b : best
 );
 
+/**
+ * Repeat spread, derived — never typed.
+ *
+ * This replaced a hand-written paragraph claiming the verdict hinged on B2/B3
+ * being scored by a different rule than B4. That was true under the `v1`
+ * protocol and stopped being true when every agent arm moved to one rule, but
+ * the sentence stayed on the page because prose is not covered by the drift
+ * check. The fact that actually makes this verdict fragile is measured and
+ * lives in the snapshot, so the page reads it instead of asserting it.
+ */
+const l2RepeatMargins = h1Report.perRepeat.map((r) => r.marginVsB3.L2);
+const supportedRepeats = h1Report.perRepeat.filter((r) => r.decision === 'supported').length;
+const l2MarginSpread = Math.max(...l2RepeatMargins) - Math.min(...l2RepeatMargins);
+
 /** Signed, fixed-precision — positive margins get an explicit +. */
 function signed(n: number, digits = 3): string {
   const s = n.toFixed(digits);
@@ -389,36 +403,43 @@ export default function MethodologyPage() {
             <em className="italic text-brand">small</em>.
           </>
         }
-        lede="B4 finally clears a level. Most of that margin is not the call graph, and the verdict turns on a scoring rule."
+        lede="B4 clears a level outright. Most of that margin is not the call graph, and the margin that decides the rest is smaller than its own run-to-run noise."
       >
         <div className="grid grid-cols-[1.15fr_0.85fr] gap-6 max-[920px]:grid-cols-1">
           <div className="rounded-card border border-line bg-surface p-7 max-[600px]:p-6">
             <p className="text-[15px] leading-relaxed text-ink-2">
               <b className="font-semibold text-ink">
-                The call graph is worth +0.022 on cross-file questions and +0.023 on architecture
-                questions.
+                The call graph&rsquo;s own contribution is positive, consistent across both levels,
+                and small.
               </b>{' '}
-              Positive and consistent — and negative two runs ago, before graph results carried
-              their source code into the answer prompt. Every citation records the tool that
-              surfaced it, so evidence the graph found that hybrid retrieval had not already
-              returned is counted rather than assumed: 14 new ground-truth hits across 10 of the 33
-              questions.
+              It was negative two runs ago, before graph results carried their source code into the
+              answer prompt. Every citation records the tool that surfaced it, so evidence the graph
+              found that hybrid retrieval had not already returned is counted rather than assumed —
+              per question in <Mono>new_gt_hits_from_graph_evidence</Mono>, and at the level of the
+              decision by the ablation below. The margins are in{' '}
+              <Mono>h1_report.json</Mono> under <Mono>diagnostics</Mono>.
             </p>
             <p className="mt-4 text-[15px] leading-relaxed text-ink-2">
               And it is not what is doing the work. The <Mono>B3.5</Mono> arm is B4 with the graph
               and reference tools switched off and everything else identical, so the two halves come
-              apart: on architecture questions the agent&rsquo;s multi-step evidence gathering is
-              worth <b className="font-semibold text-ink">+0.147</b>, roughly six times the graph.{' '}
+              apart: on architecture questions{' '}
               <b className="font-semibold text-ink">
-                Without that ablation the +0.147 would have been reported as the graph&rsquo;s.
+                the agent&rsquo;s multi-step evidence gathering is worth several times the graph
               </b>
+              . Without that ablation all of it would have been reported as the graph&rsquo;s.
             </p>
             <p className="mt-4 border-l-2 border-brand pl-4 text-[14px] leading-relaxed text-ink-2">
-              The verdict is also protocol-sensitive: B2 and B3 are scored on retrieved top-k while
-              B4 is scored on its verified final evidence. Scoring B3 by B4&rsquo;s rule would clear
-              L3 and return <Mono>supported</Mono>. The pre-registered rule is the one reported —
-              picking the other one after seeing it flip the outcome is the failure the
-              pre-registration exists to prevent.
+              The verdict is fragile for a different reason: across{' '}
+              {h1Report.repeats} identical repeats the deciding{' '}
+              <Mono>L2</Mono> margin ranged over {l2MarginSpread.toFixed(3)}, wider than the{' '}
+              {h1Report.threshold.toFixed(2)} bar it is compared against, and{' '}
+              <b className="font-semibold text-ink">
+                {supportedRepeats} of {h1Report.repeats} repeats returned{' '}
+                <Mono>supported</Mono> on its own
+              </b>
+              . The reported decision is the mean of all {h1Report.repeats}; each repeat keeps its
+              own verdict in <Mono>h1_report.json</Mono>. A single run of this suite cannot separate
+              an effect this size from which way the model happened to phrase an answer.
             </p>
           </div>
           <div className="rounded-card border border-line bg-surface p-7 max-[600px]:p-6">
