@@ -1,9 +1,20 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import App from '@/App';
+import { getSession } from '@/api/client';
+
+// The workbench sits behind a session check, so every render of it now waits
+// on one request. Stubbed to the ungated answer — the gate's own behaviour is
+// covered in RequireSession.test.tsx rather than incidentally here.
+vi.mock('@/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/client')>()),
+  getSession: vi.fn(),
+}));
+
+const mockedGetSession = vi.mocked(getSession);
 
 function renderAppAt(path: string) {
   const queryClient = new QueryClient();
@@ -17,14 +28,27 @@ function renderAppAt(path: string) {
 }
 
 describe('App IA', () => {
+  beforeEach(() => {
+    mockedGetSession.mockResolvedValue({
+      auth_required: false,
+      authenticated: true,
+      username: null,
+    });
+  });
+
   it('renders the marketing landing at /', () => {
     renderAppAt('/');
     expect(screen.getByText(/Understand any codebase/i)).toBeInTheDocument();
   });
 
-  it('renders the workbench at /workbench', () => {
+  it('renders the workbench at /workbench', async () => {
     renderAppAt('/workbench');
-    expect(screen.getByText(/ask this codebase anything/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ask this codebase anything/i)).toBeInTheDocument();
+  });
+
+  it('renders the login page at /login', () => {
+    renderAppAt('/login');
+    expect(screen.getByRole('heading', { name: /sign in to the workbench/i })).toBeInTheDocument();
   });
 
   it('renders the methodology page at /methodology', () => {

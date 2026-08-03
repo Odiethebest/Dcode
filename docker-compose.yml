@@ -75,6 +75,17 @@ services:
       # 'sidecar' (default) or 'siliconflow' — both serve bge-reranker-v2-m3.
       RERANKER_PROVIDER: ${RERANKER_PROVIDER:-sidecar}
       RERANKER_API_KEY: ${RERANKER_API_KEY:-}
+      # The shared-account gate, off by default so the developer stack is
+      # unchanged. Present here so it can be switched on locally to test it —
+      # docker-compose.prod.yml hardcodes it on instead of defaulting it.
+      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      AUTH_USERNAME: ${AUTH_USERNAME:-dcode}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-43200}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_DAILY_QUERY_LIMIT: ${AUTH_DAILY_QUERY_LIMIT:-200}
+      DOCS_ENABLED: ${DOCS_ENABLED:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"

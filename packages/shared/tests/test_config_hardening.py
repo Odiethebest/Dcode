@@ -131,6 +131,51 @@ def test_prod_services_receive_the_retrieval_settings_they_read() -> None:
         assert not missing, f"{service} is missing {missing} in docker-compose.prod.yml"
 
 
+def test_prod_compose_cannot_be_deployed_without_the_auth_gate() -> None:
+    """AUTH_ENABLED is hardcoded on, not defaulted, and the rest is required.
+
+    `${AUTH_ENABLED:-true}` would let a deployment turn the gate off by setting
+    one variable, which is not a gate. The credential and the signing secret
+    use `:?` so a missing one stops the stack instead of producing an API that
+    is open because it could not authenticate.
+
+    The API also refuses to start in that state (`auth_configuration_error`),
+    so this is the outer of two layers rather than the only one.
+    """
+    compose = (_ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+    api = _service_block(compose, "api")
+
+    assert '\n      AUTH_ENABLED: "true"' in api
+    assert "${AUTH_ENABLED" not in compose, "the gate must not be overridable from the env file"
+    assert "${AUTH_PASSWORD_HASH:?" in api
+    assert "${AUTH_SESSION_SECRET:?" in api
+    assert "${AUTH_PASSWORD_HASH:-" not in compose
+    assert "${AUTH_SESSION_SECRET:-" not in compose
+
+
+def test_prod_compose_closes_the_openapi_surface() -> None:
+    """F-05: /docs, /redoc and /openapi.json enumerate the /internal/* routes."""
+    api = _service_block((_ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8"), "api")
+    assert '\n      DOCS_ENABLED: "false"' in api
+
+
+def test_env_examples_never_ship_a_real_looking_credential() -> None:
+    """A password hash or session secret in a committed file is a shipped credential.
+
+    The examples carry placeholders; `python -m dcode_api.hash_password` writes
+    the real values into `.env.production`, which is gitignored.
+    """
+    for name in (".env.example", ".env.production.example"):
+        content = (_ROOT / name).read_text(encoding="utf-8")
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("AUTH_PASSWORD_HASH="):
+                value = stripped.split("=", 1)[1]
+                assert not value.startswith("pbkdf2_sha256$"), f"{name} ships a real hash"
+            if stripped.startswith("AUTH_SESSION_SECRET="):
+                assert not stripped.split("=", 1)[1].strip(), f"{name} ships a session secret"
+
+
 def test_no_dead_loopback_endpoints_in_production_config() -> None:
     """A reranker endpoint pointing at localhost:9999 inside a container.
 

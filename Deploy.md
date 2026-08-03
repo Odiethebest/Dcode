@@ -25,7 +25,7 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1 and PR 2 landed. PR 3–5 not started.** The pre-deployment state
+**Status: PR 1, PR 2 and PR 3 landed. PR 4–5 not started.** The pre-deployment state
 is frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere
 yet. Both hosted model APIs have been exercised end to end from a running local
 stack — see § 2.1 and § 6 PR 2 for the observed values — but **no index has been
@@ -403,7 +403,7 @@ The capability behind D-1.
    83 files, 310 passed / 5 skipped, 73 frontend tests. All four modes in § 5.1
    still resolve, and `sidecar` remains the default everywhere.
 
-### PR 3 — `feat/auth-gate`
+### PR 3 — `feat/auth-gate` — **done**
 
 D-2. Also closes F-01 and F-03.
 
@@ -420,11 +420,34 @@ D-2. Also closes F-01 and F-03.
 - A per-session daily query cap. The login wall removes anonymous abuse; it does
   not remove a logged-in user looping a query against a metered API.
 
-**Acceptance.** An unauthenticated request to each protected route returns 401.
-`/`, `/methodology` and `/healthz` are reachable without a session. The
-`/workbench` redirect is verified **by a human in a browser** — headless
-screenshots do not work in this environment, and that limitation is not a reason
-to claim the check passed.
+**Acceptance — met, except the one item that needs eyes.**
+
+48 tests (35 backend, 13 frontend). Then a live container run with the gate on:
+
+| Without a session | |
+|---|---|
+| `/healthz`, `/api/v1/auth/me`, `/api/v1/auth/logout` | 200 — a login endpoint cannot require a login |
+| `/api/v1/repos` (valid body), `/repos/{id}/status`, `/source`, `/neighbors`, `/query` | **401** |
+| `/docs`, `/openapi.json` | **404** — F-05 closed |
+| Wrong password | 401, no cookie set |
+
+| With a session | |
+|---|---|
+| Cookie flags | `HttpOnly; Max-Age=43200; Path=/; SameSite=lax` (`Secure` was off only because the probe ran over local HTTP) |
+| `/repos/{id}/status` | 200 |
+| Gate switched back off | `auth_required:false`, every route open again |
+
+**Not verified: the `/workbench` → `/login` redirect in a real browser.** Its
+logic has four unit tests covering unknown / denied / allowed / failure, but
+headless screenshots do not work in this environment and that is not a reason to
+claim otherwise. **A human should open `/workbench` signed out and confirm it
+lands on `/login`, then sign in and confirm it lands back on the workbench.**
+
+One behaviour worth knowing rather than fixing: a request body that is not JSON
+at all returns 422 before the gate runs, because Starlette parses the body
+before dependencies resolve. A body that is valid JSON with wrong fields returns
+401. The disclosure is "this endpoint takes JSON", against an endpoint whose
+path the caller already knows, with the OpenAPI schema off.
 
 ### PR 4 — `feat/railway-deploy`
 
@@ -476,11 +499,11 @@ as leads to verify when the PR touches them, not as established fact.
 
 | # | Finding | Where | Severity | PR | Verified |
 |---|---|---|---|---|---|
-| F-01 | No authentication of any kind on `/api/v1/*`; no user or tenant concept, so any caller can read any indexed repo by `repo_id` | `apps/api/src/dcode_api/main.py:45-47` | blocker | 3 | audit |
+| F-01 | ~~No authentication of any kind on `/api/v1/*`~~ **— closed in PR 3.** A shared-account session gate now covers repos, query and inspector; `/internal/*` keeps its own shared-key check. Still one principal, not a tenant model (D-6) | `apps/api/src/dcode_api/main.py` | blocker | 3 | **direct** |
 | F-02 | ~~The `api` service in the production Compose file has no embedding or reranker configuration~~ **— fixed in PR 1, and it was wider than this row said: `worker` and `agent` were short too. See § 6 PR 1.** | `docker-compose.prod.yml` | blocker | 1 | **direct** |
-| F-03 | No rate limiting, no request-size limit, no quota. `QueryRequest.query` has `min_length` but no `max_length` | `packages/shared/src/dcode_shared/schemas.py:132` | blocker | 3 | audit |
+| F-03 | **Partly closed in PR 3.** Anonymous access is gone and a per-session daily query cap bounds the metered path. **Still open: no request-size limit** — `QueryRequest.query` has `min_length` and no `max_length` | `packages/shared/src/dcode_shared/schemas.py:132` | blocker → medium | 3 → 5 | audit |
 | F-04 | `INTERNAL_API_KEY` defaults to a literal published in this repository, with no startup guard outside Compose's `:?` operator — and Railway sets variables per service, so that operator does not protect the deployment | `packages/shared/src/dcode_shared/settings.py:33` | high | 5 | audit |
-| F-05 | `/docs`, `/redoc` and `/openapi.json` are publicly served and advertise the `/internal/*` surface | `apps/api/src/dcode_api/main.py:31-35` | high | 3 | audit |
+| F-05 | ~~`/docs`, `/redoc` and `/openapi.json` are publicly served~~ **— closed in PR 3**, off in production and pinned by a test; observed 404 on a gated container | `apps/api/src/dcode_api/main.py` | high | 3 | **direct** |
 | F-06 | SSRF: repository URL validation rejects literal private IPs but has no host allowlist and no resolution check, so a hostname resolving to an internal address passes | `apps/api/src/dcode_api/routes/repos.py:203-224` | high | 5 | audit |
 | F-07 | The agent tool cache key omits `index_revision`, so re-indexing a repository does not invalidate cached tool results for up to 24 h | `apps/agent/src/dcode_agent/graph.py:119` | high | 5 | audit |
 | F-08 | Cloned workdirs are never cleaned up, for any repository, ever. On a fixed Railway volume this is unbounded growth | `apps/worker/src/dcode_worker/stages/clone.py:17-22` | high | 5 | audit |
@@ -493,11 +516,39 @@ as leads to verify when the PR touches them, not as established fact.
 | F-15 | The `grep` tool runs `rg` with no timeout and buffers all output in memory; the pure-Python fallback compiles a user-supplied regex with no timeout | `apps/agent/src/dcode_agent/tools/grep.py:44-58`, `:79-101` | medium | 5 | audit |
 | F-16 | nginx serves the bundle uncompressed — gzip is commented out in the base image and not enabled in the site config. Main chunk 752.53 kB / 226.74 kB gzipped | `apps/frontend/nginx.conf` | low | 4 | **direct** |
 | F-17 | No `.dockerignore` anywhere; the frontend build context ships 227 MB of `node_modules` | repository root | low | 4 | **direct** |
+| F-19 | ~~A `$` in an env-file value is silently eaten by Compose interpolation, so a `$`-separated password hash reached the container as 22 of ~100 characters and every login failed while the service reported healthy~~ **— fixed in PR 3** (format changed, and the hash is now parsed at startup). Applies to any hand-picked secret containing `$` — see § 2.3 | `apps/api/src/dcode_api/auth.py` | high | 3 | **direct** |
+| F-20 | ~~The test suite reads the developer's `.env`, so `make check` is not hermetic — enabling the gate locally failed four unrelated tests with no hint of the cause~~ **— fixed in PR 3** by a root `conftest.py` pinning the settings whose defaults tests assert | `conftest.py` | medium | 3 | **direct** |
 | F-18 | Model sidecars download weights from Hugging Face at runtime with no cache volume | `infra/docker/embedding.Dockerfile`, `infra/docker/reranker.Dockerfile` | low | — | **direct** |
 
 F-18 is recorded but **not scheduled**: D-1 removes the sidecars from the
 deployment path, so it only affects local Docker-profile use. It is left as a
 known cost of that mode rather than fixed speculatively.
+
+### 2.3 A `$` in an env-file value is eaten before the container sees it
+
+Found while verifying PR 3, and it had already produced a working-looking
+failure. Docker Compose interpolates `${VAR}` **and bare `$VAR`** inside
+env-file values. A PBKDF2 hash of the conventional
+`pbkdf2_sha256$600000$salt$hash` form therefore reached the container as 22
+characters with three of its four segments gone.
+
+Nothing errored. Compose printed interpolation warnings among its normal
+output, the API booted, the health check passed, and **every login failed
+forever** — indistinguishable from a wrong password.
+
+Two changes, because either alone leaves the trap open:
+
+- the hash format joins its segments with `.` instead of `$`, so the character
+  never appears in the value (base64url contains no `.`, so it stays
+  unambiguous). Escaping as `$$` would also work and would be remembered by
+  nobody;
+- `auth_configuration_error()` now parses the hash rather than checking it is
+  non-empty, so a value corrupted by any means stops the boot instead of
+  producing a service that is up and unopenable.
+
+**This applies to every secret, not just this one.** A Postgres or RabbitMQ
+password containing `$` will be corrupted the same way. `secrets.token_urlsafe`
+output is safe (`A-Za-z0-9_-`); anything hand-picked is not.
 
 ### Already correct, recorded so nobody "fixes" it
 
@@ -586,6 +637,75 @@ Before calling the deployment done:
 | 7 | Unauthenticated access to `/workbench` and to each protected route is refused | Private window |
 | 8 | `/` and `/methodology` load without a session, and their figures match `results/` | `python3 scripts/sync_eval_artifacts.py --check` |
 | 9 | The four local modes in § 5.1 all still start | Locally, after the final PR |
+
+---
+
+### 10.1 Seeing the auth gate locally
+
+The two checks above that need a human need the gate switched on first, and
+nothing switches it on by default. This is how, written down because otherwise
+the next person rediscovers it.
+
+**The login page itself needs none of this.** `/login` is a public route and
+renders whatever the gate is doing: `http://localhost:5173/login`. What that
+does *not* show you is the behaviour — the redirect, the refusal, the error —
+which is the part worth looking at.
+
+```bash
+# 1. Generate a hash. Interactive and unechoed; it takes no argument, so the
+#    password stays out of shell history and the process list.
+uv run --package dcode-api python -m dcode_api.hash_password
+
+# 2. Append to .env (gitignored). Use the hash from step 1.
+#    AUTH_ENABLED=true
+#    AUTH_USERNAME=reviewer
+#    AUTH_PASSWORD_HASH=pbkdf2_sha256.600000.<salt>.<hash>
+#    AUTH_SESSION_SECRET=<python3 -c 'import secrets; print(secrets.token_urlsafe(48))'>
+
+# 3. Recreate the API. No --build: the image already carries the code, and
+#    only the environment changed.
+docker compose up -d api
+```
+
+The Vite dev server does not need restarting. There is no build-time switch —
+the SPA asks `/api/v1/auth/me` at runtime and renders accordingly.
+
+**Then look at four things in a real browser:**
+
+| Do this | Expect |
+|---|---|
+| Open `/workbench` signed out | a brief `checking session…`, then a redirect to `/login` |
+| Submit a wrong password | `Incorrect username or password.` under the form, no navigation |
+| Submit the right password | lands on `/workbench`, workbench works |
+| Open `/` and `/methodology` | load normally, **no** sign-in |
+
+Rows one and three are the items § 10 records as unverified.
+
+**Why the cookie works here at all**, since it is the question that decides
+whether any of this can be tested locally: `apps/frontend` has no `.env`, so
+`VITE_API_BASE_URL` is undefined and `BASE_URL` is the empty string
+(`src/api/client.ts`). The SPA therefore calls **same-origin** `/api/v1/*` on
+port 5173 and `vite.config.ts` proxies `/api` to the gateway. No cross-origin
+request, so `allow_credentials=False` on the CORS middleware never comes into
+it. Point `VITE_API_BASE_URL` at `http://localhost:8000` and that stops being
+true — the browser would refuse to send the cookie and the CORS policy would
+refuse the credentialed request.
+
+**Three things that will otherwise waste your time:**
+
+- `AUTH_COOKIE_SECURE` defaults to true, and browsers treat `http://localhost`
+  as a trustworthy origin, so it should hold. If a successful sign-in bounces
+  straight back to `/login`, the cookie is not being stored — set
+  `AUTH_COOKIE_SECURE=false` and recreate the API.
+- **Do not hand-edit the hash back to `$` separators.** That is § 2.3, and its
+  symptom is a login that fails forever with nothing in the logs.
+- `make check` is unaffected. The root `conftest.py` pins `AUTH_ENABLED=false`
+  for tests, which exists precisely because a locally-enabled gate once failed
+  four unrelated tests with no hint of why (F-20).
+
+**Afterwards**, delete the block from `.env` and `docker compose up -d api`.
+`curl -s localhost:8000/api/v1/auth/me` returning `"auth_required":false`
+confirms you are back.
 
 ---
 

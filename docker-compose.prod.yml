@@ -71,6 +71,19 @@ services:
       RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
       RERANKER_PROVIDER: ${RERANKER_PROVIDER:-sidecar}
       RERANKER_API_KEY: ${RERANKER_API_KEY:-}
+      # The gate is HARDCODED on, not defaulted. A production deployment that
+      # can be talked out of authenticating by omitting a variable is not a
+      # gate. The API refuses to start if the credential or secret is missing,
+      # so this fails loudly rather than serving the workbench openly.
+      AUTH_ENABLED: "true"
+      AUTH_USERNAME: ${AUTH_USERNAME:?set AUTH_USERNAME in .env.production}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?set AUTH_PASSWORD_HASH in .env.production — generate with `python -m dcode_api.hash_password`}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET in .env.production — at least 32 characters}
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-43200}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_DAILY_QUERY_LIMIT: ${AUTH_DAILY_QUERY_LIMIT:-200}
+      # /docs, /redoc and /openapi.json enumerate the /internal/* surface.
+      DOCS_ENABLED: "false"
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
