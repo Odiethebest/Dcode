@@ -68,10 +68,26 @@ class EdgeType(StrEnum):
 # ===========================================================================
 
 
+# Request-body bounds. Validation ran on unbounded strings, so a caller could
+# make the gateway parse an arbitrarily large body into memory before anything
+# rejected it. These are ceilings on abuse, not on legitimate use: no Git URL
+# approaches 2 KB, and the gateway already trims history to 4,000 characters
+# per turn — the query itself simply had no cap at all.
+_MAX_REPO_URL_CHARS = 2048
+_MAX_QUERY_CHARS = 4000
+_MAX_TURN_CHARS = 4000
+_MAX_HISTORY_TURNS = 100
+
+
 class RepoCreateRequest(BaseModel):
     """POST /api/v1/repos request body."""
 
-    url: str = Field(..., description="Git URL of the repository to index")
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=_MAX_REPO_URL_CHARS,
+        description="Git URL of the repository to index",
+    )
 
 
 class RepoCreateResponse(BaseModel):
@@ -145,16 +161,20 @@ class QueryTurn(BaseModel):
     """
 
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(..., max_length=_MAX_TURN_CHARS)
 
 
 class QueryRequest(BaseModel):
     """POST /api/v1/query request body."""
 
     repo_id: UUID
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=_MAX_QUERY_CHARS)
+    # The gateway trims history to its own turn and character budgets, but that
+    # happens *after* the body is parsed. This bound is what stops a caller
+    # sending a hundred thousand turns to be validated first.
     history: list[QueryTurn] = Field(
         default_factory=list,
+        max_length=_MAX_HISTORY_TURNS,
         description="Prior turns for multi-turn follow-ups (bounded by the gateway).",
     )
 

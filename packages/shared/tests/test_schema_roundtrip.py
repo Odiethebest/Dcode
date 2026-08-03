@@ -67,7 +67,9 @@ def test_query_request_rejects_blank_query() -> None:
 
 def test_cache_keys_match_design_3_3() -> None:
     assert embedding_cache_key("bge-code", "hello").startswith("embed:bge-code:")
-    assert tool_cache_key("search_code", "rid", {"q": "x"}).startswith("tool:search_code:rid:")
+    assert tool_cache_key("search_code", "rid", {"q": "x"}, index_revision=0).startswith(
+        "tool:search_code:rid:r0:"
+    )
     assert query_cache_key("rid", "q").startswith("query:rid:")
     assert job_state_key("rid") == "job:rid"
 

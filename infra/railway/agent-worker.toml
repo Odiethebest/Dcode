@@ -1,0 +1,47 @@
+# Railway service: agent-worker — the LangGraph agent AND the index worker, in
+# one container.
+#
+# Settings → Config as Code: /infra/railway/agent-worker.toml
+# Root Directory: empty. No public domain.
+#
+# WHY THEY SHARE A CONTAINER (Deploy.md R-1): a Railway volume attaches to
+# exactly one service, and the worker writes the cloned repository tree that the
+# agent's read_file / grep / list_directory tools read back at query time. This
+# is a platform workaround, not the architecture — docker-compose.yml still runs
+# them as two services against a shared Docker volume.
+#
+# THE VOLUME: attach one, mounted at the same path as WORKDIR_BASE
+# (/tmp/dcode-workdirs unless you change both together). Without it the
+# checkout disappears on every redeploy and the agent's file tools fail for
+# every repository until it is re-indexed.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/railway-agent-worker.Dockerfile"
+watchPatterns = [
+  "apps/agent/**",
+  "apps/worker/**",
+  "packages/shared/**",
+  "infra/docker/railway-agent-worker.Dockerfile",
+  "infra/docker/railway-agent-worker-entrypoint.sh",
+  "pyproject.toml",
+  "uv.lock",
+]
+
+[deploy]
+# The agent's liveness endpoint. It says nothing about the worker — the
+# entrypoint handles that by exiting the container if either process dies, so a
+# dead worker becomes a restart rather than a container that looks healthy while
+# every submitted repository sits in `queued` forever.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+
+restartPolicyType = "ON_FAILURE"
+
+# MUST stay 1. Two reasons, either of them sufficient:
+#   - the volume attaches to one service, and replicas would not share it, so
+#     each replica's agent would read a different (or empty) checkout;
+#   - the worker is a single RabbitMQ consumer with prefetch_count=1. A second
+#     replica is a second consumer competing for the same jobs, and nothing in
+#     the pipeline is written to be run concurrently on one repository.
+numReplicas = 1

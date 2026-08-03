@@ -25,7 +25,8 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1–4 landed. PR 5 not started, and nothing is deployed yet.** The pre-deployment state
+**Status: PR 1–5 landed. Nothing is deployed yet** — every remaining item is
+in § 10.2 and needs a Railway account. The pre-deployment state
 is frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere
 yet. Both hosted model APIs have been exercised end to end from a running local
 stack — see § 2.1 and § 6 PR 2 for the observed values — but **no index has been
@@ -496,13 +497,47 @@ The combined `agent-worker` container has **not been run**, locally or
 otherwise. Its entrypoint is Railway-only and the developer stack does not use
 it, so nothing here exercises it.
 
-### PR 5 — `fix/audit-followups`
+### PR 5 — `fix/audit-followups` — **done**
 
 Findings that are not launch blockers but should not ship unaddressed.
 See the register in § 7 for F-04, F-06, F-07, F-08, F-10, F-14, F-15.
 
-**Acceptance.** Each item either fixed with a test, or explicitly deferred in
-this document with a reason. Silence is not an outcome.
+**Acceptance — met.** Eight items, 40 new tests, three commits grouped by what
+they are about rather than by which finding they close.
+
+| Finding | What changed |
+|---|---|
+| F-03 | Request bodies had no size limit anywhere. `query` had a `min_length` and no max, and history was trimmed only *after* parsing |
+| F-04 | Both the API and the agent refuse to start on the placeholder key. The length rule applies only when the deployment authenticates its users, which is a proxy for production and is labelled as one |
+| F-06 | Resolution checking, credentials refused rather than stripped, and an optional allowlist. **Rebinding stays open** — see below |
+| F-07 | Tool cache keyed by `index_revision`, read once per query. No revision means no cache rather than a shared key |
+| F-08 | Optional oldest-first cap, off by default. **Deliberately less than "solved"** — see below |
+| F-10 | `/readyz`, including the embedding-dimension check § 5.4 asks for |
+| F-14 | `--` before the clone URL, and `GIT_TERMINAL_PROMPT=0` |
+| F-15 | Timeout, match caps, file-size cap. **The Python fallback is not fully bounded** — see below |
+
+**Three limits this PR does not remove, stated because a closed finding that
+quietly leaves the hole open is worse than an open one.**
+
+1. **DNS rebinding is not closed.** Every resolved address is checked, but git
+   resolves the name again when it clones, and an answer that changes in between
+   defeats the check. The fix is egress filtering at the network — on Railway,
+   that is a platform capability this project does not configure.
+2. **The workdir cap is a trade, not a cleanup.** The agent reads those trees at
+   query time, so evicting a `ready` repository's checkout costs it `read_file`,
+   `grep` and `list_directory` until it is re-indexed; search and the call graph
+   carry on from Postgres. That is why it is off by default and why the tool's
+   error message now says which half stopped working. The durable answer is
+   § 11 item 2 — stop reading source from a filesystem.
+3. **The `grep` Python fallback can still block.** Python cannot time out a
+   single `re` call, so catastrophic backtracking against one long line is
+   unbounded. Everything countable is capped. The agent image installs ripgrep,
+   so that path runs only where it is absent.
+
+Also unchanged on purpose: the Docker health checks still probe `/healthz`.
+`/readyz` is for a load balancer, and wiring it into `depends_on:
+condition: service_healthy` would make an unrelated dependency outage block
+container startup chains locally.
 
 ---
 
@@ -519,19 +554,19 @@ as leads to verify when the PR touches them, not as established fact.
 |---|---|---|---|---|---|
 | F-01 | ~~No authentication of any kind on `/api/v1/*`~~ **— closed in PR 3.** A shared-account session gate now covers repos, query and inspector; `/internal/*` keeps its own shared-key check. Still one principal, not a tenant model (D-6) | `apps/api/src/dcode_api/main.py` | blocker | 3 | **direct** |
 | F-02 | ~~The `api` service in the production Compose file has no embedding or reranker configuration~~ **— fixed in PR 1, and it was wider than this row said: `worker` and `agent` were short too. See § 6 PR 1.** | `docker-compose.prod.yml` | blocker | 1 | **direct** |
-| F-03 | **Partly closed in PR 3.** Anonymous access is gone and a per-session daily query cap bounds the metered path. **Still open: no request-size limit** — `QueryRequest.query` has `min_length` and no `max_length` | `packages/shared/src/dcode_shared/schemas.py:132` | blocker → medium | 3 → 5 | audit |
-| F-04 | `INTERNAL_API_KEY` defaults to a literal published in this repository, with no startup guard outside Compose's `:?` operator — and Railway sets variables per service, so that operator does not protect the deployment | `packages/shared/src/dcode_shared/settings.py:33` | high | 5 | audit |
+| F-03 | ~~No rate limiting, no request-size limit, no quota~~ **— closed across PR 3 and PR 5.** Anonymous access gone, per-session daily cap, and bounds on the URL, the query, each turn and the turn count | `packages/shared/src/dcode_shared/schemas.py` | blocker | 3, 5 | **direct** |
+| F-04 | ~~`INTERNAL_API_KEY` defaults to a published literal with no startup guard outside Compose~~ **— fixed in PR 5.** API and agent both refuse to boot on it | `packages/shared/src/dcode_shared/internal.py` | high | 5 | **direct** |
 | F-05 | ~~`/docs`, `/redoc` and `/openapi.json` are publicly served~~ **— closed in PR 3**, off in production and pinned by a test; observed 404 on a gated container | `apps/api/src/dcode_api/main.py` | high | 3 | **direct** |
-| F-06 | SSRF: repository URL validation rejects literal private IPs but has no host allowlist and no resolution check, so a hostname resolving to an internal address passes | `apps/api/src/dcode_api/routes/repos.py:203-224` | high | 5 | audit |
-| F-07 | The agent tool cache key omits `index_revision`, so re-indexing a repository does not invalidate cached tool results for up to 24 h | `apps/agent/src/dcode_agent/graph.py:119` | high | 5 | audit |
-| F-08 | Cloned workdirs are never cleaned up, for any repository, ever. On a fixed Railway volume this is unbounded growth | `apps/worker/src/dcode_worker/stages/clone.py:17-22` | high | 5 | audit |
+| F-06 | **Mostly fixed in PR 5**: resolution checked, credentials refused, optional allowlist added. **Rebinding remains open** — git re-resolves at clone time and that needs network egress filtering | `apps/api/src/dcode_api/routes/repos.py` | high | 5 | **direct** |
+| F-07 | ~~The agent tool cache key omits `index_revision`~~ **— fixed in PR 5**, keyword-only with no default so a new call site cannot reintroduce it | `packages/shared/src/dcode_shared/cache.py` | high | 5 | **direct** |
+| F-08 | **Partly addressed in PR 5**: an optional oldest-first cap, **off by default**, because eviction costs an evicted repository its file tools until re-index. The durable fix is § 11 item 2 | `apps/worker/src/dcode_worker/stages/prune.py` | high | 5 | **direct** |
 | F-09 | ~~No repository list endpoint~~ **— fixed in PR 4.** `GET /api/v1/repos`, merged behind the localStorage recents so a reader on a new device sees what is indexed. Verified live against the local database: 8 repositories returned | `apps/api/src/dcode_api/routes/repos.py` | high | 4 | **direct** |
-| F-10 | `/healthz` returns `ok` unconditionally — it reports healthy with every dependency down. No readiness probe exists | `apps/api/src/dcode_api/main.py:51-54` | medium | 5 | audit |
+| F-10 | ~~No readiness probe~~ **— fixed in PR 5.** `/readyz` covers database, Redis and the embedding-dimension agreement; `/healthz` stays shallow on purpose | `apps/api/src/dcode_api/readiness.py` | medium | 5 | **direct** |
 | F-11 | ~~The two documented production Compose invocations disagree; one of them republishes Postgres, Redis and the RabbitMQ UI~~ **— fixed in PR 1.** | `README.md`, `.env.production.example` | medium | 1 | **direct** |
 | F-12 | ~~`RERANKER_ENDPOINT` defaults to a dead loopback address in the production template~~ **— fixed in PR 1, pinned by a test.** | `docker-compose.prod.yml`, `.env.production.example` | medium | 1 | **direct** |
 | F-13 | Embedding retries are 12 attempts against a 300 s timeout; with `prefetch_count=1` one bad batch stalls the entire indexing queue. **Knob added in PR 1 (`EMBEDDING_TIMEOUT_SECONDS`); the values are set in PR 2, where the path that needs them exists.** | `packages/shared/src/dcode_shared/embedding.py:19-20` | medium | 1 → 2 | audit |
-| F-14 | `git clone` receives the repository URL with no `--` separator, so a URL beginning with `-` is parsed as an option. Gateway validation is the only defence; the worker has none | `apps/worker/src/dcode_worker/stages/clone.py:22` | medium | 5 | audit |
-| F-15 | The `grep` tool runs `rg` with no timeout and buffers all output in memory; the pure-Python fallback compiles a user-supplied regex with no timeout | `apps/agent/src/dcode_agent/tools/grep.py:44-58`, `:79-101` | medium | 5 | audit |
+| F-14 | ~~`git clone` receives the URL with no `--` separator~~ **— fixed in PR 5**, plus `GIT_TERMINAL_PROMPT=0` | `apps/worker/src/dcode_worker/stages/clone.py` | medium | 5 | **direct** |
+| F-15 | **Mostly fixed in PR 5**: timeout, match caps, file-size cap. **A single pathological `re` call in the fallback is still unbounded** — Python offers no way to interrupt one | `apps/agent/src/dcode_agent/tools/grep.py` | medium | 5 | **direct** |
 | F-16 | ~~nginx serves the bundle uncompressed~~ **— fixed in PR 4**, measured on the built image at 760,088 → 269,497 bytes. Also fixed a duplicate `Cache-Control` header the first attempt introduced | `apps/frontend/nginx.conf.template` | low | 4 | **direct** |
 | F-17 | ~~No `.dockerignore` anywhere~~ **— fixed in PR 4**, one at the root and one for `apps/frontend` | repository root | low | 4 | **direct** |
 | F-21 | ~~A copy-pasteable setup block in § 10.1 contained placeholders, was pasted verbatim, and the placeholder became the credential — the API then refused to boot~~ **— fixed in PR 4** by rewriting the block to substitute its own values. The refusal was correct; the instructions were the defect | `Deploy.md` §10.1 | low | 4 | **direct** |
@@ -759,21 +794,36 @@ Written from the code, not from a completed deployment — **nothing has been
 deployed yet** (§ 6 PR 4). Treat it as the intended sequence, and correct it
 against what actually happens.
 
+**The configuration is committed.** `infra/railway/{api,agent-worker,frontend}.toml`
+carry the build and deploy settings, and
+[`infra/railway/README.md`](infra/railway/README.md) is the variable sheet —
+which service needs what, and the two rules that fail silently. What follows is
+the part that cannot live in a file.
+
 **Services.** Six. Only `frontend` gets a public domain.
 
 | Service | Image | Notes |
 |---|---|---|
-| `frontend` | `infra/docker/frontend.Dockerfile`, context `apps/frontend` | Public. Set `API_UPSTREAM=http://api.railway.internal:8000` and `DNS_RESOLVER` to Railway's internal resolver. `PORT` is injected. |
+| `frontend` | `infra/docker/frontend.Dockerfile` | Public. Set `API_UPSTREAM` and `DNS_RESOLVER`; `PORT` is injected. Builds from the repository root — it used to build from `apps/frontend`, changed so no service needs a Root Directory. |
 | `api` | `infra/docker/api.Dockerfile`, context repo root | Private. Set `HOST=::` — Railway's private network is IPv6 and a service bound to `0.0.0.0` is reachable by nothing there. |
 | `agent-worker` | `infra/docker/railway-agent-worker.Dockerfile`, context repo root | Private. **Owns the only volume**, mounted at `WORKDIR_BASE`. Set `HOST=::`. |
 | Postgres | Railway **pgvector** template | Not the plain Postgres template — R-3. |
 | Redis | Railway template | |
 | RabbitMQ | Railway template | |
 
-**Order.** Postgres/Redis/RabbitMQ first, then `api`, then run the migration
-against it, then `agent-worker`, then `frontend`. The migration reads
-`EMBEDDING_DIM` from the `api` service (§ 6 PR 1), so that variable has to be
-right *before* it runs — afterwards the column dimension is fixed and changing
+**Order.** Postgres/Redis/RabbitMQ first, then `api`, then `agent-worker`, then
+`frontend`.
+
+The migration is **not** a manual step: `api.toml` runs it as a
+`preDeployCommand`, in that container, before the deployment takes traffic. That
+is where it belongs rather than where it is convenient — the migration reads
+`EMBEDDING_DIM` to size the pgvector column, and that variable lives on the
+`api` service (§ 6 PR 1). Running it anywhere else is how the column ends up at
+a dimension nothing agrees with. `upgrade head` is idempotent, so every deploy
+running it is fine.
+
+The consequence: **`EMBEDDING_DIM` must be correct before the first deploy of
+`api`**, not before some later step. Afterwards the column is fixed and changing
 it means a new volume.
 
 **Variables that must agree across `api`, `agent-worker` and each other**:
@@ -788,13 +838,22 @@ a `railway.json` or a bulk import is not.
 `AUTH_SESSION_SECRET`, `AUTH_COOKIE_SECURE=true`, `DOCS_ENABLED=false`.
 Railway serves HTTPS, so the Secure cookie is correct there.
 
+**Health checks.** Point Railway's at `/readyz`, not `/healthz`. The shallow one
+reports ok with every dependency down; the deep one covers the database, Redis
+and the embedding-dimension agreement, and returns 503 with a per-check reason.
+It skips the dimension check when `chunks` does not exist yet, so it is safe to
+have configured before the migration step above.
+
 **Then walk § 10's checklist.** The rows that need a browser need a browser.
 
-**Two things this project has not solved and will meet here.** The first index
-runs through the hosted embedding API for real — roughly 23 requests for
-`psf/requests` — and that path has never been exercised (§ 6 PR 2). The second
-is that cloned workdirs are never cleaned up (F-08), so the volume grows with
-every distinct repository anyone indexes, forever.
+**Three things to decide here rather than discover.** The first index runs
+through the hosted embedding API for real — roughly 23 requests for
+`psf/requests` — and that path has never been exercised (§ 6 PR 2). Set
+`WORKDIR_MAX_REPOS` to something the volume can hold, since it defaults to
+never evicting and read § 6 PR 5 for what eviction costs. And consider
+`REPO_URL_ALLOWED_HOSTS`: on a gated demo the login wall is the real control,
+but it is the only rule in the URL check that states what is *allowed*, and DNS
+rebinding is not closed without it or network egress filtering.
 
 ---
 

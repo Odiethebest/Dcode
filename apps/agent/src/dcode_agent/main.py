@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from dcode_shared.db.session import SessionLocal
 from dcode_shared.events import CitationEvent
-from dcode_shared.internal import INTERNAL_API_KEY_HEADER
+from dcode_shared.internal import INTERNAL_API_KEY_HEADER, internal_api_key_error
 from dcode_shared.schemas import QueryRequest
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -24,6 +24,13 @@ from dcode_agent.tools import default_registry
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # The agent validates the same shared key that protects it. Running on the
+    # published placeholder means its /internal/query surface is open to
+    # anything that can reach it on the private network.
+    key_error = internal_api_key_error(agent_settings.internal_api_key, strict=False)
+    if key_error is not None:
+        raise RuntimeError(key_error)
+
     app.state.tool_registry = default_registry()
     app.state.compiled_graph = graph.build_graph()
     app.state.tool_cache = Redis.from_url(agent_settings.redis_url, decode_responses=True)

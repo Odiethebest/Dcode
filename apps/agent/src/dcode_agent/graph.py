@@ -5,12 +5,15 @@ import json
 import logging
 import re
 from typing import Any, cast
+from uuid import UUID
 
+from dcode_shared.db.models import Repo
 from dcode_shared.observability import log_event
 from dcode_shared.reranker import RerankerClient, create_reranker_client
 from dcode_shared.schemas import CallDirection
 from dcode_shared.settings import shared_settings
 from langgraph.graph import END, START, StateGraph
+from sqlalchemy import select
 
 from dcode_agent import groundedness
 from dcode_agent import state as state_module
@@ -116,7 +119,15 @@ async def tool_call_node(state: AgentState) -> AgentState:
             state, tool_name, _jsonable_args(state.pending_tool_args), exc
         )
 
-    cache_key = tool.cache_key(state.repo_id, args_model)
+    revision = await _index_revision(state)
+    # No revision, no cache. Sharing a key across corpus generations is the
+    # defect this closes; falling back to one when the revision cannot be read
+    # would reintroduce it in exactly the case nobody tests.
+    cache_key = (
+        tool.cache_key(state.repo_id, args_model, index_revision=revision)
+        if revision is not None
+        else None
+    )
     args_payload = args_model.model_dump(mode="json")
 
     await _emit_tool_call(state, tool_name, args_payload)
@@ -127,7 +138,11 @@ async def tool_call_node(state: AgentState) -> AgentState:
         step=state.step_count + 1,
         tool=tool_name,
     )
-    cached_payload = await _cache_get(state.runtime.get("tool_cache"), cache_key)
+    cached_payload = (
+        await _cache_get(state.runtime.get("tool_cache"), cache_key)
+        if cache_key is not None
+        else None
+    )
     cached = cached_payload is not None
     try:
         if cached:
@@ -138,7 +153,7 @@ async def tool_call_node(state: AgentState) -> AgentState:
     except Exception as exc:  # noqa: BLE001 — tool execution failed; degrade, not abort
         return await _record_tool_failure(state, tool_name, args_payload, exc)
 
-    if not cached:
+    if not cached and cache_key is not None:
         await _cache_set(state.runtime.get("tool_cache"), cache_key, json.dumps(result_payload))
     log_event(
         logger,
@@ -1411,6 +1426,34 @@ async def _emit_partial_answer(state: AgentState, delta: str) -> None:
     if emitter is None:
         return
     await emitter.emit_partial_answer(delta)
+
+
+async def _index_revision(state: AgentState) -> int | None:
+    """The repository's corpus generation, read once per query and memoised.
+
+    Once per query rather than per tool call, so every tool in one walk sees a
+    consistent corpus even if a re-index lands mid-answer.
+
+    Returns None when it cannot be read — no database session, no such
+    repository, or a query error. The caller bypasses the cache in that case.
+    """
+    if state.index_revision is not None:
+        return state.index_revision
+
+    db = state.runtime.get("db")
+    if db is None:
+        return None
+    try:
+        result = await db.execute(
+            select(Repo.index_revision).where(Repo.id == UUID(state.repo_id))
+        )
+        revision = result.scalar_one_or_none()
+    except Exception:  # noqa: BLE001 — an unreadable revision degrades to no cache
+        return None
+    if revision is None:
+        return None
+    state.index_revision = int(revision)
+    return state.index_revision
 
 
 async def _cache_get(cache: Any, key: str) -> str | None:

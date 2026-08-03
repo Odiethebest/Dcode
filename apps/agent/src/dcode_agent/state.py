@@ -93,4 +93,9 @@ class AgentState:
     groundedness_score: float | None = None
     final_answer: str | None = None
     error: str | None = None
+    # The repository's corpus generation, read once per query and folded into
+    # every tool cache key. `None` means it could not be read, and the tool
+    # cache is bypassed for the request rather than shared with another
+    # generation — see `_index_revision` in graph.py.
+    index_revision: int | None = None
     runtime: dict[str, Any] = field(default_factory=dict, repr=False)

@@ -39,10 +39,6 @@ build/
 coverage/
 *.tsbuildinfo
 
-# The frontend is built from its own context (apps/frontend); the backend
-# images have no use for it.
-apps/frontend/
-
 # Documentation, prototypes, and 6.6 MB of recorded evaluation runs. The
 # services read none of them at runtime — the figures are baked into the
 # frontend bundle at build time by scripts/sync_eval_artifacts.py.

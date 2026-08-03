@@ -42,8 +42,8 @@ def test_cache_key_is_deterministic_and_namespaced() -> None:
     tool = default_registry().get("search_code")
     assert tool is not None
     args = tool.ArgsSchema(query="x", k=5)
-    key_a = tool.cache_key("repo-1", args)
-    key_b = tool.cache_key("repo-1", args)
+    key_a = tool.cache_key("repo-1", args, index_revision=0)
+    key_b = tool.cache_key("repo-1", args, index_revision=0)
     assert key_a == key_b
     assert key_a.startswith("tool:search_code:repo-1:")
 

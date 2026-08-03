@@ -38,6 +38,17 @@ class APISettings(SharedSettings):
     # Useful locally, so on by default; prod compose turns it off.
     docs_enabled: bool = True
 
+    # Comma-separated clone-target allowlist. Empty means any public host, which
+    # is what a demo indexing arbitrary open-source repositories needs. Set it
+    # and it becomes the only rule in the URL check that states what is
+    # *allowed* rather than what is obviously wrong. Subdomains match.
+    repo_url_allowed_hosts: str = ""
+
+    @property
+    def repo_url_allowed_hosts_list(self) -> list[str]:
+        """Comma-separated REPO_URL_ALLOWED_HOSTS env var → lowercased list."""
+        return [h.strip().lower() for h in self.repo_url_allowed_hosts.split(",") if h.strip()]
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Comma-separated CORS_ORIGINS env var → list."""

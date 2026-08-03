@@ -36,10 +36,23 @@ async def fetch_internal_json(
 
 
 def repo_root(repo_id: str) -> Path:
-    """Return the cloned repo root for one indexed repository."""
+    """Return the cloned repo root for one indexed repository.
+
+    The message matters. A repository can be `ready` in Postgres — chunks,
+    symbols and edges all present, so search and graph tools work — while its
+    cloned tree is gone, because workdir retention and index state are separate
+    concerns (see the worker's prune step). In that situation `read_file`,
+    `grep` and `list_directory` are the only things that fail, and a bare
+    FileNotFoundError sends the reader looking for a missing file rather than a
+    missing checkout.
+    """
     root = (Path(agent_settings.workdir_base).expanduser() / repo_id).resolve()
     if not root.exists() or not root.is_dir():
-        raise FileNotFoundError(f"indexed repo workdir not found for repo_id={repo_id}")
+        raise FileNotFoundError(
+            f"repository source is not on disk for repo_id={repo_id}. "
+            "Search and call-graph tools still work; file-reading tools need the "
+            "checkout, which is restored by re-indexing this repository."
+        )
     return root
 
 
