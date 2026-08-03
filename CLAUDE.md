@@ -7,11 +7,12 @@ rules, and how to not break things.
 **Read this, then `git log --oneline`.** The work is committed in small scoped
 slices and the messages carry the reasoning.
 
-Project documentation is five files, all authoritative over this one:
+Project documentation is six files, all authoritative over this one:
 
 | Document | Read it for |
 |---|---|
 | [`docs/en/Final_Report.md`](docs/en/Final_Report.md) | The H1 verdict, **the single outstanding-work list**, known limits, what was verified |
+| [`Deploy.md`](Deploy.md) | **Everything about taking this online.** Decisions, verified platform constraints, the invariants, the PR breakdown, the findings register — see §2 below |
 | [`docs/en/Honesty_Constraints.md`](docs/en/Honesty_Constraints.md) | The eleven rules governing what the UI may assert, with reasoning. Most are pinned by tests — read before touching the thread, the chips, or the inspector |
 | [`docs/en/Technical_Design.md`](docs/en/Technical_Design.md) | Repository layout, architecture, data model, API contracts |
 | [`docs/en/Operations.md`](docs/en/Operations.md) | Running the stack, the real-model path, the eval harness, operational gotchas |
@@ -56,7 +57,54 @@ its numbers are generated rather than translated.
    flows, and write drafts to files rather than printing them inline. Pure
    frontend work runs clean.
 
-## 2. Where things are
+## 2. Deployment work is governed by `Deploy.md` — follow it strictly
+
+If the task touches deployment, hosting, model providers, auth, or production
+configuration, **read [`Deploy.md`](Deploy.md) first and execute against it.** It
+carries the decisions, the verified Railway constraints, the five-PR breakdown
+with binding acceptance criteria, and a findings register where every row has a
+`file:line`. Do not re-derive that plan, and do not improvise around it.
+
+**The backlog is not copied here.** `Deploy.md` §6 and §7 are the single list;
+duplicating them into this file is the exact drift pattern this project keeps
+having to fix. What is repeated below is only the set of invariants — the things
+that stay true no matter which PR is in flight.
+
+1. **The deployed models must be the evaluated models.**
+   `jinaai/jina-embeddings-v2-base-code` at 768 dimensions, `BAAI/bge-reranker-v2-m3`,
+   `gpt-4o-mini`. Every figure the UI and the docs display is generated from
+   `results/eval-h1-repeat3-2026-07-31/` and is a claim about *that* configuration.
+   Substituting a model without saying so on the landing page and `/methodology`
+   is the same class of error as hand-typing a figure into prose. `Deploy.md` §2.
+2. **The local multi-container path must not regress.** All four modes keep
+   working: stub, Docker sidecars, host sidecars, and the new API-provider mode.
+   `apps/embedding/`, `apps/reranker/`, the Compose profiles, the host scripts,
+   `HttpEmbeddingClient` and `HttpRerankerClient` are untouched. In particular the
+   agent+worker merge is a **Railway-only entrypoint** — Railway cannot share a
+   volume between services and local Docker can, so `docker-compose.yml` keeps two
+   separate containers. Do not degrade the local path to match the constrained
+   one. `Deploy.md` §5.1.
+3. **The provider switch is additive.** `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`
+   default to `sidecar`; existing `.env` files and tests keep their behaviour with
+   no edit. `Deploy.md` §5.2.
+4. **CI stays keyless.** New client tests mock the transport; they never call a
+   live API. `Deploy.md` §5.3.
+5. **Embedding configuration must match on the API and the worker.** Setting it on
+   one only produces no error — it produces real vectors in the database searched
+   with a stub all-zero query vector, i.e. dense retrieval silently returning
+   noise. `Deploy.md` §5.4.
+6. **No fork, no long-lived divergent branch.** `Deploy` merges to `main` as small
+   PRs, each independently green under `make check`. Secrets never enter the
+   repository. `Deploy.md` §5.5.
+7. **`docker-compose.prod.yml` is fixed, not deleted.** `Final_Report.md` lists it
+   as delivered. `Deploy.md` §5.6.
+
+The pre-deployment state is frozen at tag `v1.0-submission` (`a4612b8`). Two
+Railway constraints are load-bearing and were verified on 2026-08-02: a volume
+attaches to exactly one service, and an HTTP request is cut after 5 minutes with
+no data (~15 minutes with heartbeats).
+
+## 3. Where things are
 
 ```
 apps/frontend/   React 18 + TS strict + Vite + Tailwind + Router v6 + TanStack Query (~4.2k TS/TSX lines)
@@ -101,7 +149,7 @@ which matches `dcode_shared.events.sse_encode` emitting pure LF.
 Two data-fetching paradigms coexist deliberately: TanStack Query for status
 polling, hand-rolled streaming for the query. That is not an inconsistency.
 
-## 3. Visual identity — deliberate, do not "improve"
+## 4. Visual identity — deliberate, do not "improve"
 
 Tokens are a CSS-vars layer in `apps/frontend/src/index.css`, with
 `tailwind.config.ts` pointing at the vars so `color-mix` translucency still works.
@@ -134,7 +182,7 @@ let it fill the `1fr` column: serif prose at 100+ characters per line is
 unreadable, and on a wide monitor a full-bleed column reads as an empty void. The
 rails (262px left, 384px right) are correct as-is.
 
-## 4. Current state
+## 5. Current state
 
 Everything below is committed and green: `make check`, `make frontend-build`,
 71 frontend tests, full pytest suite.
@@ -199,7 +247,7 @@ duplicate `psf/requests` rows already in the local DB are not cleaned up
 retroactively by the `POST /repos` idempotency fix, and `make down-all` wipes the
 volumes, which means re-indexing at whatever `EMBEDDING_DIM` you migrate at.
 
-## 5. Environment
+## 6. Environment
 
 ```bash
 # All three are required — .env points the model endpoints at host.docker.internal,
@@ -242,7 +290,7 @@ vectors — real, varied embeddings, not stubs. Inspector line numbers and
 call-graph neighbours were manually verified against this index and matched
 exactly.
 
-## 6. Working agreements that produced good results
+## 7. Working agreements that produced good results
 
 - **Where this file and the code disagree, the code is the truth.** These notes
   are written from the approved intent of a session, and intent occasionally
