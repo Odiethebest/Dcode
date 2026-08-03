@@ -8,6 +8,7 @@ frontend talks to this gateway exclusively — never directly to the agent or DB
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from dcode_shared.internal import internal_api_key_error
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -22,7 +23,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Refuse to start a gate that cannot be enforced. Serving the workbench
     # openly because a secret was missing is the failure this prevents, and it
     # is one that looks fine from the outside.
-    misconfigured = auth_configuration_error()
+    misconfigured = auth_configuration_error() or internal_api_key_error(
+        api_settings.internal_api_key,
+        # The gate being on is this process's best available signal that it is
+        # a real deployment rather than someone's laptop.
+        strict=api_settings.auth_enabled,
+    )
     if misconfigured is not None:
         raise RuntimeError(misconfigured)
 

@@ -1,8 +1,10 @@
 """Public repository submission and indexing-status endpoints."""
 
+import asyncio
 import ipaddress
 import json
 import re
+import socket
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlparse
 from uuid import UUID
@@ -26,11 +28,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dcode_api.deps import get_db, get_index_job_publisher, get_redis
+from dcode_api.settings import api_settings
 
 router = APIRouter(tags=["repos"])
 
 _SCP_LIKE_GIT_URL = re.compile(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$")
 _ALLOWED_URL_SCHEMES = {"https", "http", "ssh", "git"}
+_DNS_TIMEOUT_SECONDS = 3.0
 
 
 @router.post(
@@ -53,13 +57,11 @@ async def submit_repo(
     is durable, the repo is marked failed rather than left queued forever.
     """
     repo_url = body.url.strip()
-    if not _is_supported_git_url(repo_url):
+    rejection = await _reject_repo_url(repo_url)
+    if rejection is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "INVALID_REPO_URL",
-                "message": "Expected an http(s), ssh, git, or git@host:path Git URL.",
-            },
+            detail={"code": "INVALID_REPO_URL", "message": rejection},
         )
 
     existing = await _find_reusable_repo(db, repo_url)
@@ -215,20 +217,105 @@ async def repo_status(
     )
 
 
-def _is_supported_git_url(url: str) -> bool:
+async def _reject_repo_url(url: str) -> str | None:
+    """Why this URL may not be cloned, or None. The message reaches the caller.
+
+    Three checks beyond the syntax one, in order of how much they buy:
+
+    1. **No credentials in the URL.** `https://user:token@host/...` was accepted
+       and then persisted into `repos.url` and echoed back by the status route,
+       so a token handed to this endpoint became readable by anyone who could
+       read a repository's status. Rejected rather than stripped: quietly
+       mutating what someone submitted is worse than saying no.
+    2. **An optional host allowlist.** Empty by default, which keeps any public
+       host acceptable. Set `REPO_URL_ALLOWED_HOSTS` and it becomes the strong
+       control — everything else here is a filter on what is obviously wrong,
+       and this is the only rule that states what is right.
+    3. **Resolution.** The literal-IP check never fired for a *name*, so
+       `evil.example.com` pointing at `169.254.169.254` or `10.0.0.1` passed.
+       Every resolved address is now checked.
+
+    What check 3 does **not** close is rebinding: git resolves the name again
+    when it clones, and a DNS answer that changes in between defeats this. The
+    fix for that is egress filtering at the network, not more code here, and it
+    is recorded as such in Deploy.md rather than implied to be handled.
+    """
     if not url:
-        return False
+        return "Expected a Git URL."
+
     scp_like = _SCP_LIKE_GIT_URL.match(url)
     if scp_like:
         host = url.split("@", 1)[1].split(":", 1)[0]
-        return _is_allowed_remote_host(host)
+    else:
+        parsed = urlparse(url)
+        if parsed.scheme not in _ALLOWED_URL_SCHEMES:
+            return "Expected an http(s), ssh, git, or git@host:path Git URL."
+        if parsed.password is not None or (parsed.username and parsed.scheme != "ssh"):
+            return (
+                "Remove the credentials from the URL. This endpoint indexes public "
+                "repositories, and a submitted URL is stored and shown in status responses."
+            )
+        if not parsed.hostname:
+            return "Expected an http(s), ssh, git, or git@host:path Git URL."
+        host = parsed.hostname
 
-    parsed = urlparse(url)
-    if parsed.scheme not in _ALLOWED_URL_SCHEMES:
-        return False
-    if not parsed.hostname:
-        return False
-    return _is_allowed_remote_host(parsed.hostname)
+    if not _is_allowed_remote_host(host):
+        return "That host is not a permitted clone target."
+
+    allowlist = api_settings.repo_url_allowed_hosts_list
+    normalized = host.strip().strip("[]").rstrip(".").lower()
+    if allowlist and not any(
+        normalized == allowed or normalized.endswith(f".{allowed}") for allowed in allowlist
+    ):
+        return f"Only these hosts may be cloned: {', '.join(sorted(allowlist))}."
+
+    unreachable = await _reject_resolved_addresses(normalized)
+    if unreachable is not None:
+        return unreachable
+    return None
+
+
+async def resolve_host(host: str) -> list[str]:
+    """Addresses `host` resolves to.
+
+    A module-level function rather than an inline `loop.getaddrinfo` so it can
+    be replaced in tests. Without a seam here, every test that submits a
+    repository URL performs a real DNS lookup — which makes the suite depend on
+    the network, and makes CI slower and occasionally wrong for a reason that
+    has nothing to do with the code under test.
+    """
+    loop = asyncio.get_running_loop()
+    infos = await asyncio.wait_for(
+        loop.getaddrinfo(host, None, proto=socket.IPPROTO_TCP),
+        timeout=_DNS_TIMEOUT_SECONDS,
+    )
+    return [str(info[4][0]) for info in infos]
+
+
+async def _reject_resolved_addresses(host: str) -> str | None:
+    """Resolve `host` and refuse if any answer is a non-public address."""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        # A literal was already checked by _is_allowed_remote_host.
+        return None
+
+    try:
+        addresses = await resolve_host(host)
+    except (TimeoutError, OSError):
+        # Refusing here would make an unrelated DNS hiccup look like a rejected
+        # URL, and the worker's clone would fail anyway with a clearer reason.
+        return None
+
+    for address in addresses:
+        if not _is_allowed_remote_host(address):
+            return (
+                f"{host} resolves to a private or reserved address "
+                "and will not be cloned."
+            )
+    return None
 
 
 def _is_allowed_remote_host(host: str) -> bool:
