@@ -51,6 +51,22 @@ services:
       AGENT_URL: http://agent:8001
       CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://dcode.odieyang.com}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}
+      # The API embeds the query and reranks candidates at search time, so it
+      # needs the same retrieval configuration as the worker — not a subset.
+      # It is also where `make prod-migrate` runs, and the migration reads
+      # EMBEDDING_DIM to size the pgvector column.
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:?set EMBEDDING_DIM in .env.production — it is fixed into the pgvector column at migration time and cannot be changed without a new volume}
+      EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
+      EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-300}
+      RRF_DENSE_WEIGHT: ${RRF_DENSE_WEIGHT:-2.0}
+      RRF_SPARSE_WEIGHT: ${RRF_SPARSE_WEIGHT:-1.0}
+      RERANKER_MODEL: ${RERANKER_MODEL:-stub}
+      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-}
+      RERANKER_CANDIDATE_LIMIT: ${RERANKER_CANDIDATE_LIMIT:-16}
+      RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
@@ -75,7 +91,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?set RABBITMQ_USER in .env.production}:${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env.production}@rabbitmq:5672/
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-stub}
-      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:?set EMBEDDING_DIM in .env.production — it must equal the dimension the volume was migrated at}
+      EMBEDDING_ENDPOINT: ${EMBEDDING_ENDPOINT:-}
+      EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
+      EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-300}
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -107,7 +127,17 @@ services:
       SYNTHESIS_MODEL: ${SYNTHESIS_MODEL:-stub}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://localhost:9999}
+      SYNTHESIS_MAX_TOKENS: ${SYNTHESIS_MAX_TOKENS:-700}
+      SYNTHESIS_TEMPERATURE: ${SYNTHESIS_TEMPERATURE:-0.1}
+      # The agent reranks its own evidence union, so it needs the reranker
+      # configuration too — RERANKER_ENDPOINT alone selected nothing, because
+      # a stub RERANKER_MODEL returns no client regardless of the endpoint.
+      RERANKER_MODEL: ${RERANKER_MODEL:-stub}
+      RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-}
+      RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
+      # Not read directly by the agent, but dcode_shared.db.models binds the
+      # chunks.embedding column type to it at import time.
+      EMBEDDING_DIM: ${EMBEDDING_DIM:?set EMBEDDING_DIM in .env.production — it must equal the dimension the volume was migrated at}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env.production}

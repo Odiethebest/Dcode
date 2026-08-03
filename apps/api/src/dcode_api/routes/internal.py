@@ -370,6 +370,7 @@ def _get_query_embedding_client() -> EmbeddingClient:
             endpoint=api_settings.embedding_endpoint,
             batch_size=api_settings.embedding_batch_size,
             max_retries=api_settings.embedding_max_retries,
+            timeout_seconds=api_settings.embedding_timeout_seconds,
         )
     return _query_embedding_client
 

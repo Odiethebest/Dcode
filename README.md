@@ -326,8 +326,19 @@ docker compose --env-file .env.production -f docker-compose.prod.yml exec api \
   uv run alembic -c infra/migrations/alembic.ini upgrade head
 ```
 
+`docker-compose.prod.yml` is a complete stack, **not an overlay**. Combining it
+with `-f docker-compose.yml` republishes Postgres, Redis and the RabbitMQ
+management UI to the host.
+
+Every service that touches retrieval — api, worker and agent — reads the same
+embedding and reranker configuration, and they must agree. `EMBEDDING_DIM` has
+no production default on purpose: the migration bakes it into the pgvector
+column, so a wrong value is a re-index rather than a slow query.
+
 The production stack is validated locally only — `dcode.odieyang.com` does **not**
-resolve publicly, so the external-demo exit criterion is still open.
+resolve publicly, so the external-demo exit criterion is still open. The plan for
+closing it, including the platform constraints that shape it, is
+[`Deploy.md`](Deploy.md).
 
 ---
 
@@ -474,7 +485,8 @@ H1 could be evaluated with a simpler indexing script; the queue, worker, state m
 
 ## Documentation
 
-Five documents. `docs/en/` is authoritative.
+Six documents. `docs/en/` is authoritative; [`Deploy.md`](Deploy.md) sits at the
+root because it governs an in-flight workstream rather than the delivered system.
 
 | Document | Contents |
 |---|---|
@@ -483,6 +495,7 @@ Five documents. `docs/en/` is authoritative.
 | **[`docs/en/Technical_Design.md`](docs/en/Technical_Design.md)** | Technical authority: repository layout, architecture, service boundaries, data model, API contracts, NFRs, technology choices |
 | **[`docs/en/Operations.md`](docs/en/Operations.md)** | Running the stack, the real-model path, the evaluation harness, and the operational gotchas worth knowing before you hit them |
 | **[`docs/en/Agentic_Workflow.md`](docs/en/Agentic_Workflow.md)** | How Claude Code, Codex, and Cursor were cross checked during development |
+| **[`Deploy.md`](Deploy.md)** | Taking this online: decisions taken, verified platform constraints, the invariants, the PR breakdown with acceptance criteria, and a findings register where every row carries a `file:line` |
 
 Colocated with what they describe: [`results/README.md`](results/README.md) (which
 recorded run is the current conclusion), [`design/README.md`](design/README.md)
