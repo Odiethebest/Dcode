@@ -24,12 +24,12 @@ term() {
 trap term TERM INT
 
 echo "[entrypoint] starting agent on :${PORT:-8001}"
-uv run --package dcode-agent uvicorn dcode_agent.main:app \
+/app/.venv/bin/uvicorn dcode_agent.main:app \
   --host "${HOST:-::}" --port "${PORT:-8001}" &
 agent_pid=$!
 
 echo "[entrypoint] starting index worker"
-uv run --package dcode-worker python -m dcode_worker.main &
+/app/.venv/bin/python -m dcode_worker.main &
 worker_pid=$!
 
 # `wait -n` returns as soon as EITHER child exits. Waiting on both in sequence

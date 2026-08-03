@@ -31,7 +31,11 @@ watchPatterns = [
 # *this* service (Deploy.md §6 PR 1). Running it anywhere else is how the column
 # ends up at a dimension nothing else agrees with. `upgrade head` is idempotent,
 # so running it on every deploy is safe.
-preDeployCommand = ["uv run alembic -c infra/migrations/alembic.ini upgrade head"]
+# The venv binary, not `uv run`. `uv run` re-syncs at start and, without
+# --no-dev, downloads mypy and ruff before doing anything: the first deploy
+# spent twelve minutes on that and then failed with "Failed to spawn: alembic",
+# because the build-time sync had installed nothing at all.
+preDeployCommand = ["/app/.venv/bin/alembic -c infra/migrations/alembic.ini upgrade head"]
 
 # The deep probe, not /healthz. /healthz answers ok with Postgres, Redis and
 # RabbitMQ all down; /readyz checks all three plus the embedding-dimension

@@ -18,6 +18,15 @@ COPY apps/eval ./apps/eval
 COPY apps/embedding ./apps/embedding
 COPY apps/reranker ./apps/reranker
 
-RUN uv sync --no-dev
+# Scoped for the same reason as api.Dockerfile: the workspace contains two
+# torch-dependent model sidecars this image does not run.
+RUN uv sync --no-dev --package dcode-worker
 
-CMD ["uv", "run", "--package", "dcode-worker", "python", "-m", "dcode_worker.main"]
+# The venv binary directly, not `uv run`.
+#
+# `uv run` re-syncs the environment at container start, and without --no-dev
+# that means downloading mypy and ruff every single time. On the first Railway
+# deploy it also could not find alembic at all, because the build-time sync had
+# installed nothing (see the RUN above). apps/embedding already did it this way
+# with a comment saying why; api, worker and agent had not caught up.
+CMD ["/app/.venv/bin/python", "-m", "dcode_worker.main"]
