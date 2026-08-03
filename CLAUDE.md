@@ -99,10 +99,16 @@ that stay true no matter which PR is in flight.
 7. **`docker-compose.prod.yml` is fixed, not deleted.** `Final_Report.md` lists it
    as delivered. `Deploy.md` §5.6.
 
-The pre-deployment state is frozen at tag `v1.0-submission` (`a4612b8`). Two
-Railway constraints are load-bearing and were verified on 2026-08-02: a volume
-attaches to exactly one service, and an HTTP request is cut after 5 minutes with
-no data (~15 minutes with heartbeats).
+**A gated deployment is live** (Railway, HTTPS, one shared account, the same
+three models the recorded run measured). The pre-deployment state is frozen at
+tag `v1.0-submission` (`a4612b8`).
+
+Four things failed on the first deploy and all four were wrong assumptions in
+the plan, not platform faults — `Deploy.md` §10.3 has them. The two worth
+carrying in your head, because they present as something else entirely: a volume
+mounted under `/tmp` fails the deployment **with no log output at all**, and
+`HOST=::` gives uvicorn an IPv6-only socket while the health check arrives over
+IPv4, so you get "never became healthy" beside a log showing a healthy server.
 
 ## 3. Where things are
 
@@ -313,4 +319,17 @@ exactly.
   that would have been p-hacking. Do that again.
 - **Be honest about what you could not verify** — no screenshots, no end-to-end
   from the shell — and say explicitly what a human needs to eyeball.
+- **`make check` green and CI green are two different claims. Check CI after
+  every merge, and say which one you are reporting.** This was learned the
+  expensive way: main's CI was red for five merged PRs while every report said
+  "make check green". Both statements were true. The local run passes because a
+  developer's `.env` supplies a real `INTERNAL_API_KEY` and a Postgres is
+  running; CI has neither, which is the entire point of CI. A test that quietly
+  depends on the machine it runs on is invisible locally by construction, so
+  local success is evidence about your laptop and not about the change.
+
+  `gh run list --branch main --limit 3` after a merge. When something only fails
+  in CI, reproduce it before fixing it — moving `.env` aside and pointing
+  `DATABASE_URL` at a dead port is the closest local approximation, and it turns
+  a guess into a measurement.
 - **Never fabricate data or fake success.** Verified means verified.

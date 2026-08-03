@@ -25,8 +25,10 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1–5 landed. Nothing is deployed yet** — every remaining item is
-in § 10.2 and needs a Railway account. The pre-deployment state
+**Status: deployed and verified, 2026-08-03.** All five PRs landed and the stack
+is live at [`frontend-production-55c4.up.railway.app`](https://frontend-production-55c4.up.railway.app). § 10 records what was checked
+and how; § 10.3 records the four things that failed first, all of them mistakes
+in this plan rather than in the platform. The pre-deployment state
 is frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere
 yet. Both hosted model APIs have been exercised end to end from a running local
 stack — see § 2.1 and § 6 PR 2 for the observed values — but **no index has been
@@ -387,14 +389,11 @@ The capability behind D-1.
    different serving stack, not bit-identical. It is visible and it does not
    move the ranking.
 
-   **What is still not done: no index has been built through the hosted
-   provider.** The verification above is query-side. 726 chunks at batch 32 is
-   roughly 23 requests, which is where rate limiting and the embed stage's Redis
-   cache interaction would appear, and neither has been exercised. That is
-   deliberate — re-indexing would replace the verified reference index — and it
-   will happen naturally at the first Railway index. Until then this PR proves
-   the clients are correct and cross-compatible with the sidecar, not that a
-   bulk index built through them is.
+   **Closed 2026-08-03: an index has been built through the hosted provider**,
+   on the deployment. 773 chunks in roughly 24 requests to Jina's API, every one
+   `200 OK`, **no retries and no rate limiting**. Read back from the deployed
+   database: all 773 vectors at 768 dimensions, **zero all-zero vectors**, and
+   770 distinct prefixes across 773 rows — real, varied embeddings, not stubs.
 
    The sidecar path was not re-run live after the switch. Its code is untouched
    and its factory selection is covered by tests, but that is a weaker claim
@@ -487,15 +486,17 @@ done.** Everything below was observed; the row that needs Railway needs Railway.
 | Heartbeats and the request budget | 5 tests, including that `close()` still ends a stream while the heartbeat loop runs, and that an overrun emits `TIMEOUT` and **no** `final_answer` |
 | The local stack is unchanged | `docker compose up -d --build api` still healthy; `make check` green |
 
-**Not done: no Railway deployment exists.** The runbook is § 10.2, written from
-the code rather than from a completed deploy — read it as intended sequence and
-correct it against what happens. These are unverified until then: private
-networking over IPv6, the platform's request limits against real heartbeats, the
-pgvector template, and the first hosted-provider index (§ 6 PR 2).
+**Deployed 2026-08-03.** § 10.2 is corrected against what happened rather than
+written from the code. The combined `agent-worker` container runs, and its
+`wait -n` behaviour was confirmed the hard way: it exited with `a child exited
+with 1; stopping the other` when the broker was unreachable, rather than serving
+an agent beside a dead worker.
 
-The combined `agent-worker` container has **not been run**, locally or
-otherwise. Its entrypoint is Railway-only and the developer stack does not use
-it, so nothing here exercises it.
+Two things this PR assumed that turned out backwards, both in § 10.3: private
+networking works over **IPv4**, and `HOST=::` is what broke the health check.
+One thing remains unobserved — the R-2 heartbeat. Every live query so far
+finished well inside the platform's idle window, so the keep-alive is
+correct-by-construction and has never been needed.
 
 ### PR 5 — `fix/audit-followups` — **done**
 
@@ -680,17 +681,23 @@ neither is a reason to soften a report:
 
 Before calling the deployment done:
 
-| # | Check | How |
+Checked against the live deployment on 2026-08-03.
+
+| # | Check | Result |
 |---|---|---|
-| 1 | Vectors in the deployed database are 768-dimensional and non-zero | `SELECT vector_dims(embedding), left(embedding::text, 20) FROM chunks LIMIT 1;` |
-| 2 | The reranker is actually reordering, not passing through | Compare `score_components` on a query with and without rerank |
-| 3 | `api` and `agent-worker` agree on embedding configuration | § 5.4 readiness check reports ready |
-| 4 | A query streams to completion without being cut | Watch a full run; confirm no truncation at 5 minutes (R-2) |
-| 5 | Citations are verified and clickable, and open real indexed source at the cited line | Human, in a browser |
-| 6 | Call-graph neighbours are clickable and chain | Human, in a browser |
-| 7 | Unauthenticated access to `/workbench` and to each protected route is refused | Private window |
-| 8 | `/` and `/methodology` load without a session, and their figures match `results/` | `python3 scripts/sync_eval_artifacts.py --check` |
-| 9 | The four local modes in § 5.1 all still start | Locally, after the final PR |
+| 1 | Vectors in the deployed database are 768-dimensional and non-zero | **verified** — 773/773 at `dims=768`, 0 all-zero, 770 distinct prefixes |
+| 2 | The reranker is actually reordering, not passing through | **not verified on the deployment.** `/internal/*` is not publicly routed, so the two-mode comparison cannot be run from outside. It was verified locally in § 6 PR 2 |
+| 3 | `api` and `agent-worker` agree on embedding configuration | **verified** — `/readyz` returns 200 with all three checks green |
+| 4 | A query streams to completion without being cut | **verified** for a normal query; the heartbeat path is unobserved because nothing has yet run long enough to need it |
+| 5 | Citations are verified and clickable, and open real indexed source at the cited line | **verified by a human in a browser** |
+| 6 | Call-graph neighbours are clickable and chain | **verified by a human in a browser** |
+| 7 | Unauthenticated access to `/workbench` and to each protected route is refused | **verified** — 401 on every protected route; `/workbench` redirects to `/login` |
+| 8 | `/` and `/methodology` load without a session, and their figures match `results/` | **verified** — both 200 unauthenticated, drift check green |
+| 9 | The four local modes in § 5.1 all still start | **verified** — compose stack healthy after the final PR |
+
+One live query end to end: 3 tool calls, **3 citations all verified**,
+groundedness **1.0**, reproducing the two citations the local run found and
+adding a third.
 
 ---
 
@@ -790,9 +797,8 @@ confirms you are back.
 
 ### 10.2 Railway runbook
 
-Written from the code, not from a completed deployment — **nothing has been
-deployed yet** (§ 6 PR 4). Treat it as the intended sequence, and correct it
-against what actually happens.
+Corrected against a completed deployment on 2026-08-03. The four things that
+failed the first time are § 10.3; each is called out below where it bites.
 
 **The configuration is committed.** `infra/railway/{api,agent-worker,frontend}.toml`
 carry the build and deploy settings, and
@@ -854,6 +860,51 @@ never evicting and read § 6 PR 5 for what eviction costs. And consider
 `REPO_URL_ALLOWED_HOSTS`: on a gated demo the login wall is the real control,
 but it is the only rule in the URL check that states what is *allowed*, and DNS
 rebinding is not closed without it or network egress filtering.
+
+---
+
+### 10.3 What failed on the first deploy
+
+Four failures, in the order they were found. **All four were mistakes in this
+plan, not in the platform** — three of them were things I had written from
+documentation and not measured.
+
+**1. `uv run` was installing dependencies at container start.** `api` spent
+twelve minutes and then failed with `Failed to spawn: alembic`. Two compounding
+causes: `uv sync --no-dev` at a workspace root syncs the *root* project, and the
+root declares no dependencies, so the build step installed nothing — the images
+had two entries in `site-packages`. Everything was really installed by `uv run`
+at start, and `uv run` without `--no-dev` downloads `mypy` and `ruff` first.
+Fixed by `uv sync --no-dev --package <pkg>` and calling the venv binaries
+directly; `uv run` is now gone from `infra/` entirely. `apps/embedding` had
+already done this, with a comment saying why.
+
+**2. A volume cannot be mounted under `/tmp`.** Railway refuses and fails the
+deployment **before emitting a single log line** — no build log, no deploy log,
+just `FAILED`, which is indistinguishable from any other cause. This took the
+longest to find and the only usable signal was that `agent-worker` was the one
+app service with a volume. Moved to `/data/workdirs`.
+
+**3. `HOST=::` produces an IPv6-only socket.** Measured, after assuming
+otherwise: uvicorn given `::` refuses an IPv4 connect even with
+`net.ipv6.bindv6only=0`, and given `0.0.0.0` refuses IPv6. There is no
+dual-stack option. Railway's health check arrives over **IPv4**, so the probe
+never reached the application and the deploy failed with `1/1 replicas never
+became healthy` beside a log showing a perfectly started server. R-4's advice to
+bind `::` applies to environments created before 2025-10-16; a current one
+resolves private DNS to both families, so `0.0.0.0` serves both purposes.
+
+**4. `PORT` must be set explicitly.** Railway injects `8080`, the services
+correctly honour it, and every private-network URL in this plan said `:8000` — so
+nginx returned `502` for `/api/*` while both services were healthy. Pinning
+`8000` and `8001` makes the other services' URLs right by construction, and
+matches compose, which is what anyone debugging will compare against.
+
+**The pattern worth taking from this**: every one of these presented as a
+different problem than it was. A twelve-minute build that was a deploy. A build
+failure with no build. A healthy server that was unreachable. A 502 from a
+service that was up. In each case the log that mattered was one layer away from
+the one being read.
 
 ---
 
