@@ -20,7 +20,7 @@ from dcode_api.auth import (
     read_session,
     verify_password,
 )
-from dcode_api.deps import get_agent_client, get_redis
+from dcode_api.deps import get_agent_client, get_db, get_redis
 from dcode_api.main import app, create_app
 from dcode_api.settings import api_settings
 from fastapi.testclient import TestClient
@@ -254,10 +254,18 @@ def test_login_sets_a_hardened_cookie_and_opens_the_gate(gated: TestClient) -> N
 
     # The client keeps the cookie, so a previously-401 route now resolves.
     assert gated.get("/api/v1/auth/me").json()["authenticated"] is True
-    assert (
-        gated.get("/api/v1/repos/00000000-0000-0000-0000-000000000000/status").status_code
-        != 401
-    )
+
+    # A protected route, with the database stubbed. It used to run against a
+    # real Postgres, which passed locally and failed in CI where there is none —
+    # and "the gate opened" is a claim about the dependency, not about the
+    # database. 404 for an unknown repo is the proof: the request got past
+    # require_session and into the handler.
+    app.dependency_overrides[get_db] = lambda: _NoSuchRepo()
+    try:
+        response = gated.get("/api/v1/repos/00000000-0000-0000-0000-000000000000/status")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
 
 
 def test_logout_clears_the_session(gated: TestClient) -> None:
@@ -356,6 +364,13 @@ def test_quota_failure_lets_the_request_through(
         assert _query(gated) != 429
     finally:
         app.dependency_overrides.clear()
+
+
+class _NoSuchRepo:
+    """A session that knows of no repositories, and needs no server."""
+
+    async def get(self, _model: object, _pk: object) -> None:
+        return None
 
 
 class _NeverCalledAgent:
