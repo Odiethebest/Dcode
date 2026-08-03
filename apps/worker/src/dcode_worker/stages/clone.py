@@ -8,6 +8,7 @@ from uuid import UUID
 
 from dcode_worker.context import PipelineContext
 from dcode_worker.settings import worker_settings
+from dcode_worker.stages import prune
 
 CLONE_TIMEOUT_SECONDS = 180
 
@@ -17,6 +18,12 @@ async def run(ctx: PipelineContext) -> PipelineContext:
     repo_uuid = UUID(ctx.repo_id)
     workdir = Path(worker_settings.workdir_base).expanduser().resolve() / str(repo_uuid)
     workdir.parent.mkdir(parents=True, exist_ok=True)
+    # Reclaim space before needing it. Off unless WORKDIR_MAX_REPOS is set.
+    prune.prune_workdirs(
+        workdir.parent,
+        keep=worker_settings.workdir_max_repos,
+        protect=str(repo_uuid),
+    )
     if workdir.exists():
         shutil.rmtree(workdir)
 

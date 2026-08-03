@@ -121,6 +121,10 @@ services:
       # never WHICH model runs — both serve jina-embeddings-v2-base-code.
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sidecar}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      # 0 = never evict, which is the previous behaviour. Set it and the
+      # oldest checkouts are pruned before a clone — see the setting's
+      # comment for what an evicted repository loses.
+      WORKDIR_MAX_REPOS: ${WORKDIR_MAX_REPOS:-0}
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
