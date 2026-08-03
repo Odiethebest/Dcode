@@ -40,6 +40,8 @@ Recorded so a later reader can see what was chosen and what it ruled out.
 | D-2 | **Not publicly accessible.** A username/password gate sits between the landing page and the workbench | 2026-08-02 | Removes the anonymous-abuse surface (F-01, F-03 below) as a launch blocker. Landing and `/methodology` stay public; the product does not. |
 | D-3 | **Deploy to Railway** | 2026-08-02 | TLS, certificates and a public hostname are solved by the platform. Two platform constraints in § 3 change the topology. |
 | D-4 | **No fork. `Deploy` is a normal feature branch, merged back to `main` in slices** | 2026-08-02 | See § 5.5. |
+| D-5 | **Explicit per-provider client classes**, not a generic OpenAI-compatible adapter layer | 2026-08-02 | Less code, and the wire contract of each provider is visible at its call site instead of hidden behind a shape that fits none of them exactly. Cost: adding a fourth provider later means writing a class, not setting a variable. Accepted. |
+| D-6 | **One shared account**, not per-reviewer accounts | 2026-08-02 | No user table, no migration, no account lifecycle. The daily query cap in PR 3 is therefore per *session*, not per person, and a shared password cannot be revoked for one holder — rotate it instead. Adequate for a gated demo; not an authorization model. |
 
 Decisions still open are in § 11.
 
@@ -285,6 +287,11 @@ The capability behind D-1.
   mapped back to input order before returning.
 - Select with `EMBEDDING_PROVIDER` / `RERANKER_PROVIDER`, default `sidecar`
   (§ 5.2). Add `EMBEDDING_API_KEY` / `RERANKER_API_KEY`.
+- Per D-5 these are **two concrete classes with the provider's own payload shape
+  written out**, not a generic adapter parameterised by field names. Neither
+  provider is OpenAI-compatible in the part that matters — the response carries
+  per-item indices that must be mapped back — so a shared abstraction would have
+  to model the difference anyway.
 - Timeouts and retries appropriate to a hosted API, not to a cold local model.
 
 **Acceptance.**
@@ -304,9 +311,9 @@ The capability behind D-1.
 D-2. Also closes F-01 and F-03.
 
 - `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
-  Credentials from environment (password stored as a hash, never plaintext in the
-  repo or in a committed file). Signed, `HttpOnly`, `Secure`, `SameSite=Lax`
-  cookie.
+  Per D-6, **one shared account read from the environment** — no user table, no
+  migration. The password is stored as a hash, never as plaintext in the repo or
+  in a committed file. Signed, `HttpOnly`, `Secure`, `SameSite=Lax` cookie.
 - A dependency on the `repos`, `query` and `inspector` routers
   (`apps/api/src/dcode_api/main.py:45-47`). `/healthz` stays open.
 - Frontend `/login` route; `/workbench` checks the session and redirects on 401.
@@ -489,18 +496,11 @@ Before calling the deployment done:
 
 Carried here rather than answered by assumption.
 
-1. **Provider client shape** — explicit `jina_api` / `siliconflow` branches, or a
-   generic OpenAI-compatible adapter layer? The explicit form is less code and
-   states its intent; the generic form survives a provider change without code.
-   *Not decided.*
-2. **Single shared account, or per-reviewer accounts?** A single account needs no
-   user table and no migration. *Not decided.*
-3. **Team ownership.** `README.md` assigns "infrastructure, deployment" to a
+1. **Team ownership.** `README.md` assigns "infrastructure, deployment" to a
    different team member, and `origin` carries four `yuxin_*` branches. This plan
-   should be reconciled with them before PR 4. *Not resolved.*
-4. **Whether `v1.0-submission` is pushed to `origin`.** The tag exists locally
-   only; pushing it is visible to the whole team. *Not done.*
-5. **Long-term fix for R-1.** Merging agent and worker is a workaround. The
+   should be reconciled with them before PR 4. *Not resolved.* Pushing `Deploy`
+   and `v1.0-submission` makes it visible to them, which is the point.
+2. **Long-term fix for R-1.** Merging agent and worker is a workaround. The
    durable answer is to stop reading repository source from a shared filesystem —
    store file contents in Postgres and have the agent's file tools read from
    there. That is a migration plus three tool rewrites, deliberately out of scope
