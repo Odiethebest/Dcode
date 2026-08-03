@@ -29,7 +29,9 @@ COPY apps/eval ./apps/eval
 COPY apps/embedding ./apps/embedding
 COPY apps/reranker ./apps/reranker
 
-RUN uv sync --no-dev
+# Both packages, and only those two. The workspace also contains the torch-
+# dependent model sidecars, which this image does not run — see api.Dockerfile.
+RUN uv sync --no-dev --package dcode-agent --package dcode-worker
 
 COPY infra/docker/railway-agent-worker-entrypoint.sh /usr/local/bin/dcode-entrypoint
 RUN chmod +x /usr/local/bin/dcode-entrypoint
