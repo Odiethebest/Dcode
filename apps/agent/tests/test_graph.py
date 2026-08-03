@@ -424,6 +424,30 @@ async def test_multihop_expands_three_distinct_hybrid_seeds() -> None:
         )
 
 
+class FakeRevisionDb:
+    """Answers the one SELECT the tool cache key needs.
+
+    Present in these tests because the tool cache is now keyed by the
+    repository's corpus generation, and a state with no database session
+    deliberately bypasses the cache rather than sharing a key across
+    generations.
+    """
+
+    def __init__(self, revision: int) -> None:
+        self.revision = revision
+        self.queries = 0
+
+    async def execute(self, _statement: object) -> object:
+        self.queries += 1
+        revision = self.revision
+
+        class _Result:
+            def scalar_one_or_none(self) -> int:
+                return revision
+
+        return _Result()
+
+
 async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
     caplog.set_level(logging.INFO, logger="dcode.agent.graph")
     tool = DummyTool()
@@ -431,12 +455,19 @@ async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
     emitter = FakeEmitter()
     cache: dict[str, str] = {}
     repo_id = str(uuid4())
+    db = FakeRevisionDb(revision=3)
+    runtime = {
+        "tool_registry": registry,
+        "tool_cache": cache,
+        "emitter": emitter,
+        "db": db,
+    }
     state = AgentState(
         repo_id=repo_id,
         query="Where is `HTTPBasicAuth` defined?",
         pending_tool_name="find_definition",
         pending_tool_args={"symbol": "HTTPBasicAuth"},
-        runtime={"tool_registry": registry, "tool_cache": cache, "emitter": emitter},
+        runtime=runtime,
     )
 
     first = await tool_call_node(state)
@@ -446,7 +477,7 @@ async def test_tool_call_node_executes_and_then_hits_cache(caplog) -> None:
             query=state.query,
             pending_tool_name="find_definition",
             pending_tool_args={"symbol": "HTTPBasicAuth"},
-            runtime={"tool_registry": registry, "tool_cache": cache, "emitter": emitter},
+            runtime=runtime,
         )
     )
 
@@ -1302,3 +1333,97 @@ async def test_ranking_failure_degrades_to_observation_order(monkeypatch) -> Non
     catalog = await graph_module._ranked_evidence_catalog(state)
 
     assert catalog["C1"].display_token == "src/requests/mod0.py:1"
+
+
+async def test_reindexing_invalidates_the_tool_cache() -> None:
+    """The defect F-07 records: a re-index left cached results addressable.
+
+    The key carried (tool, repo_id, args) and nothing about which generation of
+    the corpus produced the answer, so for 24 hours after re-indexing the agent
+    answered from the previous one. Nothing failed and nothing logged.
+    """
+    tool = DummyTool()
+    registry = _registry(tool)
+    cache: dict[str, str] = {}
+    repo_id = str(uuid4())
+
+    def state_for(revision: int) -> AgentState:
+        return AgentState(
+            repo_id=repo_id,
+            query="Where is `HTTPBasicAuth` defined?",
+            pending_tool_name="find_definition",
+            pending_tool_args={"symbol": "HTTPBasicAuth"},
+            runtime={
+                "tool_registry": registry,
+                "tool_cache": cache,
+                "emitter": FakeEmitter(),
+                "db": FakeRevisionDb(revision=revision),
+            },
+        )
+
+    first = await tool_call_node(state_for(1))
+    again = await tool_call_node(state_for(1))
+    after_reindex = await tool_call_node(state_for(2))
+
+    assert first.observations[0]["cached"] is False
+    assert again.observations[0]["cached"] is True, "same generation should still hit"
+    assert after_reindex.observations[0]["cached"] is False, "a new generation must miss"
+    assert tool.calls == 2
+    assert len(cache) == 2
+
+
+async def test_an_unreadable_revision_bypasses_the_cache_rather_than_sharing_one() -> None:
+    """No revision, no cache.
+
+    Falling back to a revision-less key would reintroduce the cross-generation
+    collision in exactly the situation nobody exercises, so the request pays for
+    a real tool call instead.
+    """
+    tool = DummyTool()
+    registry = _registry(tool)
+    cache: dict[str, str] = {}
+    repo_id = str(uuid4())
+
+    def state_without_db() -> AgentState:
+        return AgentState(
+            repo_id=repo_id,
+            query="q",
+            pending_tool_name="find_definition",
+            pending_tool_args={"symbol": "HTTPBasicAuth"},
+            runtime={"tool_registry": registry, "tool_cache": cache, "emitter": FakeEmitter()},
+        )
+
+    first = await tool_call_node(state_without_db())
+    second = await tool_call_node(state_without_db())
+
+    assert tool.calls == 2
+    assert cache == {}
+    assert first.tool_calls[0]["cache_key"] is None
+    assert second.observations[0]["cached"] is False
+
+
+async def test_the_revision_is_read_once_per_query() -> None:
+    """Read per query, not per tool call, so one walk sees one corpus."""
+    tool = DummyTool()
+    registry = _registry(tool)
+    db = FakeRevisionDb(revision=7)
+    state = AgentState(
+        repo_id=str(uuid4()),
+        query="q",
+        pending_tool_name="find_definition",
+        pending_tool_args={"symbol": "HTTPBasicAuth"},
+        runtime={
+            "tool_registry": registry,
+            "tool_cache": {},
+            "emitter": FakeEmitter(),
+            "db": db,
+        },
+    )
+
+    after = await tool_call_node(state)
+    after.pending_tool_name = "find_definition"
+    after.pending_tool_args = {"symbol": "Session"}
+    await tool_call_node(after)
+
+    assert db.queries == 1
+    assert after.index_revision == 7

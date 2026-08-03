@@ -33,9 +33,14 @@ class Tool(ABC, Generic[ArgsT, ResultT]):
     async def execute(self, repo_id: str, args: ArgsT) -> ResultT:
         """Execute the tool against the live index for `repo_id`."""
 
-    def cache_key(self, repo_id: str, args: ArgsT) -> str:
+    def cache_key(self, repo_id: str, args: ArgsT, *, index_revision: int) -> str:
         """Redis cache key for this invocation in the 24-hour tool namespace."""
-        return tool_cache_key(self.name, repo_id, args.model_dump(mode="json"))
+        return tool_cache_key(
+            self.name,
+            repo_id,
+            args.model_dump(mode="json"),
+            index_revision=index_revision,
+        )
 
 
 class ToolRegistry:

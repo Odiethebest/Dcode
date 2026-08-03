@@ -16,9 +16,26 @@ def embedding_cache_key(model_id: str, text: str) -> str:
     return f"embed:{model_id}:{digest}"
 
 
-def tool_cache_key(tool_name: str, repo_id: str, args: dict[str, Any]) -> str:
-    """`tool:{tool_name}:{repo_id}:{args_hash}` — TTL: 24h."""
-    return f"tool:{tool_name}:{repo_id}:{_hash_args(args)}"
+def tool_cache_key(
+    tool_name: str,
+    repo_id: str,
+    args: dict[str, Any],
+    *,
+    index_revision: int,
+) -> str:
+    """`tool:{tool_name}:{repo_id}:r{index_revision}:{args_hash}` — TTL: 24h.
+
+    `index_revision` is keyword-only and has no default on purpose. It was
+    absent, and the consequence was invisible: re-indexing a repository left
+    every cached tool result addressable by the same key for the next 24 hours,
+    so the agent answered from the previous generation of the corpus. The worker
+    increments the revision in the same transaction that replaces the chunks
+    (`dcode_worker.stages.embed`), so including it makes a re-index a cache
+    miss by construction rather than by remembering to flush.
+
+    A default would have let a new call site reintroduce exactly that.
+    """
+    return f"tool:{tool_name}:{repo_id}:r{index_revision}:{_hash_args(args)}"
 
 
 def query_cache_key(
