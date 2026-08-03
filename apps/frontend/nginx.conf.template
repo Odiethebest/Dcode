@@ -1,0 +1,82 @@
+# Dcode frontend: static bundle + /api proxy.
+#
+# A template, not a finished config. The nginx image runs envsubst over
+# /etc/nginx/templates/*.template at boot, restricted by NGINX_ENVSUBST_FILTER
+# to the three names below — without that filter it would also eat nginx's own
+# $host, $remote_addr and $request_uri.
+#
+# The defaults in the Dockerfile reproduce the previous behaviour exactly
+# (listen 80, proxy to api:8000, Docker's embedded resolver), so the developer
+# stack is unchanged. Railway overrides them.
+
+server {
+    listen ${PORT};
+    listen [::]:${PORT};
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Compression was off: the base image ships `#gzip on;` commented out and
+    # this file never enabled it, so the bundle went out uncompressed. The main
+    # chunk is ~750 kB raw against ~225 kB gzipped.
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types
+        text/plain text/css text/javascript
+        application/javascript application/json application/xml
+        image/svg+xml font/woff font/woff2;
+
+    location = /healthz {
+        add_header Content-Type text/plain;
+        return 200 'ok';
+    }
+
+    location /api/ {
+        # Resolved per request, not once at startup. Railway's private DNS
+        # hands out a new address on every redeploy, and nginx caches a literal
+        # proxy_pass target for the life of the process — the API would keep
+        # working until the first redeploy of it and then fail with no change
+        # on this side. A variable target forces re-resolution.
+        resolver ${DNS_RESOLVER} valid=10s ipv6=on;
+        set $api_upstream ${API_UPSTREAM};
+        proxy_pass $api_upstream$request_uri;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE. The gateway already sends X-Accel-Buffering: no, which stops
+        # nginx buffering the body, but that says nothing about how long nginx
+        # will wait between chunks — the default is 60s, and a slow tool or
+        # synthesis step can exceed it. The agent also emits heartbeat comment
+        # frames; this is the other half of keeping a long answer alive.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+
+    # Vite emits content-hashed filenames, so these are safe to keep for a
+    # year: a changed file is a changed URL.
+    location /assets/ {
+        # One header, not two. `expires 1y` emits its own Cache-Control, so
+        # pairing it with add_header sent the response out with two of them.
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # index.html must never be cached, or a browser keeps loading an old
+    # document that points at asset hashes the deploy no longer serves.
+    location = /index.html {
+        add_header Cache-Control "no-store, must-revalidate";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

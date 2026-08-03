@@ -103,7 +103,7 @@ async def internal_query(
         )
     )
     return StreamingResponse(
-        emitter.iter_bytes(),
+        emitter.iter_bytes(heartbeat_seconds=agent_settings.sse_heartbeat_seconds),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -119,23 +119,28 @@ async def _run_graph_pipeline(
     llm_client: Any = None,
 ) -> None:
     """Invoke the compiled graph and flush terminal SSE events."""
+    budget = agent_settings.request_budget_seconds
     try:
-        async with db_session_factory() as db:
-            final_state = await compiled_graph.ainvoke(
-                AgentState(
-                    repo_id=state.repo_id,
-                    query=state.query,
-                    mode=state.mode,
-                    history=state.history,
-                    runtime={
-                        "emitter": emitter,
-                        "tool_registry": tool_registry,
-                        "tool_cache": tool_cache,
-                        "db": db,
-                        "llm": llm_client,
-                    },
+        # A ceiling on the whole walk, not just each hop. Without it a query
+        # can outlive the platform's request limit, and the reader sees a
+        # stream that stops rather than one that says why.
+        async with asyncio.timeout(budget if budget > 0 else None):
+            async with db_session_factory() as db:
+                final_state = await compiled_graph.ainvoke(
+                    AgentState(
+                        repo_id=state.repo_id,
+                        query=state.query,
+                        mode=state.mode,
+                        history=state.history,
+                        runtime={
+                            "emitter": emitter,
+                            "tool_registry": tool_registry,
+                            "tool_cache": tool_cache,
+                            "db": db,
+                            "llm": llm_client,
+                        },
+                    )
                 )
-            )
 
         state_dict = _state_dict(final_state)
         citations = _citation_events(state_dict)
@@ -158,6 +163,20 @@ async def _run_graph_pipeline(
             answer=answer,
             citations=citations,
             groundedness=float(state_dict.get("groundedness_score") or 0.0),
+        )
+    except TimeoutError:
+        # Distinct from INTERNAL on purpose: "this took too long" is a
+        # different thing for a reader to know than "something broke", and the
+        # honest answer here is that no answer was produced. Nothing
+        # half-finished is emitted — a partial walk has not been through the
+        # groundedness verifier, so presenting it would claim a check that
+        # never ran (Honesty_Constraints §3).
+        await emitter.emit_error(
+            code="TIMEOUT",
+            message=(
+                f"the agent exceeded its {agent_settings.request_budget_seconds:.0f}s budget "
+                "for one question"
+            ),
         )
     except Exception as exc:  # noqa: BLE001 — surface any unexpected failure as SSE error
         await emitter.emit_error(code="INTERNAL", message=str(exc))

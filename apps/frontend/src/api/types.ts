@@ -151,6 +151,21 @@ export interface SymbolNeighbors {
   references: Location[];
 }
 
+export interface RepoSummary {
+  repo_id: UUID;
+  url: string;
+  status: RepoStatus;
+}
+
+/**
+ * `truncated` is explicit rather than inferred from a full page. Silently
+ * showing a subset of what exists is the sort of quiet claim this UI avoids.
+ */
+export interface RepoListResponse {
+  repos: RepoSummary[];
+  truncated: boolean;
+}
+
 // --- Session (single shared account; see Deploy.md D-6) -------------------
 
 export interface LoginRequest {

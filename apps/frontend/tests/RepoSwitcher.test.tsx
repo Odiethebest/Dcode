@@ -7,7 +7,11 @@ import type { RepoStatusResponse } from '@/api/types';
 import { RepoSwitcher, repoStatusLabel } from '@/components/workbench/RepoSwitcher';
 import { saveRecentRepo } from '@/lib/recentRepos';
 
-vi.mock('@/api/client', () => ({ getRepoStatus: vi.fn(), submitRepo: vi.fn() }));
+vi.mock('@/api/client', () => ({
+  getRepoStatus: vi.fn(),
+  submitRepo: vi.fn(),
+  listRepos: vi.fn(),
+}));
 
 function renderSwitcher(activeRepoId: string | null = null, onSelect: (id: string) => void = () => {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -22,15 +26,21 @@ describe('RepoSwitcher', () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.clearAllMocks();
+    // Default to "the server knows of nothing", so each test states the
+    // inventory it means to exercise rather than inheriting one.
+    vi.mocked(client.listRepos).mockResolvedValue({ repos: [], truncated: false });
   });
 
-  it('shows the empty active state and reveals the index-new-repo form', () => {
+  it('shows the empty active state and reveals the index-new-repo form', async () => {
     renderSwitcher();
     expect(screen.getByText('select a repo')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('select a repo'));
     expect(screen.getByText('Indexed repositories')).toBeInTheDocument();
-    expect(screen.getByText(/None yet/i)).toBeInTheDocument();
+    // "None yet" is a claim about the server, so it waits for the server to
+    // answer. Asserting it before the list request settles would be asserting
+    // something not yet known.
+    expect(await screen.findByText(/None yet/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('+ Index a new repository'));
     expect(screen.getByPlaceholderText(/github\.com/i)).toBeInTheDocument();
@@ -227,5 +237,77 @@ describe('repoStatusLabel', () => {
     expect(repoStatusLabel('queued')).toBe('queued');
     expect(repoStatusLabel('ready')).toBe('ready');
     expect(repoStatusLabel('failed')).toBe('failed');
+  });
+});
+
+describe('RepoSwitcher lists what the server knows', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.clearAllMocks();
+    vi.mocked(client.getRepoStatus).mockResolvedValue({
+      repo_id: 'srv-1',
+      url: 'https://github.com/psf/requests.git',
+      status: 'ready',
+      progress: 100,
+      stages: { cloning: 'done', parsing: 'done', embedding: 'done', graphing: 'done' },
+      error: null,
+      warnings: [],
+    } as RepoStatusResponse);
+    vi.mocked(client.listRepos).mockResolvedValue({ repos: [], truncated: false });
+  });
+
+  it('offers repositories the server knows about but this browser does not', async () => {
+    // The whole point of the list endpoint: localStorage is per-browser, so a
+    // reader on a new device used to open an empty product and have to index
+    // something before they could ask anything.
+    vi.mocked(client.listRepos).mockResolvedValue({
+      repos: [
+        { repo_id: 'srv-1', url: 'https://github.com/psf/requests.git', status: 'ready' },
+      ],
+      truncated: false,
+    });
+
+    renderSwitcher();
+    fireEvent.click(screen.getByText('select a repo'));
+
+    expect(await screen.findByText('psf/requests')).toBeInTheDocument();
+    expect(screen.queryByText(/None yet/i)).not.toBeInTheDocument();
+  });
+
+  it('does not list the same repository twice when it is also a local recent', async () => {
+    saveRecentRepo({
+      repoId: 'shared-id',
+      url: 'https://github.com/psf/requests.git',
+      status: 'ready',
+      savedAt: new Date().toISOString(),
+    });
+    vi.mocked(client.listRepos).mockResolvedValue({
+      repos: [
+        { repo_id: 'shared-id', url: 'https://github.com/psf/requests.git', status: 'ready' },
+      ],
+      truncated: false,
+    });
+
+    renderSwitcher();
+    fireEvent.click(screen.getByText('select a repo'));
+
+    await waitFor(() => expect(screen.getAllByText('psf/requests')).toHaveLength(1));
+  });
+
+  it('still lists local recents when the server list cannot be read', async () => {
+    // Recents are the reader's own history. Losing them because an extra
+    // request failed would be a regression caused by an enhancement.
+    saveRecentRepo({
+      repoId: 'local-1',
+      url: 'https://github.com/encode/httpx.git',
+      status: 'ready',
+      savedAt: new Date().toISOString(),
+    });
+    vi.mocked(client.listRepos).mockRejectedValue(new Error('gateway down'));
+
+    renderSwitcher();
+    fireEvent.click(screen.getByText('select a repo'));
+
+    expect(await screen.findByText('encode/httpx')).toBeInTheDocument();
   });
 });

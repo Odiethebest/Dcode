@@ -24,5 +24,20 @@ class AgentSettings(SharedSettings):
     synthesis_max_tokens: int = 700
     synthesis_temperature: float = 0.1
 
+    # --- Stream lifetime (Deploy.md R-2) ---
+    # A query had no overall ceiling: /internal/query spawns a task and returns
+    # a stream, and only the individual hops were bounded, so 14 steps x 30s
+    # plus rerank and synthesis could run past eight minutes with nothing to
+    # stop it. An abandoned request kept spending on three metered APIs with
+    # nobody draining the queue.
+    #
+    # 240s is chosen to expire *inside* the hosting platform's 5-minute cut, so
+    # the client gets a labelled `error` event instead of a connection that
+    # simply stops. 0 disables the ceiling.
+    request_budget_seconds: float = 240.0
+    # Comment frames while the queue is quiet. Below both the platform's
+    # 5-minute idle cut and the gateway client's 60s read timeout.
+    sse_heartbeat_seconds: float = 20.0
+
 
 agent_settings = AgentSettings()

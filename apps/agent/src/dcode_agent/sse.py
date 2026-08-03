@@ -90,10 +90,31 @@ class SSEEmitter:
         """Signal end-of-stream; iter_bytes() will exit on the next loop."""
         await self._queue.put(None)
 
-    async def iter_bytes(self) -> AsyncIterator[bytes]:
-        """Drain the queue. Caller streams these bytes to the client."""
+    async def iter_bytes(self, *, heartbeat_seconds: float = 0.0) -> AsyncIterator[bytes]:
+        """Drain the queue. Caller streams these bytes to the client.
+
+        With `heartbeat_seconds` above zero, a comment frame is emitted
+        whenever the queue stays quiet that long. Two reasons it has to exist:
+        a hosting platform in front of this closes a request that transfers no
+        data for five minutes, and the gateway's own client has a 60-second
+        read timeout. The agent can legitimately be silent for longer than
+        either while a slow tool or a synthesis call runs.
+
+        A `:`-prefixed line is a comment in the SSE grammar. The frontend
+        parser already skips them (`src/api/client.ts`), so this changes no
+        client contract and adds no event type.
+        """
         while True:
-            chunk = await self._queue.get()
+            if heartbeat_seconds <= 0:
+                chunk = await self._queue.get()
+            else:
+                try:
+                    chunk = await asyncio.wait_for(
+                        self._queue.get(), timeout=heartbeat_seconds
+                    )
+                except TimeoutError:
+                    yield b": keep-alive\n\n"
+                    continue
             if chunk is None:
                 return
             yield chunk

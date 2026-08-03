@@ -13,6 +13,7 @@ import type {
   QueryStreamEvent,
   RepoCreateRequest,
   RepoCreateResponse,
+  RepoListResponse,
   RepoStatusResponse,
   SessionState,
   SourceResponse,
@@ -93,6 +94,22 @@ export async function submitRepo(body: RepoCreateRequest): Promise<RepoCreateRes
     throw new Error(`POST /api/v1/repos failed: ${response.status}`);
   }
   return (await response.json()) as RepoCreateResponse;
+}
+
+/**
+ * Everything indexed on the server, newest first.
+ *
+ * The switcher's localStorage recents only know what this browser did, so a
+ * reader on a new device used to open an empty workbench and have to index a
+ * repository before they could ask anything.
+ */
+export async function listRepos(): Promise<RepoListResponse> {
+  const response = await fetch(`${BASE_URL}/api/v1/repos`);
+  assertAuthenticated(response, 'GET /api/v1/repos');
+  if (!response.ok) {
+    throw new Error(`GET /api/v1/repos failed: ${response.status}`);
+  }
+  return (await response.json()) as RepoListResponse;
 }
 
 export async function getRepoStatus(repoId: UUID): Promise<RepoStatusResponse> {
