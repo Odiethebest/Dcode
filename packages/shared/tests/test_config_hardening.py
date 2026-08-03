@@ -87,12 +87,16 @@ def test_prod_services_receive_the_retrieval_settings_they_read() -> None:
             "EMBEDDING_BATCH_SIZE",
             "EMBEDDING_MAX_RETRIES",
             "EMBEDDING_TIMEOUT_SECONDS",
+            "EMBEDDING_PROVIDER",
+            "EMBEDDING_API_KEY",
             "RRF_DENSE_WEIGHT",
             "RRF_SPARSE_WEIGHT",
             "RERANKER_MODEL",
             "RERANKER_ENDPOINT",
             "RERANKER_CANDIDATE_LIMIT",
             "RERANKER_MAX_RETRIES",
+            "RERANKER_PROVIDER",
+            "RERANKER_API_KEY",
         },
         # dcode_worker.stages.embed builds the index-time embedding client.
         "worker": {
@@ -102,6 +106,8 @@ def test_prod_services_receive_the_retrieval_settings_they_read() -> None:
             "EMBEDDING_BATCH_SIZE",
             "EMBEDDING_MAX_RETRIES",
             "EMBEDDING_TIMEOUT_SECONDS",
+            "EMBEDDING_PROVIDER",
+            "EMBEDDING_API_KEY",
         },
         # dcode_agent.graph reranks its own evidence union; EMBEDDING_DIM is
         # not read by the agent directly but binds the ORM column type.
@@ -110,6 +116,8 @@ def test_prod_services_receive_the_retrieval_settings_they_read() -> None:
             "RERANKER_MODEL",
             "RERANKER_ENDPOINT",
             "RERANKER_MAX_RETRIES",
+            "RERANKER_PROVIDER",
+            "RERANKER_API_KEY",
             "SYNTHESIS_MODEL",
             "SYNTHESIS_MAX_TOKENS",
             "SYNTHESIS_TEMPERATURE",

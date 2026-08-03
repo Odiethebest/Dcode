@@ -540,6 +540,8 @@ def _get_reranker_client() -> RerankerClient | None:
             model=agent_settings.reranker_model,
             endpoint=agent_settings.reranker_endpoint,
             max_retries=agent_settings.reranker_max_retries,
+            provider=agent_settings.reranker_provider,
+            api_key=agent_settings.reranker_api_key,
         )
         _reranker_client_initialized = True
     return _reranker_client

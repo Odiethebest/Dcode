@@ -371,6 +371,8 @@ def _get_query_embedding_client() -> EmbeddingClient:
             batch_size=api_settings.embedding_batch_size,
             max_retries=api_settings.embedding_max_retries,
             timeout_seconds=api_settings.embedding_timeout_seconds,
+            provider=api_settings.embedding_provider,
+            api_key=api_settings.embedding_api_key,
         )
     return _query_embedding_client
 
@@ -396,6 +398,8 @@ def _get_query_reranker_client() -> RerankerClient | None:
             model=api_settings.reranker_model,
             endpoint=api_settings.reranker_endpoint,
             max_retries=api_settings.reranker_max_retries,
+            provider=api_settings.reranker_provider,
+            api_key=api_settings.reranker_api_key,
         )
         _query_reranker_client_initialized = True
     return _query_reranker_client

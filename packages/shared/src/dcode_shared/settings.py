@@ -42,6 +42,15 @@ class SharedSettings(BaseSettings):
     groundedness_threshold: float = 0.95
 
     # --- Retrieval and evaluation models ---
+    # `provider` selects HOW a model is reached, never WHICH model runs. Both
+    # paths serve the same weights, which is what keeps the displayed
+    # evaluation figures a description of the deployed system (Deploy.md §2).
+    # Default `sidecar` so configuration written before these existed is
+    # unaffected.
+    embedding_provider: str = "sidecar"
+    embedding_api_key: str = ""
+    reranker_provider: str = "sidecar"
+    reranker_api_key: str = ""
     embedding_model: str = "stub"
     embedding_dim: int = 1024
     embedding_endpoint: str = ""
