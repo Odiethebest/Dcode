@@ -1,0 +1,37 @@
+# Railway service: frontend — nginx serving the built SPA and proxying /api.
+#
+# Settings → Config as Code: /infra/railway/frontend.toml
+# Root Directory: empty — this image builds from the repository root like the
+# others. THIS is the only service that gets a public domain.
+#
+# Three variables it needs, because the site config is a template rendered at
+# boot (Deploy.md R-4):
+#
+#   API_UPSTREAM  = http://api.railway.internal:8000   (match your service name)
+#   DNS_RESOLVER  = Railway's internal resolver
+#   PORT          — injected by Railway; do not set it
+#
+# The proxy target is a variable with a resolver on purpose: Railway's private
+# DNS hands out a new address on every redeploy, and nginx caches a literal
+# proxy_pass target for the life of the process. Without it the API keeps
+# working until the first time *it* is redeployed, then fails with no change on
+# this side.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/frontend.Dockerfile"
+# results/ and docs/ are in here because the evaluation figures are baked into
+# the bundle at build time by scripts/sync_eval_artifacts.py — a new recorded
+# run has to reach the deployed page.
+watchPatterns = [
+  "apps/frontend/**",
+  "infra/docker/frontend.Dockerfile",
+  "results/**",
+  "scripts/sync_eval_artifacts.py",
+]
+
+[deploy]
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

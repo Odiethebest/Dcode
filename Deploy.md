@@ -794,21 +794,36 @@ Written from the code, not from a completed deployment — **nothing has been
 deployed yet** (§ 6 PR 4). Treat it as the intended sequence, and correct it
 against what actually happens.
 
+**The configuration is committed.** `infra/railway/{api,agent-worker,frontend}.toml`
+carry the build and deploy settings, and
+[`infra/railway/README.md`](infra/railway/README.md) is the variable sheet —
+which service needs what, and the two rules that fail silently. What follows is
+the part that cannot live in a file.
+
 **Services.** Six. Only `frontend` gets a public domain.
 
 | Service | Image | Notes |
 |---|---|---|
-| `frontend` | `infra/docker/frontend.Dockerfile`, context `apps/frontend` | Public. Set `API_UPSTREAM=http://api.railway.internal:8000` and `DNS_RESOLVER` to Railway's internal resolver. `PORT` is injected. |
+| `frontend` | `infra/docker/frontend.Dockerfile` | Public. Set `API_UPSTREAM` and `DNS_RESOLVER`; `PORT` is injected. Builds from the repository root — it used to build from `apps/frontend`, changed so no service needs a Root Directory. |
 | `api` | `infra/docker/api.Dockerfile`, context repo root | Private. Set `HOST=::` — Railway's private network is IPv6 and a service bound to `0.0.0.0` is reachable by nothing there. |
 | `agent-worker` | `infra/docker/railway-agent-worker.Dockerfile`, context repo root | Private. **Owns the only volume**, mounted at `WORKDIR_BASE`. Set `HOST=::`. |
 | Postgres | Railway **pgvector** template | Not the plain Postgres template — R-3. |
 | Redis | Railway template | |
 | RabbitMQ | Railway template | |
 
-**Order.** Postgres/Redis/RabbitMQ first, then `api`, then run the migration
-against it, then `agent-worker`, then `frontend`. The migration reads
-`EMBEDDING_DIM` from the `api` service (§ 6 PR 1), so that variable has to be
-right *before* it runs — afterwards the column dimension is fixed and changing
+**Order.** Postgres/Redis/RabbitMQ first, then `api`, then `agent-worker`, then
+`frontend`.
+
+The migration is **not** a manual step: `api.toml` runs it as a
+`preDeployCommand`, in that container, before the deployment takes traffic. That
+is where it belongs rather than where it is convenient — the migration reads
+`EMBEDDING_DIM` to size the pgvector column, and that variable lives on the
+`api` service (§ 6 PR 1). Running it anywhere else is how the column ends up at
+a dimension nothing agrees with. `upgrade head` is idempotent, so every deploy
+running it is fine.
+
+The consequence: **`EMBEDDING_DIM` must be correct before the first deploy of
+`api`**, not before some later step. Afterwards the column is fixed and changing
 it means a new volume.
 
 **Variables that must agree across `api`, `agent-worker` and each other**:

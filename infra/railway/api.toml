@@ -1,0 +1,46 @@
+# Railway service: api — the FastAPI gateway.
+#
+# Point the service at this file in Settings → Config as Code, using the path
+# from the repository root: /infra/railway/api.toml. That setting does NOT
+# follow the service's Root Directory, so it has to be absolute.
+#
+# Leave Root Directory empty: this image builds from the repository root.
+# Do NOT give this service a public domain — the frontend proxies to it over
+# private networking, and the whole point of the topology is that the gateway
+# is the only backend entry point and is not itself exposed.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "infra/docker/api.Dockerfile"
+# Rebuild only when something this image contains actually changed. Without
+# these, every commit that touches the frontend or a document redeploys the API.
+watchPatterns = [
+  "apps/api/**",
+  "packages/shared/**",
+  "infra/docker/api.Dockerfile",
+  "infra/migrations/**",
+  "pyproject.toml",
+  "uv.lock",
+]
+
+[deploy]
+# Runs before the new deployment takes traffic, inside this container.
+#
+# This is the right place for it and not a convenience: the migration reads
+# EMBEDDING_DIM to size the pgvector column, and EMBEDDING_DIM is configured on
+# *this* service (Deploy.md §6 PR 1). Running it anywhere else is how the column
+# ends up at a dimension nothing else agrees with. `upgrade head` is idempotent,
+# so running it on every deploy is safe.
+preDeployCommand = ["uv run alembic -c infra/migrations/alembic.ini upgrade head"]
+
+# The deep probe, not /healthz. /healthz answers ok with Postgres, Redis and
+# RabbitMQ all down; /readyz checks all three plus the embedding-dimension
+# agreement, which is the one misconfiguration in this stack that otherwise
+# produces no error at all. It skips the dimension check when `chunks` does not
+# exist, so it is safe on a first deploy — and preDeployCommand has created the
+# table by the time it runs anyway.
+healthcheckPath = "/readyz"
+healthcheckTimeout = 120
+
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1

@@ -188,8 +188,8 @@ services:
 
   frontend:
     build:
-      context: ./apps/frontend
-      dockerfile: ../../infra/docker/frontend.Dockerfile
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
       args:
         VITE_API_BASE_URL: ""
     ports:
