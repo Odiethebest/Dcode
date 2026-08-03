@@ -7,12 +7,14 @@
 import type {
   ErrorPayload,
   FinalAnswerPayload,
+  LoginRequest,
   PartialAnswerPayload,
   QueryRequest,
   QueryStreamEvent,
   RepoCreateRequest,
   RepoCreateResponse,
   RepoStatusResponse,
+  SessionState,
   SourceResponse,
   SymbolNeighbors,
   SSEEventName,
@@ -25,12 +27,68 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
+/**
+ * Thrown when the gateway refuses for want of a session. Callers distinguish
+ * it from a transport failure so an expired cookie sends you to the login page
+ * rather than rendering as "the backend is down".
+ */
+export class UnauthenticatedError extends Error {
+  constructor(message = 'not authenticated') {
+    super(message);
+    this.name = 'UnauthenticatedError';
+  }
+}
+
+/**
+ * A gated deployment answers 401 once the session cookie expires. Every call
+ * below routes through this so an expiry surfaces as "sign in again" instead
+ * of a generic failure string in the middle of the workbench.
+ */
+function assertAuthenticated(response: Response, path: string): void {
+  if (response.status === 401) {
+    throw new UnauthenticatedError(`${path} requires a session`);
+  }
+}
+
+/** Read session state. Always 200 — the caller decides whether to gate. */
+export async function getSession(): Promise<SessionState> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/me`);
+  if (!response.ok) {
+    throw new Error(`GET /api/v1/auth/me failed: ${response.status}`);
+  }
+  return (await response.json()) as SessionState;
+}
+
+export async function login(body: LoginRequest): Promise<SessionState> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 401) {
+    throw new UnauthenticatedError('Incorrect username or password.');
+  }
+  if (!response.ok) {
+    throw new Error(`POST /api/v1/auth/login failed: ${response.status}`);
+  }
+  return (await response.json()) as SessionState;
+}
+
+export async function logout(): Promise<SessionState> {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/logout`, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`POST /api/v1/auth/logout failed: ${response.status}`);
+  }
+  return (await response.json()) as SessionState;
+}
+
 export async function submitRepo(body: RepoCreateRequest): Promise<RepoCreateResponse> {
   const response = await fetch(`${BASE_URL}/api/v1/repos`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  assertAuthenticated(response, 'POST /api/v1/repos');
   if (!response.ok) {
     throw new Error(`POST /api/v1/repos failed: ${response.status}`);
   }
@@ -39,6 +97,7 @@ export async function submitRepo(body: RepoCreateRequest): Promise<RepoCreateRes
 
 export async function getRepoStatus(repoId: UUID): Promise<RepoStatusResponse> {
   const response = await fetch(`${BASE_URL}/api/v1/repos/${repoId}/status`);
+  assertAuthenticated(response, 'GET /api/v1/repos/:id/status');
   if (!response.ok) {
     throw new Error(`GET /api/v1/repos/${repoId}/status failed: ${response.status}`);
   }
@@ -55,6 +114,7 @@ export async function getSource(
   if (params.line != null) qs.set('line', String(params.line));
   if (params.symbol) qs.set('symbol', params.symbol);
   const response = await fetch(`${BASE_URL}/api/v1/repos/${repoId}/source?${qs.toString()}`);
+  assertAuthenticated(response, 'GET /api/v1/repos/:id/source');
   if (!response.ok) {
     throw new Error(`GET /api/v1/repos/${repoId}/source failed: ${response.status}`);
   }
@@ -65,6 +125,7 @@ export async function getSource(
 export async function getNeighbors(repoId: UUID, symbol: string): Promise<SymbolNeighbors> {
   const qs = new URLSearchParams({ symbol });
   const response = await fetch(`${BASE_URL}/api/v1/repos/${repoId}/neighbors?${qs.toString()}`);
+  assertAuthenticated(response, 'GET /api/v1/repos/:id/neighbors');
   if (!response.ok) {
     throw new Error(`GET /api/v1/repos/${repoId}/neighbors failed: ${response.status}`);
   }
@@ -88,6 +149,7 @@ export async function streamQuery(
     signal,
   });
 
+  assertAuthenticated(response, 'POST /api/v1/query');
   if (!response.ok) {
     throw new Error(
       `POST /api/v1/query failed: ${response.status}${await response.text().then((text) => (text ? ` ${text}` : ''))}`

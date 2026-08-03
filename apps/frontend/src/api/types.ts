@@ -150,3 +150,21 @@ export interface SymbolNeighbors {
   calls: Location[];
   references: Location[];
 }
+
+// --- Session (single shared account; see Deploy.md D-6) -------------------
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+/**
+ * `auth_required` is separate from `authenticated` so the SPA behaves in both
+ * deployments. With the gate off the API reports `auth_required: false`, and
+ * the workbench must not redirect to a login page that would accept anything.
+ */
+export interface SessionState {
+  auth_required: boolean;
+  authenticated: boolean;
+  username: string | null;
+}

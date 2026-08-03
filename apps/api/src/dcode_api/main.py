@@ -8,16 +8,24 @@ frontend talks to this gateway exclusively — never directly to the agent or DB
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from dcode_api import deps
-from dcode_api.routes import inspector, internal, query, repos
+from dcode_api.auth import auth_configuration_error, require_session
+from dcode_api.routes import auth, inspector, internal, query, repos
 from dcode_api.settings import api_settings
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Refuse to start a gate that cannot be enforced. Serving the workbench
+    # openly because a secret was missing is the failure this prevents, and it
+    # is one that looks fine from the outside.
+    misconfigured = auth_configuration_error()
+    if misconfigured is not None:
+        raise RuntimeError(misconfigured)
+
     # Own the shared Redis + agent-client lifecycle: warm at startup, release on
     # shutdown. (DB uses the shared SQLAlchemy engine pool; RabbitMQ connects per
     # publish on the submit path.)
@@ -28,27 +36,52 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await deps.close_pools()
 
 
-app = FastAPI(
-    title="Dcode API Gateway",
-    version="0.0.0",
-    lifespan=lifespan,
-)
+def create_app() -> FastAPI:
+    """Build the gateway. A function so the docs switch is testable.
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=api_settings.cors_origins_list,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-    allow_credentials=False,
-)
+    `app` below is what uvicorn imports; nothing else should call this except
+    tests that need a second instance under different settings.
+    """
+    application = FastAPI(
+        title="Dcode API Gateway",
+        version="0.0.0",
+        lifespan=lifespan,
+        # /docs, /redoc and /openapi.json enumerate the /internal/* retrieval
+        # and graph surface. Handy locally, an advertisement in production.
+        docs_url="/docs" if api_settings.docs_enabled else None,
+        redoc_url="/redoc" if api_settings.docs_enabled else None,
+        openapi_url="/openapi.json" if api_settings.docs_enabled else None,
+    )
 
-app.include_router(repos.router, prefix="/api/v1")
-app.include_router(query.router, prefix="/api/v1")
-app.include_router(inspector.router, prefix="/api/v1")
-app.include_router(internal.router, prefix="/internal")
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=api_settings.cors_origins_list,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        allow_credentials=False,
+    )
+
+    # The gate. `require_session` is a no-op while AUTH_ENABLED is false, so
+    # the default local stack and the existing tests see no change; with it on,
+    # every route below returns 401 without a valid session cookie.
+    gated = [Depends(require_session)]
+
+    # Not gated: signing in cannot require being signed in.
+    application.include_router(auth.router, prefix="/api/v1")
+
+    application.include_router(repos.router, prefix="/api/v1", dependencies=gated)
+    application.include_router(query.router, prefix="/api/v1", dependencies=gated)
+    application.include_router(inspector.router, prefix="/api/v1", dependencies=gated)
+    # /internal/* is not part of the session gate: it is service-to-service and
+    # carries its own shared-key check, and the agent has no cookie to present.
+    application.include_router(internal.router, prefix="/internal")
+
+    @application.get("/healthz", tags=["meta"])
+    async def healthz() -> dict[str, str]:
+        """Shallow liveness probe — does not check dependent services."""
+        return {"status": "ok"}
+
+    return application
 
 
-@app.get("/healthz", tags=["meta"])
-async def healthz() -> dict[str, str]:
-    """Shallow liveness probe — does not check dependent services."""
-    return {"status": "ok"}
+app = create_app()

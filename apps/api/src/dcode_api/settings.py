@@ -16,6 +16,28 @@ class APISettings(SharedSettings):
     query_history_max_chars: int = 2000
     query_history_max_turn_chars: int = 4000
 
+    # --- Single shared-account gate (Deploy.md D-6) ---
+    # Off by default so local development, the test suite and every current
+    # compose invocation are unaffected. docker-compose.prod.yml hardcodes it
+    # on, and a config-hardening test pins that, so a deployment cannot forget.
+    # When on but unconfigured the app refuses to start: an auth gate that
+    # fails open is worse than none, because it looks like one.
+    auth_enabled: bool = False
+    auth_username: str = "dcode"
+    auth_password_hash: str = ""
+    auth_session_secret: str = ""
+    auth_session_ttl_seconds: int = 12 * 60 * 60
+    # Browsers treat http://localhost as a trustworthy origin, so a Secure
+    # cookie still works there; this exists for a plain-HTTP staging host.
+    auth_cookie_secure: bool = True
+    # The login wall stops anonymous callers. It does not stop a signed-in one
+    # looping a query against three metered APIs, which is what this bounds.
+    auth_daily_query_limit: int = 200
+
+    # /docs, /redoc and /openapi.json advertise the /internal/* surface.
+    # Useful locally, so on by default; prod compose turns it off.
+    docs_enabled: bool = True
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Comma-separated CORS_ORIGINS env var → list."""

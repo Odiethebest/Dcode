@@ -14,15 +14,20 @@ import httpx
 from dcode_shared.cache import query_cache_key
 from dcode_shared.events import ErrorEvent, ThoughtEvent, sse_encode
 from dcode_shared.schemas import QueryRequest, QueryTurn
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from dcode_api.auth import SessionClaims, current_session, quota_key
 from dcode_api.deps import get_agent_client, get_redis
 from dcode_api.settings import api_settings
 
 router = APIRouter(tags=["query"])
+
+# A day, so the counter disappears on its own rather than accumulating a key
+# per session per day forever.
+_QUOTA_TTL_SECONDS = 24 * 60 * 60
 
 
 @router.post("/query")
@@ -30,12 +35,14 @@ async def query(
     body: QueryRequest,
     agent: httpx.AsyncClient = Depends(get_agent_client),
     redis: Redis = Depends(get_redis),
+    session: SessionClaims | None = Depends(current_session),
 ) -> StreamingResponse:
     """Stream SSE events from the agent service back to the client.
 
     Successful streams are cached in Redis under the documented
     `query:{repo_id}:{hash(query)}` key for a short replay window.
     """
+    await _enforce_daily_quota(redis, session)
     return StreamingResponse(
         _stream_query(agent, redis, body),
         media_type="text/event-stream",
@@ -44,6 +51,41 @@ async def query(
             "X-Accel-Buffering": "no",  # disable nginx buffering for SSE
         },
     )
+
+
+async def _enforce_daily_quota(redis: Redis, session: SessionClaims | None) -> None:
+    """Bound one session's spend for the day, or 429.
+
+    The login wall removes anonymous callers; it does nothing about a signed-in
+    one looping a question through three metered APIs. Counted before the
+    agent is reached, because the cost is incurred there.
+
+    A Redis failure lets the request through. The counter is a spend guard, not
+    a security control, and refusing every query because a cache is down would
+    trade a bounded bill for a total outage.
+    """
+    if session is None or api_settings.auth_daily_query_limit <= 0:
+        return
+
+    key = quota_key(session)
+    try:
+        used = await redis.incr(key)
+        if used == 1:
+            await redis.expire(key, _QUOTA_TTL_SECONDS)
+    except RedisError:
+        return
+
+    if used > api_settings.auth_daily_query_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "DAILY_QUERY_LIMIT",
+                "message": (
+                    f"this session has used its {api_settings.auth_daily_query_limit} "
+                    "queries for today"
+                ),
+            },
+        )
 
 
 async def _stream_query(
