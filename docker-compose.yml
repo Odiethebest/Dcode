@@ -62,12 +62,19 @@ services:
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
       EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
       EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-300}
+      # 'sidecar' (default) or 'jina_api'. Selects HOW the model is reached,
+      # never WHICH model runs — both serve jina-embeddings-v2-base-code.
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sidecar}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       RRF_DENSE_WEIGHT: ${RRF_DENSE_WEIGHT:-2.0}
       RRF_SPARSE_WEIGHT: ${RRF_SPARSE_WEIGHT:-1.0}
       RERANKER_MODEL: ${RERANKER_MODEL:-stub}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://host.docker.internal:8003}
       RERANKER_CANDIDATE_LIMIT: ${RERANKER_CANDIDATE_LIMIT:-16}
       RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
+      # 'sidecar' (default) or 'siliconflow' — both serve bge-reranker-v2-m3.
+      RERANKER_PROVIDER: ${RERANKER_PROVIDER:-sidecar}
+      RERANKER_API_KEY: ${RERANKER_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "8000:8000"
@@ -99,6 +106,10 @@ services:
       EMBEDDING_BATCH_SIZE: ${EMBEDDING_BATCH_SIZE:-4}
       EMBEDDING_MAX_RETRIES: ${EMBEDDING_MAX_RETRIES:-12}
       EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-300}
+      # 'sidecar' (default) or 'jina_api'. Selects HOW the model is reached,
+      # never WHICH model runs — both serve jina-embeddings-v2-base-code.
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-sidecar}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -178,6 +189,9 @@ services:
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
       RERANKER_MODEL: ${RERANKER_MODEL:-stub}
       RERANKER_ENDPOINT: ${RERANKER_ENDPOINT:-http://host.docker.internal:8003}
+      RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
+      RERANKER_PROVIDER: ${RERANKER_PROVIDER:-sidecar}
+      RERANKER_API_KEY: ${RERANKER_API_KEY:-}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}

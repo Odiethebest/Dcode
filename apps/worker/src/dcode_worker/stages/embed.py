@@ -54,6 +54,8 @@ async def run(
         batch_size=worker_settings.embedding_batch_size,
         max_retries=worker_settings.embedding_max_retries,
         timeout_seconds=worker_settings.embedding_timeout_seconds,
+        provider=worker_settings.embedding_provider,
+        api_key=worker_settings.embedding_api_key,
     )
 
     owns_redis = redis_client is None

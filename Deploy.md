@@ -25,9 +25,11 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1 of 5 landed; PR 2–5 not started.** The pre-deployment state is
-frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere yet,
-and no live model API has been called from this codebase.
+**Status: PR 1 landed. PR 2 code complete, its pipeline run still pending.
+PR 3–5 not started.** The pre-deployment state is frozen at tag
+`v1.0-submission` (`a4612b8`). Nothing is deployed anywhere yet. Both hosted
+model APIs have now been called from this codebase and the observed results are
+in § 2.1 and § 6 PR 2, but no index has yet been built through them.
 
 ---
 
@@ -98,17 +100,43 @@ regenerated. It does mean that **if the H1 suite is ever re-run through the API
 providers, that is a new run directory with its own `provenance.json`, not a
 refresh of the recorded snapshot.**
 
-### 2.1 Not yet verified
+### 2.1 Verified against the live APIs, 2026-08-02
 
-Two facts this plan depends on and that must be confirmed with a live call
-**before** the database volume is migrated, because `chunks.embedding` fixes its
-dimension at migration time:
+Both facts this plan depended on were observed rather than assumed, before any
+client code was written.
 
-- **Jina's API returns 768-dimensional vectors for `jina-embeddings-v2-base-code`.**
-  The model card and the recorded run both say 768, but the API response was not
-  observed in this session. One request settles it.
-- **SiliconFlow's rerank request/response field names.** The client in § 6.2 must
-  be written against the observed payload, not against an assumed one.
+- **Jina returns 768-dimensional vectors for `jina-embeddings-v2-base-code`.**
+  Confirmed: `HTTP 200`, `dim=768`, `768/768` components non-zero. The dimension
+  matches the recorded run, so no volume re-migration is implied.
+- **SiliconFlow's rerank payload.** `{"model", "query", "documents",
+  "return_documents"}` → `{"id", "meta", "results": [{"index", "document",
+  "relevance_score"}]}`.
+
+**And one thing neither the plan nor the documentation predicted: the response
+does not come back in input order.** A three-document probe returned indices
+`[1, 0, 2]`. Jina's embedding response likewise identifies each vector by
+`index` rather than promising positional order. Both clients therefore place
+results by index, and that is not defensive coding — zipping arrival order
+against the input would attach the wrong embedding to a chunk, or score every
+passage with another passage's relevance. Either produces no error, no log line,
+and worse retrieval. This is what D-5 anticipated: neither API is
+OpenAI-compatible in the part that actually matters.
+
+### 2.2 SiliconFlow runs two platforms and they are not interchangeable
+
+Found the hard way, recorded so nobody else spends the time.
+
+| | `api.siliconflow.cn` | `api.siliconflow.com` |
+|---|---|---|
+| Rerankers offered | `BAAI/bge-reranker-v2-m3`, `Pro/BAAI/bge-reranker-v2-m3`, four Qwen3 variants | Qwen3 only — **no BGE** |
+| A `.com` key against it | `401 "Api key is invalid"` | works |
+| A `.cn` key against it | works | `401 "Token is invalid."` |
+
+The failure is misleading in both directions: a wrong-region key reads as a bad
+key, and a right-region key with the wrong model reads as `400 Model does not
+exist`. **This project needs `.cn`,** because the model the evaluation used is
+only there and § 2 does not permit substituting it. Using the `.com` platform
+would have meant deploying a Qwen reranker under BGE's measured numbers.
 
 ---
 
@@ -296,7 +324,7 @@ rather than defaulted, because a wrong value there is a re-index, not a slow que
    of the above, and **each was confirmed to fail when its defect is put back** —
    a config test that has never been seen failing is not evidence of anything.
 
-### PR 2 — `feat/managed-model-providers`
+### PR 2 — `feat/managed-model-providers` — **code complete, pipeline run pending**
 
 The capability behind D-1.
 
@@ -320,17 +348,35 @@ The capability behind D-1.
   to model the difference anyway.
 - Timeouts and retries appropriate to a hosted API, not to a cold local model.
 
-**Acceptance.**
+**Acceptance — 1 met, 2 partially met, 3 met.**
 
-1. Unit tests with a mocked transport cover: correct reordering, dimension
-   validation, auth header present, non-retryable 4xx surfacing, retryable 5xx
-   retrying. No live calls (§ 5.3).
-2. **A live local run, reported with real observed values:** index `psf/requests`
-   with `EMBEDDING_PROVIDER=jina_api`, then confirm from the database that the
-   vectors are 768-dimensional and non-zero — this is the § 2.1 check and it must
-   happen before any Railway volume is migrated. Confirm the reranker is
-   materially reordering results rather than passing through.
-3. `make check` green, and all four modes in § 5.1 still start.
+1. **Met.** 21 tests over a mocked transport (`httpx.MockTransport`) cover
+   index-based reordering, batching with order preserved across batch
+   boundaries, dimension mismatch, short response, duplicated index,
+   out-of-range index, auth header, non-retryable 401 surfacing on the first
+   attempt, retryable 429 backing off, provider selection, missing-key errors,
+   unknown-provider errors, and stub short-circuiting before the provider is
+   consulted. No live calls (§ 5.3), and the backoff sleep is captured rather
+   than waited out.
+
+2. **Partially met.** The production client classes were exercised against both
+   live APIs, and the observed values are recorded here:
+
+   | Check | Observed |
+   |---|---|
+   | `JinaApiEmbeddingClient`, 5 inputs over 3 batches | 5 vectors, all `dim=768`, all non-zero, all distinct |
+   | Cross-batch ordering | re-embedding input 2 alone lands `0.000000` from its batched slot; nearest other slot is `0.586` |
+   | `SiliconFlowRerankerClient`, 3 passages | scores returned in input order; argmax is the `HTTPBasicAuth` passage for a credentials question |
+
+   **What is not done: the full indexing pipeline has not been run through the
+   hosted provider.** 726 chunks at batch 32 is roughly 23 requests, which is
+   where rate limiting and the embed stage's Redis cache interaction would show
+   up, and neither has been exercised. Until that runs, this PR proves the
+   clients are correct, not that an index built through them is.
+
+3. **Met.** `make check` green: ruff, eslint, the drift check, mypy strict over
+   83 files, 310 passed / 5 skipped, 73 frontend tests. All four modes in § 5.1
+   still resolve, and `sidecar` remains the default everywhere.
 
 ### PR 3 — `feat/auth-gate`
 
