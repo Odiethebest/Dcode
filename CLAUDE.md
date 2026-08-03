@@ -99,10 +99,16 @@ that stay true no matter which PR is in flight.
 7. **`docker-compose.prod.yml` is fixed, not deleted.** `Final_Report.md` lists it
    as delivered. `Deploy.md` §5.6.
 
-The pre-deployment state is frozen at tag `v1.0-submission` (`a4612b8`). Two
-Railway constraints are load-bearing and were verified on 2026-08-02: a volume
-attaches to exactly one service, and an HTTP request is cut after 5 minutes with
-no data (~15 minutes with heartbeats).
+**A gated deployment is live** (Railway, HTTPS, one shared account, the same
+three models the recorded run measured). The pre-deployment state is frozen at
+tag `v1.0-submission` (`a4612b8`).
+
+Four things failed on the first deploy and all four were wrong assumptions in
+the plan, not platform faults — `Deploy.md` §10.3 has them. The two worth
+carrying in your head, because they present as something else entirely: a volume
+mounted under `/tmp` fails the deployment **with no log output at all**, and
+`HOST=::` gives uvicorn an IPv6-only socket while the health check arrives over
+IPv4, so you get "never became healthy" beside a log showing a healthy server.
 
 ## 3. Where things are
 

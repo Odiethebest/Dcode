@@ -335,10 +335,18 @@ embedding and reranker configuration, and they must agree. `EMBEDDING_DIM` has
 no production default on purpose: the migration bakes it into the pgvector
 column, so a wrong value is a re-index rather than a slow query.
 
-The production stack is validated locally only — `dcode.odieyang.com` does **not**
-resolve publicly, so the external-demo exit criterion is still open. The plan for
-closing it, including the platform constraints that shape it, is
-[`Deploy.md`](Deploy.md).
+**A gated deployment is live** at [`frontend-production-55c4.up.railway.app`](https://frontend-production-55c4.up.railway.app) —
+Railway, HTTPS, one shared account, running the same three models the recorded
+evaluation measured. The landing page and `/methodology` are public; the
+workbench is not. Access is by request.
+
+The deployment indexes `psf/requests` at current `HEAD`, which is **not** the
+commit the H1 verdict was measured on — the verdict is a statement about the
+committed runs in [`results/`](results/), not about what the demo is serving.
+
+Service configuration, the variable sheet, and the four things that failed on
+the first attempt: [`Deploy.md`](Deploy.md) and
+[`infra/railway/`](infra/railway/).
 
 ---
 

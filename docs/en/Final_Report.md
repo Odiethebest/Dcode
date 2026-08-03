@@ -638,10 +638,24 @@ graph-sensitive H1 re-run; everything else is independent of it.
 
 ### Deployment
 
-- DNS for `dcode.odieyang.com` is unresolved; production Compose has only been
-  smoke-tested locally.
-- Decide whether production runs the model sidecars or depends on external model
-  services.
+- ~~DNS for `dcode.odieyang.com` is unresolved; production Compose has only been
+  smoke-tested locally.~~ **— closed 2026-08-03.** The stack is deployed and
+  reachable over HTTPS, gated by a single shared account, with a live index and
+  a query returning verified citations. It runs on Railway under a
+  platform-provided hostname rather than `dcode.odieyang.com`; a custom domain
+  is a DNS record away and is not what the criterion was about.
+  [`Deploy.md`](../../Deploy.md) records the four things that failed first.
+- ~~Decide whether production runs the model sidecars or depends on external
+  model services.~~ **— decided: external.** The deployment calls the same three
+  models the recorded run measured — Jina v2-base-code at 768 dimensions, BGE
+  reranker v2-m3, `gpt-4o-mini` — through hosted APIs rather than self-hosted
+  sidecars, so no figure on `/methodology` describes a configuration other than
+  the one serving it. `Deploy.md` §2.
+- **The deployed index is not the evaluated index.** Both are `psf/requests`, but
+  the recorded run is pinned to commit `414f0513`, and the deployment indexed
+  whatever `HEAD` was on 2026-08-03 — 773 chunks against the recorded 726. The
+  verdict remains a statement about the committed artifacts in `results/`, not
+  about whatever the demo happens to be serving.
 
 ## Known Limits
 
