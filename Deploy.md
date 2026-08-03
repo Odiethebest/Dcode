@@ -640,6 +640,75 @@ Before calling the deployment done:
 
 ---
 
+### 10.1 Seeing the auth gate locally
+
+The two checks above that need a human need the gate switched on first, and
+nothing switches it on by default. This is how, written down because otherwise
+the next person rediscovers it.
+
+**The login page itself needs none of this.** `/login` is a public route and
+renders whatever the gate is doing: `http://localhost:5173/login`. What that
+does *not* show you is the behaviour — the redirect, the refusal, the error —
+which is the part worth looking at.
+
+```bash
+# 1. Generate a hash. Interactive and unechoed; it takes no argument, so the
+#    password stays out of shell history and the process list.
+uv run --package dcode-api python -m dcode_api.hash_password
+
+# 2. Append to .env (gitignored). Use the hash from step 1.
+#    AUTH_ENABLED=true
+#    AUTH_USERNAME=reviewer
+#    AUTH_PASSWORD_HASH=pbkdf2_sha256.600000.<salt>.<hash>
+#    AUTH_SESSION_SECRET=<python3 -c 'import secrets; print(secrets.token_urlsafe(48))'>
+
+# 3. Recreate the API. No --build: the image already carries the code, and
+#    only the environment changed.
+docker compose up -d api
+```
+
+The Vite dev server does not need restarting. There is no build-time switch —
+the SPA asks `/api/v1/auth/me` at runtime and renders accordingly.
+
+**Then look at four things in a real browser:**
+
+| Do this | Expect |
+|---|---|
+| Open `/workbench` signed out | a brief `checking session…`, then a redirect to `/login` |
+| Submit a wrong password | `Incorrect username or password.` under the form, no navigation |
+| Submit the right password | lands on `/workbench`, workbench works |
+| Open `/` and `/methodology` | load normally, **no** sign-in |
+
+Rows one and three are the items § 10 records as unverified.
+
+**Why the cookie works here at all**, since it is the question that decides
+whether any of this can be tested locally: `apps/frontend` has no `.env`, so
+`VITE_API_BASE_URL` is undefined and `BASE_URL` is the empty string
+(`src/api/client.ts`). The SPA therefore calls **same-origin** `/api/v1/*` on
+port 5173 and `vite.config.ts` proxies `/api` to the gateway. No cross-origin
+request, so `allow_credentials=False` on the CORS middleware never comes into
+it. Point `VITE_API_BASE_URL` at `http://localhost:8000` and that stops being
+true — the browser would refuse to send the cookie and the CORS policy would
+refuse the credentialed request.
+
+**Three things that will otherwise waste your time:**
+
+- `AUTH_COOKIE_SECURE` defaults to true, and browsers treat `http://localhost`
+  as a trustworthy origin, so it should hold. If a successful sign-in bounces
+  straight back to `/login`, the cookie is not being stored — set
+  `AUTH_COOKIE_SECURE=false` and recreate the API.
+- **Do not hand-edit the hash back to `$` separators.** That is § 2.3, and its
+  symptom is a login that fails forever with nothing in the logs.
+- `make check` is unaffected. The root `conftest.py` pins `AUTH_ENABLED=false`
+  for tests, which exists precisely because a locally-enabled gate once failed
+  four unrelated tests with no hint of why (F-20).
+
+**Afterwards**, delete the block from `.env` and `docker compose up -d api`.
+`curl -s localhost:8000/api/v1/auth/me` returning `"auth_required":false`
+confirms you are back.
+
+---
+
 ## 11. Open Questions
 
 Carried here rather than answered by assumption.
