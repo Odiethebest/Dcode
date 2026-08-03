@@ -129,6 +129,7 @@ def create_embedding_client(
     endpoint: str = "",
     batch_size: int = _DEFAULT_BATCH_SIZE,
     max_retries: int = _DEFAULT_MAX_RETRIES,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
 ) -> EmbeddingClient:
     """Build the embedding client for the current environment."""
     if model == "stub":
@@ -146,6 +147,7 @@ def create_embedding_client(
         dim=dim,
         batch_size=batch_size,
         max_retries=max_retries,
+        timeout_seconds=timeout_seconds,
     )
 
 

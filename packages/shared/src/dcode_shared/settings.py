@@ -46,7 +46,15 @@ class SharedSettings(BaseSettings):
     embedding_dim: int = 1024
     embedding_endpoint: str = ""
     embedding_batch_size: int = 4
+    # The defaults below are sized for a cold self-hosted sidecar: a CPU Jina
+    # model can take minutes to load, and the retries exist to ride that out.
+    # Their product is the worst case, and it is long — 12 attempts against a
+    # 300s read timeout can hold one batch for about an hour while the worker
+    # (prefetch_count=1) stalls every other queued repository behind it. A
+    # hosted embedding API fails in seconds and should be configured with much
+    # smaller values; both are env-tunable so neither path pays the other's cost.
     embedding_max_retries: int = 12
+    embedding_timeout_seconds: float = 300.0
     # Weighted RRF for hybrid fusion. Dense gets higher weight because
     # equal 1:1 RRF lets sparse keyword noise dilute semantic ranking
     # (observed: B2 dense nDCG > B3 hybrid under equal weights).

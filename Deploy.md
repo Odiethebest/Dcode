@@ -25,8 +25,9 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: planning. Nothing in § 6 has been implemented.** The pre-deployment
-state is frozen at tag `v1.0-submission` (`a4612b8`).
+**Status: PR 1 of 5 landed; PR 2–5 not started.** The pre-deployment state is
+frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere yet,
+and no live model API has been called from this codebase.
 
 ---
 
@@ -254,21 +255,46 @@ revertable, and must pass `make check` and `make frontend-build` on its own.
 it is done when its criteria are demonstrated, and honestly reported when they
 are not.
 
-### PR 1 — `fix/prod-compose-model-env`
+### PR 1 — `fix/prod-compose-model-env` — **done**
 
 Pure defect repair. Smallest, lands first, useful even if deployment never
 happens.
 
-| Item | Detail |
-|---|---|
-| F-02 | Add `EMBEDDING_MODEL`, `EMBEDDING_DIM`, `EMBEDDING_ENDPOINT`, `RERANKER_MODEL`, `RERANKER_ENDPOINT` and the retry/limit knobs to the `api` service in `docker-compose.prod.yml`. Today it has none (`:47-54`), so `make prod-migrate` builds a `vector` column at the code default of 1024 (`packages/shared/src/dcode_shared/settings.py:46`, read by `infra/migrations/versions/001_initial_schema.py:91`) regardless of `.env.production`, and the API's dense path silently runs on `stub`. |
-| F-11 | Reconcile the two documented Compose invocations: `README.md:324` uses `-f docker-compose.prod.yml` alone; `.env.production.example:4-5` documents overlaying it on `docker-compose.yml`. The overlay form republishes Postgres, Redis and the RabbitMQ management UI to the host. Pick the standalone form and correct the other. |
-| F-12 | Remove the dead `RERANKER_ENDPOINT=http://localhost:9999` default from `docker-compose.prod.yml:110` and `.env.production.example:37`. |
-| F-13 | Reduce embedding retry aggression for the API path: `max_retries=12` against a 300 s timeout (`embedding.py:19-20`) can occupy a single batch of four chunks for roughly an hour, and the worker is `prefetch_count=1`, so the whole indexing queue stalls behind it. |
+| Item | Detail | Outcome |
+|---|---|---|
+| F-02 | Give every service the retrieval settings it reads. See the correction below — this was wider than "the `api` service". | done |
+| F-11 | Reconcile the two documented Compose invocations: `README.md:324` used `-f docker-compose.prod.yml` alone; `.env.production.example:4-5` documented overlaying it on `docker-compose.yml`, which republishes Postgres, Redis and the RabbitMQ management UI to the host. | done — standalone form, and both files now say so |
+| F-12 | Remove the dead `RERANKER_ENDPOINT=http://localhost:9999` default. | done — empty default, which fails loudly for a real model and is ignored by a stub |
+| F-13 | `max_retries=12` against a hardcoded 300 s timeout (`embedding.py:19-20`) can occupy one batch of four chunks for roughly an hour while `prefetch_count=1` stalls the queue behind it. | **partially done** — the timeout is now env-tunable (`EMBEDDING_TIMEOUT_SECONDS`) instead of hardcoded; the *values* are unchanged, because the defaults are correct for a cold CPU sidecar and the hosted-API path they are wrong for does not exist until PR 2. PR 2 sets them. |
 
-**Acceptance.** `docker compose --env-file <file> -f docker-compose.prod.yml config`
-shows a complete and consistent embedding configuration on `api`, `worker` and
-`agent`. `make check` green.
+**Correction: F-02 was under-described in the original plan.** It was written as
+"the `api` service has no embedding configuration". Reading what each service
+actually reads showed all three were short:
+
+| Service | Was missing |
+|---|---|
+| `api` | every retrieval setting — all twelve |
+| `worker` | `EMBEDDING_ENDPOINT`, `EMBEDDING_BATCH_SIZE`, `EMBEDDING_MAX_RETRIES` — so it had a model and a dimension but no way to reach a service |
+| `agent` | `RERANKER_MODEL`, `RERANKER_MAX_RETRIES`, `EMBEDDING_DIM`, and the synthesis knobs. It had `RERANKER_ENDPOINT` alone, which selects nothing: `create_reranker_client` returns `None` for a stub model whatever the endpoint says (`packages/shared/src/dcode_shared/reranker.py:119-120`) |
+
+`EMBEDDING_DIM` also turned out to matter more widely than the migration.
+`dcode_shared.db.models:128` binds the `chunks.embedding` column type to it at
+**import time**, so every service that touches the ORM needs it correct, not just
+the one that runs Alembic. It is now required in production (`${EMBEDDING_DIM:?…}`)
+rather than defaulted, because a wrong value there is a re-index, not a slow query.
+
+**Acceptance — met.**
+
+1. `docker compose --env-file .env.production.example -f docker-compose.prod.yml config`
+   resolves 12 retrieval variables on `api`, 6 on `worker`, 9 on `agent`, all
+   mutually consistent. Observed.
+2. Omitting `EMBEDDING_DIM` aborts the config with the reason attached rather
+   than silently defaulting. Observed.
+3. `make check` green: ruff, eslint, the eval-artifact drift check, mypy strict
+   over 83 source files, 289 passed / 5 skipped in pytest, 73 frontend tests.
+4. Three new tests in `packages/shared/tests/test_config_hardening.py` pin all
+   of the above, and **each was confirmed to fail when its defect is put back** —
+   a config test that has never been seen failing is not evidence of anything.
 
 ### PR 2 — `feat/managed-model-providers`
 
@@ -380,7 +406,7 @@ as leads to verify when the PR touches them, not as established fact.
 | # | Finding | Where | Severity | PR | Verified |
 |---|---|---|---|---|---|
 | F-01 | No authentication of any kind on `/api/v1/*`; no user or tenant concept, so any caller can read any indexed repo by `repo_id` | `apps/api/src/dcode_api/main.py:45-47` | blocker | 3 | audit |
-| F-02 | The `api` service in the production Compose file has no embedding or reranker configuration | `docker-compose.prod.yml:47-54` | blocker | 1 | **direct** |
+| F-02 | ~~The `api` service in the production Compose file has no embedding or reranker configuration~~ **— fixed in PR 1, and it was wider than this row said: `worker` and `agent` were short too. See § 6 PR 1.** | `docker-compose.prod.yml` | blocker | 1 | **direct** |
 | F-03 | No rate limiting, no request-size limit, no quota. `QueryRequest.query` has `min_length` but no `max_length` | `packages/shared/src/dcode_shared/schemas.py:132` | blocker | 3 | audit |
 | F-04 | `INTERNAL_API_KEY` defaults to a literal published in this repository, with no startup guard outside Compose's `:?` operator — and Railway sets variables per service, so that operator does not protect the deployment | `packages/shared/src/dcode_shared/settings.py:33` | high | 5 | audit |
 | F-05 | `/docs`, `/redoc` and `/openapi.json` are publicly served and advertise the `/internal/*` surface | `apps/api/src/dcode_api/main.py:31-35` | high | 3 | audit |
@@ -389,9 +415,9 @@ as leads to verify when the PR touches them, not as established fact.
 | F-08 | Cloned workdirs are never cleaned up, for any repository, ever. On a fixed Railway volume this is unbounded growth | `apps/worker/src/dcode_worker/stages/clone.py:17-22` | high | 5 | audit |
 | F-09 | No repository list endpoint; the switcher reads `localStorage` only and there is no default repository | `apps/frontend/src/lib/recentRepos.ts:8` | high | 4 | **direct** |
 | F-10 | `/healthz` returns `ok` unconditionally — it reports healthy with every dependency down. No readiness probe exists | `apps/api/src/dcode_api/main.py:51-54` | medium | 5 | audit |
-| F-11 | The two documented production Compose invocations disagree; one of them republishes Postgres, Redis and the RabbitMQ UI | `README.md:324` vs `.env.production.example:4-5` | medium | 1 | **direct** |
-| F-12 | `RERANKER_ENDPOINT` defaults to a dead loopback address in the production template | `docker-compose.prod.yml:110`, `.env.production.example:37` | medium | 1 | **direct** |
-| F-13 | Embedding retries are 12 attempts against a 300 s timeout; with `prefetch_count=1` one bad batch stalls the entire indexing queue | `packages/shared/src/dcode_shared/embedding.py:19-20` | medium | 1 | audit |
+| F-11 | ~~The two documented production Compose invocations disagree; one of them republishes Postgres, Redis and the RabbitMQ UI~~ **— fixed in PR 1.** | `README.md`, `.env.production.example` | medium | 1 | **direct** |
+| F-12 | ~~`RERANKER_ENDPOINT` defaults to a dead loopback address in the production template~~ **— fixed in PR 1, pinned by a test.** | `docker-compose.prod.yml`, `.env.production.example` | medium | 1 | **direct** |
+| F-13 | Embedding retries are 12 attempts against a 300 s timeout; with `prefetch_count=1` one bad batch stalls the entire indexing queue. **Knob added in PR 1 (`EMBEDDING_TIMEOUT_SECONDS`); the values are set in PR 2, where the path that needs them exists.** | `packages/shared/src/dcode_shared/embedding.py:19-20` | medium | 1 → 2 | audit |
 | F-14 | `git clone` receives the repository URL with no `--` separator, so a URL beginning with `-` is parsed as an option. Gateway validation is the only defence; the worker has none | `apps/worker/src/dcode_worker/stages/clone.py:22` | medium | 5 | audit |
 | F-15 | The `grep` tool runs `rg` with no timeout and buffers all output in memory; the pure-Python fallback compiles a user-supplied regex with no timeout | `apps/agent/src/dcode_agent/tools/grep.py:44-58`, `:79-101` | medium | 5 | audit |
 | F-16 | nginx serves the bundle uncompressed — gzip is commented out in the base image and not enabled in the site config. Main chunk 752.53 kB / 226.74 kB gzipped | `apps/frontend/nginx.conf` | low | 4 | **direct** |
