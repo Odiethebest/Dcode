@@ -319,4 +319,17 @@ exactly.
   that would have been p-hacking. Do that again.
 - **Be honest about what you could not verify** — no screenshots, no end-to-end
   from the shell — and say explicitly what a human needs to eyeball.
+- **`make check` green and CI green are two different claims. Check CI after
+  every merge, and say which one you are reporting.** This was learned the
+  expensive way: main's CI was red for five merged PRs while every report said
+  "make check green". Both statements were true. The local run passes because a
+  developer's `.env` supplies a real `INTERNAL_API_KEY` and a Postgres is
+  running; CI has neither, which is the entire point of CI. A test that quietly
+  depends on the machine it runs on is invisible locally by construction, so
+  local success is evidence about your laptop and not about the change.
+
+  `gh run list --branch main --limit 3` after a merge. When something only fails
+  in CI, reproduce it before fixing it — moving `.env` aside and pointing
+  `DATABASE_URL` at a dead port is the closest local approximation, and it turns
+  a guess into a measurement.
 - **Never fabricate data or fake success.** Verified means verified.
