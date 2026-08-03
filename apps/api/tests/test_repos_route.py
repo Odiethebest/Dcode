@@ -1,7 +1,8 @@
 """POST /repos contract tests — URL validation and idempotency."""
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -213,3 +214,112 @@ def test_rejects_a_non_git_url() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "INVALID_REPO_URL"
+
+
+class _FakeScalars:
+    def __init__(self, rows: list[object]) -> None:
+        self._rows = rows
+
+    def all(self) -> list[object]:
+        return self._rows
+
+
+class _FakeResult:
+    def __init__(self, rows: list[object]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> _FakeScalars:
+        return _FakeScalars(self._rows)
+
+
+class _ListOnlyDb:
+    """Answers the one SELECT the list route makes, with a fixed page.
+
+    The route applies `.limit(_REPO_LIST_LIMIT + 1)` itself, so the fake honours
+    it rather than handing back everything — otherwise the truncation test would
+    be asserting against a query that never ran.
+    """
+
+    def __init__(self, rows: list[object]) -> None:
+        from dcode_api.routes.repos import _REPO_LIST_LIMIT
+
+        self._rows = rows[: _REPO_LIST_LIMIT + 1]
+
+    async def execute(self, _statement: object) -> _FakeResult:
+        return _FakeResult(self._rows)
+
+
+def _repo_row(repo_id: str, url: str, status: str) -> object:
+    from types import SimpleNamespace
+    from uuid import UUID
+
+    return SimpleNamespace(id=UUID(repo_id), url=url, status=status)
+
+
+@contextmanager
+def _repo_list_client(rows: list[object]) -> Iterator[TestClient]:
+    from dcode_api.deps import get_db
+    from dcode_api.main import app
+
+    app.dependency_overrides[get_db] = lambda: _ListOnlyDb(rows)
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+# --- GET /api/v1/repos (F-09) --------------------------------------------
+
+
+def test_repo_list_returns_newest_first_and_reports_no_truncation() -> None:
+    """The endpoint that stops a fresh browser opening an empty workbench."""
+    from dcode_shared.schemas import RepoListResponse
+
+    rows = [
+        _repo_row("11111111-1111-1111-1111-111111111111", "https://github.com/a/one.git", "ready"),
+        _repo_row("22222222-2222-2222-2222-222222222222", "https://github.com/b/two.git", "queued"),
+    ]
+    with _repo_list_client(rows) as client:
+        body = RepoListResponse.model_validate(client.get("/api/v1/repos").json())
+
+    assert [str(repo.repo_id) for repo in body.repos] == [
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+    ]
+    assert body.truncated is False
+
+
+def test_repo_list_caps_the_page_and_says_so() -> None:
+    """Truncation is reported, not inferred from a full page.
+
+    A caller cannot tell a page that happens to be full from one that was cut,
+    and quietly showing a subset is the kind of unstated claim this project
+    avoids everywhere else.
+    """
+    from dcode_api.routes.repos import _REPO_LIST_LIMIT
+    from dcode_shared.schemas import RepoListResponse
+
+    rows = [
+        _repo_row(f"{index:08d}-0000-0000-0000-000000000000", f"https://x/{index}.git", "ready")
+        for index in range(_REPO_LIST_LIMIT + 5)
+    ]
+    with _repo_list_client(rows) as client:
+        body = RepoListResponse.model_validate(client.get("/api/v1/repos").json())
+
+    assert len(body.repos) == _REPO_LIST_LIMIT
+    assert body.truncated is True
+
+
+def test_repo_list_does_not_offer_a_row_whose_status_is_unreadable() -> None:
+    """An unrecognised status becomes `failed`, not `ready`.
+
+    Offering a repository as selectable when this code cannot tell what state
+    it is in would put a reader in a workbench that answers nothing.
+    """
+    from dcode_shared.schemas import RepoListResponse
+
+    rows = [_repo_row("33333333-3333-3333-3333-333333333333", "https://x/y.git", "who-knows")]
+    with _repo_list_client(rows) as client:
+        body = RepoListResponse.model_validate(client.get("/api/v1/repos").json())
+
+    assert body.repos[0].status == "failed"

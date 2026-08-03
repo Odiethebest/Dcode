@@ -109,6 +109,29 @@ class RepoStatusResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class RepoSummary(BaseModel):
+    """One row of GET /api/v1/repos."""
+
+    repo_id: UUID
+    url: str
+    status: RepoStatus
+
+
+class RepoListResponse(BaseModel):
+    """GET /api/v1/repos response body.
+
+    Exists because the workbench had no way to discover what is indexed: the
+    switcher read `localStorage` only, so a reader on a new device saw an empty
+    product and had to index a repository themselves before they could ask
+    anything. `truncated` is explicit rather than implied by a full page —
+    silently showing a subset of what exists is the kind of quiet claim this
+    project avoids elsewhere.
+    """
+
+    repos: list[RepoSummary] = Field(default_factory=list)
+    truncated: bool = False
+
+
 # ===========================================================================
 # Public query API (request body; SSE events live in events.py)
 # ===========================================================================

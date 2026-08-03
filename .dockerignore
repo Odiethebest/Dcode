@@ -1,0 +1,57 @@
+# Build-context exclusions for the repo-root images (api, worker, agent,
+# railway-agent-worker, the two model sidecars).
+#
+# Every one of those Dockerfiles COPYs a handful of named paths, so anything
+# here was being sent to the daemon and then ignored. The root context measured
+# ~391 MB, most of it node_modules and .git.
+#
+# Nothing here is COPYed by any Dockerfile — check before adding a path that
+# is, since the failure would be a missing file at build time rather than a
+# slow build.
+
+.git
+.github
+.gitignore
+
+# Environments and secrets. .env is gitignored, but a build context is not a
+# git operation: without this line it would be sent to the daemon and could
+# land in an image layer.
+.env
+.env.*
+!.env.example
+!.env.production.example
+.venv
+venv/
+
+# Caches and build output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# The frontend is built from its own context (apps/frontend); the backend
+# images have no use for it.
+apps/frontend/
+
+# Documentation, prototypes, and 6.6 MB of recorded evaluation runs. The
+# services read none of them at runtime — the figures are baked into the
+# frontend bundle at build time by scripts/sync_eval_artifacts.py.
+docs/
+design/
+results/
+*.md
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

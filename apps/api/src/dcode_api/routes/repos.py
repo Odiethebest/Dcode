@@ -12,8 +12,10 @@ from dcode_shared.db.models import Repo
 from dcode_shared.schemas import (
     RepoCreateRequest,
     RepoCreateResponse,
+    RepoListResponse,
     RepoStatus,
     RepoStatusResponse,
+    RepoSummary,
     StagesStatus,
     StageState,
 )
@@ -151,6 +153,35 @@ async def _find_reusable_repo(db: AsyncSession, url: str) -> Repo | None:
     )
 
 
+# One page, capped. There is no pagination API and inventing one for a demo
+# with a handful of repositories would be scope the product does not have —
+# but returning "everything" from a table that only grows is how a list
+# endpoint becomes a slow query later, so the cap is explicit and reported.
+_REPO_LIST_LIMIT = 50
+
+
+@router.get("/repos", response_model=RepoListResponse)
+async def list_repos(db: AsyncSession = Depends(get_db)) -> RepoListResponse:
+    """List indexed repositories, most recently created first.
+
+    Reads Postgres only. Deliberately no Redis overlay: this answers "what can
+    I select?", and per-stage live progress belongs to the status route for the
+    one repository actually being watched.
+    """
+    result = await db.execute(
+        select(Repo).order_by(Repo.created_at.desc()).limit(_REPO_LIST_LIMIT + 1)
+    )
+    rows = list(result.scalars().all())
+    truncated = len(rows) > _REPO_LIST_LIMIT
+    return RepoListResponse(
+        repos=[
+            RepoSummary(repo_id=repo.id, url=repo.url, status=_coerce_status(repo.status))
+            for repo in rows[:_REPO_LIST_LIMIT]
+        ],
+        truncated=truncated,
+    )
+
+
 @router.get(
     "/repos/{repo_id}/status",
     response_model=RepoStatusResponse,
@@ -240,6 +271,19 @@ async def _read_job_state(redis: Redis, repo_id: UUID) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _coerce_status(db_status: str) -> RepoStatus:
+    """Row status as an enum, falling back to `failed` for an unknown value.
+
+    `failed` rather than `ready`: a status this code does not recognise is not
+    something to present as selectable. The list would otherwise offer a
+    repository that cannot answer anything.
+    """
+    try:
+        return RepoStatus(db_status)
+    except ValueError:
+        return RepoStatus.failed
 
 
 def _status_from(db_status: str, live_state: dict[str, object]) -> RepoStatus:

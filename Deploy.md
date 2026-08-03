@@ -25,7 +25,7 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1, PR 2 and PR 3 landed. PR 4–5 not started.** The pre-deployment state
+**Status: PR 1–4 landed. PR 5 not started, and nothing is deployed yet.** The pre-deployment state
 is frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere
 yet. Both hosted model APIs have been exercised end to end from a running local
 stack — see § 2.1 and § 6 PR 2 for the observed values — but **no index has been
@@ -449,7 +449,7 @@ before dependencies resolve. A body that is valid JSON with wrong fields returns
 401. The disclosure is "this endpoint takes JSON", against an endpoint whose
 path the caller already knows, with the OpenAPI schema off.
 
-### PR 4 — `feat/railway-deploy`
+### PR 4 — `feat/railway-deploy` — **built and locally verified; not deployed**
 
 The only Railway-specific PR. Mostly additive files.
 
@@ -473,10 +473,28 @@ The only Railway-specific PR. Mostly additive files.
   (`apps/frontend/src/lib/recentRepos.ts:8`) and there is no default repository,
   so a first-time visitor on a new device sees an empty workbench.
 
-**Acceptance.** A live deployment reachable over HTTPS; login works; one indexed
-repository is selectable; a query streams to completion with verified citations;
-clicking a citation opens real indexed source. Every one of those is confirmed by
-a human in a browser and reported with what was actually seen.
+**Acceptance — the code is built and verified locally; the deployment is not
+done.** Everything below was observed; the row that needs Railway needs Railway.
+
+| Verified locally | How |
+|---|---|
+| The nginx template renders correctly under both shapes | Built the image and read `/etc/nginx/conf.d/default.conf` inside it. Defaults gave `listen 80` / `resolver 127.0.0.11` / `http://api:8000`; overriding the three variables gave `listen 8080` / `[fd12::10]` / `api.railway.internal`. **`$api_upstream` and `$request_uri` survived** — `NGINX_ENVSUBST_FILTER` is what stops envsubst eating nginx's own variables, and without it the config would be valid and quietly broken |
+| gzip | 760,088 → 269,497 bytes on the built main chunk |
+| Cache headers | one `Cache-Control` on hashed assets (the first attempt emitted two), `no-store` on `index.html` |
+| SPA fallback and `/healthz` | 200 from the running container |
+| `GET /api/v1/repos` | live against the local database: 8 repositories, `truncated: false` |
+| Heartbeats and the request budget | 5 tests, including that `close()` still ends a stream while the heartbeat loop runs, and that an overrun emits `TIMEOUT` and **no** `final_answer` |
+| The local stack is unchanged | `docker compose up -d --build api` still healthy; `make check` green |
+
+**Not done: no Railway deployment exists.** The runbook is § 10.2, written from
+the code rather than from a completed deploy — read it as intended sequence and
+correct it against what happens. These are unverified until then: private
+networking over IPv6, the platform's request limits against real heartbeats, the
+pgvector template, and the first hosted-provider index (§ 6 PR 2).
+
+The combined `agent-worker` container has **not been run**, locally or
+otherwise. Its entrypoint is Railway-only and the developer stack does not use
+it, so nothing here exercises it.
 
 ### PR 5 — `fix/audit-followups`
 
@@ -507,15 +525,16 @@ as leads to verify when the PR touches them, not as established fact.
 | F-06 | SSRF: repository URL validation rejects literal private IPs but has no host allowlist and no resolution check, so a hostname resolving to an internal address passes | `apps/api/src/dcode_api/routes/repos.py:203-224` | high | 5 | audit |
 | F-07 | The agent tool cache key omits `index_revision`, so re-indexing a repository does not invalidate cached tool results for up to 24 h | `apps/agent/src/dcode_agent/graph.py:119` | high | 5 | audit |
 | F-08 | Cloned workdirs are never cleaned up, for any repository, ever. On a fixed Railway volume this is unbounded growth | `apps/worker/src/dcode_worker/stages/clone.py:17-22` | high | 5 | audit |
-| F-09 | No repository list endpoint; the switcher reads `localStorage` only and there is no default repository | `apps/frontend/src/lib/recentRepos.ts:8` | high | 4 | **direct** |
+| F-09 | ~~No repository list endpoint~~ **— fixed in PR 4.** `GET /api/v1/repos`, merged behind the localStorage recents so a reader on a new device sees what is indexed. Verified live against the local database: 8 repositories returned | `apps/api/src/dcode_api/routes/repos.py` | high | 4 | **direct** |
 | F-10 | `/healthz` returns `ok` unconditionally — it reports healthy with every dependency down. No readiness probe exists | `apps/api/src/dcode_api/main.py:51-54` | medium | 5 | audit |
 | F-11 | ~~The two documented production Compose invocations disagree; one of them republishes Postgres, Redis and the RabbitMQ UI~~ **— fixed in PR 1.** | `README.md`, `.env.production.example` | medium | 1 | **direct** |
 | F-12 | ~~`RERANKER_ENDPOINT` defaults to a dead loopback address in the production template~~ **— fixed in PR 1, pinned by a test.** | `docker-compose.prod.yml`, `.env.production.example` | medium | 1 | **direct** |
 | F-13 | Embedding retries are 12 attempts against a 300 s timeout; with `prefetch_count=1` one bad batch stalls the entire indexing queue. **Knob added in PR 1 (`EMBEDDING_TIMEOUT_SECONDS`); the values are set in PR 2, where the path that needs them exists.** | `packages/shared/src/dcode_shared/embedding.py:19-20` | medium | 1 → 2 | audit |
 | F-14 | `git clone` receives the repository URL with no `--` separator, so a URL beginning with `-` is parsed as an option. Gateway validation is the only defence; the worker has none | `apps/worker/src/dcode_worker/stages/clone.py:22` | medium | 5 | audit |
 | F-15 | The `grep` tool runs `rg` with no timeout and buffers all output in memory; the pure-Python fallback compiles a user-supplied regex with no timeout | `apps/agent/src/dcode_agent/tools/grep.py:44-58`, `:79-101` | medium | 5 | audit |
-| F-16 | nginx serves the bundle uncompressed — gzip is commented out in the base image and not enabled in the site config. Main chunk 752.53 kB / 226.74 kB gzipped | `apps/frontend/nginx.conf` | low | 4 | **direct** |
-| F-17 | No `.dockerignore` anywhere; the frontend build context ships 227 MB of `node_modules` | repository root | low | 4 | **direct** |
+| F-16 | ~~nginx serves the bundle uncompressed~~ **— fixed in PR 4**, measured on the built image at 760,088 → 269,497 bytes. Also fixed a duplicate `Cache-Control` header the first attempt introduced | `apps/frontend/nginx.conf.template` | low | 4 | **direct** |
+| F-17 | ~~No `.dockerignore` anywhere~~ **— fixed in PR 4**, one at the root and one for `apps/frontend` | repository root | low | 4 | **direct** |
+| F-21 | ~~A copy-pasteable setup block in § 10.1 contained placeholders, was pasted verbatim, and the placeholder became the credential — the API then refused to boot~~ **— fixed in PR 4** by rewriting the block to substitute its own values. The refusal was correct; the instructions were the defect | `Deploy.md` §10.1 | low | 4 | **direct** |
 | F-19 | ~~A `$` in an env-file value is silently eaten by Compose interpolation, so a `$`-separated password hash reached the container as 22 of ~100 characters and every login failed while the service reported healthy~~ **— fixed in PR 3** (format changed, and the hash is now parsed at startup). Applies to any hand-picked secret containing `$` — see § 2.3 | `apps/api/src/dcode_api/auth.py` | high | 3 | **direct** |
 | F-20 | ~~The test suite reads the developer's `.env`, so `make check` is not hermetic — enabling the gate locally failed four unrelated tests with no hint of the cause~~ **— fixed in PR 3** by a root `conftest.py` pinning the settings whose defaults tests assert | `conftest.py` | medium | 3 | **direct** |
 | F-18 | Model sidecars download weights from Hugging Face at runtime with no cache volume | `infra/docker/embedding.Dockerfile`, `infra/docker/reranker.Dockerfile` | low | — | **direct** |
@@ -651,21 +670,46 @@ renders whatever the gate is doing: `http://localhost:5173/login`. What that
 does *not* show you is the behaviour — the redirect, the refusal, the error —
 which is the part worth looking at.
 
+**One command, and it does the substitution itself.** An earlier version of
+this section was a `cat >> .env` block with `<paste from step 1>` inside it.
+It got pasted verbatim, the placeholder became the value, and the API refused
+to boot — correctly, and with the right message, but the walkthrough should not
+be the thing that breaks the stack. A copy-pasteable block containing
+placeholders is a trap; this one has none.
+
 ```bash
-# 1. Generate a hash. Interactive and unechoed; it takes no argument, so the
-#    password stays out of shell history and the process list.
-uv run --package dcode-api python -m dcode_api.hash_password
+# Prompts for the password (unechoed), generates the secret, appends nothing
+# you have to edit afterwards. Run from the repository root.
+python3 - <<'SETUP'
+import getpass, pathlib, secrets, subprocess, sys
+password = getpass.getpass("Gate password: ")
+if not password or password != getpass.getpass("Confirm:        "):
+    sys.exit("passwords empty or do not match")
+digest = subprocess.run(
+    [sys.executable, "-c",
+     "import sys; sys.path[:0]=['apps/api/src','packages/shared/src'];"
+     "from dcode_api.auth import hash_password; print(hash_password(sys.argv[1]))",
+     password],
+    capture_output=True, text=True, check=True,
+).stdout.strip()
+pathlib.Path(".env").open("a").write(
+    "\n# --- local auth-gate check; delete this block afterwards ---\n"
+    "AUTH_ENABLED=true\n"
+    "AUTH_USERNAME=reviewer\n"
+    f"AUTH_PASSWORD_HASH={digest}\n"
+    f"AUTH_SESSION_SECRET={secrets.token_urlsafe(48)}\n"
+)
+print("appended to .env")
+SETUP
 
-# 2. Append to .env (gitignored). Use the hash from step 1.
-#    AUTH_ENABLED=true
-#    AUTH_USERNAME=reviewer
-#    AUTH_PASSWORD_HASH=pbkdf2_sha256.600000.<salt>.<hash>
-#    AUTH_SESSION_SECRET=<python3 -c 'import secrets; print(secrets.token_urlsafe(48))'>
-
-# 3. Recreate the API. No --build: the image already carries the code, and
-#    only the environment changed.
+# Recreate the API. No --build: the image already carries the code and only
+# the environment changed.
 docker compose up -d api
 ```
+
+If the API exits on boot with `AUTH_PASSWORD_HASH is not a valid hash`, the
+value in `.env` is not one — the fail-closed check in § 6 PR 3 doing its job.
+Fix the line rather than the check.
 
 The Vite dev server does not need restarting. There is no build-time switch —
 the SPA asks `/api/v1/auth/me` at runtime and renders accordingly.
@@ -706,6 +750,51 @@ refuse the credentialed request.
 **Afterwards**, delete the block from `.env` and `docker compose up -d api`.
 `curl -s localhost:8000/api/v1/auth/me` returning `"auth_required":false`
 confirms you are back.
+
+---
+
+### 10.2 Railway runbook
+
+Written from the code, not from a completed deployment — **nothing has been
+deployed yet** (§ 6 PR 4). Treat it as the intended sequence, and correct it
+against what actually happens.
+
+**Services.** Six. Only `frontend` gets a public domain.
+
+| Service | Image | Notes |
+|---|---|---|
+| `frontend` | `infra/docker/frontend.Dockerfile`, context `apps/frontend` | Public. Set `API_UPSTREAM=http://api.railway.internal:8000` and `DNS_RESOLVER` to Railway's internal resolver. `PORT` is injected. |
+| `api` | `infra/docker/api.Dockerfile`, context repo root | Private. Set `HOST=::` — Railway's private network is IPv6 and a service bound to `0.0.0.0` is reachable by nothing there. |
+| `agent-worker` | `infra/docker/railway-agent-worker.Dockerfile`, context repo root | Private. **Owns the only volume**, mounted at `WORKDIR_BASE`. Set `HOST=::`. |
+| Postgres | Railway **pgvector** template | Not the plain Postgres template — R-3. |
+| Redis | Railway template | |
+| RabbitMQ | Railway template | |
+
+**Order.** Postgres/Redis/RabbitMQ first, then `api`, then run the migration
+against it, then `agent-worker`, then `frontend`. The migration reads
+`EMBEDDING_DIM` from the `api` service (§ 6 PR 1), so that variable has to be
+right *before* it runs — afterwards the column dimension is fixed and changing
+it means a new volume.
+
+**Variables that must agree across `api`, `agent-worker` and each other**:
+`EMBEDDING_*`, `RERANKER_*`, `INTERNAL_API_KEY`, `EMBEDDING_DIM`. § 5.4 explains
+what a mismatch looks like, which is nothing — no error, just worse retrieval.
+
+**Values with a `$` in them will be corrupted** if they pass through an env
+file (§ 2.3). Railway's dashboard is not an env file, so pasting there is safe;
+a `railway.json` or a bulk import is not.
+
+**Set on `api`:** `AUTH_ENABLED=true`, `AUTH_USERNAME`, `AUTH_PASSWORD_HASH`,
+`AUTH_SESSION_SECRET`, `AUTH_COOKIE_SECURE=true`, `DOCS_ENABLED=false`.
+Railway serves HTTPS, so the Secure cookie is correct there.
+
+**Then walk § 10's checklist.** The rows that need a browser need a browser.
+
+**Two things this project has not solved and will meet here.** The first index
+runs through the hosted embedding API for real — roughly 23 requests for
+`psf/requests` — and that path has never been exercised (§ 6 PR 2). The second
+is that cloned workdirs are never cleaned up (F-08), so the volume grows with
+every distinct repository anyone indexes, forever.
 
 ---
 

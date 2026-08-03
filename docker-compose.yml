@@ -203,6 +203,11 @@ services:
       RERANKER_MAX_RETRIES: ${RERANKER_MAX_RETRIES:-3}
       RERANKER_PROVIDER: ${RERANKER_PROVIDER:-sidecar}
       RERANKER_API_KEY: ${RERANKER_API_KEY:-}
+      # Deploy.md R-2. A budget that expires inside the platform's request
+      # limit, and comment frames so a slow answer is not read as an idle
+      # connection.
+      AGENT_REQUEST_BUDGET_SECONDS: ${AGENT_REQUEST_BUDGET_SECONDS:-240}
+      SSE_HEARTBEAT_SECONDS: ${SSE_HEARTBEAT_SECONDS:-20}
       RETRIEVAL_BASE_URL: http://api:8000
       WORKDIR_BASE: /tmp/dcode-workdirs
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in .env}

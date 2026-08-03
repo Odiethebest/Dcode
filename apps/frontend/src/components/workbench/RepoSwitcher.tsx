@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { getRepoStatus, submitRepo } from '@/api/client';
+import { getRepoStatus, listRepos, submitRepo } from '@/api/client';
 import type { RepoStatusResponse } from '@/api/types';
 import type { PillStatus } from '@/components/ui';
 import { cx } from '@/lib/cx';
@@ -58,10 +58,16 @@ export interface RepoSwitcherProps {
 }
 
 /**
- * Topbar repo switcher (replaces the Index page). Lists the localStorage
- * recents, polls the active repo's live status (GET /repos/{id}/status) so
- * `indexing…` progress shows in place, and indexes a new repo (POST /repos)
- * from the dropdown. Selecting a repo scopes the whole workbench to it.
+ * Topbar repo switcher (replaces the Index page). Lists what is indexed,
+ * polls the active repo's live status (GET /repos/{id}/status) so `indexing…`
+ * progress shows in place, and indexes a new repo (POST /repos) from the
+ * dropdown. Selecting a repo scopes the whole workbench to it.
+ *
+ * The list is localStorage recents *plus* whatever the server reports. Neither
+ * alone is right: recents are per-browser, so a reader on a new device saw an
+ * empty product; the server list has no idea which repository this person was
+ * last working in, and does not know the URL as they typed it. Recents lead,
+ * server rows fill in behind them.
  */
 export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
   const [open, setOpen] = useState(false);
@@ -139,9 +145,33 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
     );
   }, [liveRepoId, liveRepoStatus, liveRepoUrl]);
 
+  // Server-side inventory. Cheap, and it does not poll: repositories appear
+  // when someone indexes one, which is a page-scale event, not a per-second
+  // one. The active repo's *status* is polled separately below.
+  const repoListQuery = useQuery({
+    queryKey: ['repo-list'],
+    queryFn: listRepos,
+    staleTime: 30_000,
+  });
+
+  // Recents first — they carry the URL as typed and the order this reader
+  // last worked in. Server rows are appended, deduped by id.
+  const knownRepos = useMemo<RecentRepoRecord[]>(() => {
+    const seen = new Set(recents.map((item) => item.repoId));
+    const fromServer = (repoListQuery.data?.repos ?? [])
+      .filter((repo) => !seen.has(repo.repo_id))
+      .map((repo) => ({
+        repoId: repo.repo_id,
+        url: repo.url,
+        status: repo.status,
+        savedAt: '',
+      }));
+    return [...recents, ...fromServer];
+  }, [recents, repoListQuery.data]);
+
   const activeRepo = useMemo(
-    () => recents.find((item) => item.repoId === activeRepoId) ?? null,
-    [recents, activeRepoId]
+    () => knownRepos.find((item) => item.repoId === activeRepoId) ?? null,
+    [knownRepos, activeRepoId]
   );
 
   // We couldn't reach the gateway, so we don't know this repo's state. The
@@ -210,10 +240,12 @@ export function RepoSwitcher({ activeRepoId, onSelect }: RepoSwitcherProps) {
             Indexed repositories
           </div>
 
-          {recents.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-ink-3">None yet — index one below.</p>
+          {knownRepos.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-ink-3">
+              {repoListQuery.isPending ? 'Loading…' : 'None yet — index one below.'}
+            </p>
           ) : (
-            recents.map((repo) => {
+            knownRepos.map((repo) => {
               const isActive = repo.repoId === activeRepoId;
               const live = isActive ? liveStatus : undefined;
               const unknown = isActive && unreachable;
