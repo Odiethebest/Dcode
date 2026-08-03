@@ -25,11 +25,11 @@ Outstanding Work list in the same PR, not tracked in two places.
 is written from an approved plan, and plans outrun implementations. Verify before
 relying on a claim here, and correct it when it is wrong.
 
-**Status: PR 1 landed. PR 2 code complete, its pipeline run still pending.
-PR 3–5 not started.** The pre-deployment state is frozen at tag
-`v1.0-submission` (`a4612b8`). Nothing is deployed anywhere yet. Both hosted
-model APIs have now been called from this codebase and the observed results are
-in § 2.1 and § 6 PR 2, but no index has yet been built through them.
+**Status: PR 1 and PR 2 landed. PR 3–5 not started.** The pre-deployment state
+is frozen at tag `v1.0-submission` (`a4612b8`). Nothing is deployed anywhere
+yet. Both hosted model APIs have been exercised end to end from a running local
+stack — see § 2.1 and § 6 PR 2 for the observed values — but **no index has been
+built through them**, so the indexing side of the hosted path is still unproven.
 
 ---
 
@@ -324,7 +324,7 @@ rather than defaulted, because a wrong value there is a re-index, not a slow que
    of the above, and **each was confirmed to fail when its defect is put back** —
    a config test that has never been seen failing is not evidence of anything.
 
-### PR 2 — `feat/managed-model-providers` — **code complete, pipeline run pending**
+### PR 2 — `feat/managed-model-providers` — **done, with one gap named below**
 
 The capability behind D-1.
 
@@ -368,11 +368,36 @@ The capability behind D-1.
    | Cross-batch ordering | re-embedding input 2 alone lands `0.000000` from its batched slot; nearest other slot is `0.586` |
    | `SiliconFlowRerankerClient`, 3 passages | scores returned in input order; argmax is the `HTTPBasicAuth` passage for a credentials question |
 
-   **What is not done: the full indexing pipeline has not been run through the
-   hosted provider.** 726 chunks at batch 32 is roughly 23 requests, which is
-   where rate limiting and the embed stage's Redis cache interaction would show
-   up, and neither has been exercised. Until that runs, this PR proves the
-   clients are correct, not that an index built through them is.
+   The **running stack** was then switched to both hosted providers
+   (`docker compose up -d --build api agent`, since the images are not
+   live-mounted) and queried against the existing 768-dimension index — the one
+   the *sidecar* wrote. That combination is the parity claim under test: a query
+   vector from Jina's API searching vectors produced by the local model.
+
+   | Check | Result |
+   |---|---|
+   | `mode=dense`, the zero-keyword-overlap query from Operations.md | **identical ranking**, same five chunks in the same order; cosine differs in the third decimal (0.5155 → 0.5182) |
+   | `mode=hybrid` | same five chunks; the top two swap, and they were **tied at 0.0042** in the baseline — the hosted run broke the tie 0.0043/0.0042. A tie broken differently is not a behaviour change |
+   | Reranker identity | hosted BGE returns scores in the same magnitude band as the local BGE sidecar (~0.004). The Qwen reranker on SiliconFlow's other platform returned ~0.64 on a comparable query, so the band is circumstantial evidence that the model is the one asked for |
+   | Full agent path, `POST /api/v1/query` | 3 tool calls (`search_code` → `get_call_neighbors` → `read_file`), 2 citations, **both verified**, groundedness `1.0` |
+   | Against the documented run | reproduces Operations.md *Verified Current Path — 2026-07-30* citation for citation: `sessions.py:186` and `sessions.py:557` |
+
+   The third-decimal drift is exactly the caveat § 2 records: same weights,
+   different serving stack, not bit-identical. It is visible and it does not
+   move the ranking.
+
+   **What is still not done: no index has been built through the hosted
+   provider.** The verification above is query-side. 726 chunks at batch 32 is
+   roughly 23 requests, which is where rate limiting and the embed stage's Redis
+   cache interaction would appear, and neither has been exercised. That is
+   deliberate — re-indexing would replace the verified reference index — and it
+   will happen naturally at the first Railway index. Until then this PR proves
+   the clients are correct and cross-compatible with the sidecar, not that a
+   bulk index built through them is.
+
+   The sidecar path was not re-run live after the switch. Its code is untouched
+   and its factory selection is covered by tests, but that is a weaker claim
+   than having watched it work, and it is stated as the weaker one.
 
 3. **Met.** `make check` green: ruff, eslint, the drift check, mypy strict over
    83 files, 310 passed / 5 skipped, 73 frontend tests. All four modes in § 5.1
