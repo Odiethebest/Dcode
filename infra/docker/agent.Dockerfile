@@ -31,4 +31,15 @@ EXPOSE 8001
 # deploy it also could not find alembic at all, because the build-time sync had
 # installed nothing (see the RUN above). apps/embedding already did it this way
 # with a comment saying why; api, worker and agent had not caught up.
-CMD ["sh", "-c", "exec /app/.venv/bin/uvicorn dcode_agent.main:app --host ${HOST:-::} --port ${PORT:-8001}"]
+# 0.0.0.0, not `::`. Measured, not assumed: uvicorn given `::` produces an
+# IPv6-ONLY socket — an IPv4 connect is refused even though the container has
+# net.ipv6.bindv6only=0 — and given 0.0.0.0 the reverse. There is no dual-stack
+# option, so this is a choice between them.
+#
+# Railway's health check arrives over IPv4: with `::` the request never reached
+# the application at all and the deploy failed with "1/1 replicas never became
+# healthy" while the log showed a perfectly started server. Private networking
+# in environments created after 2025-10-16 resolves to both families, so IPv4
+# serves both purposes. A legacy IPv6-only environment would need `HOST=::` and
+# would then need the health check removed.
+CMD ["sh", "-c", "exec /app/.venv/bin/uvicorn dcode_agent.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8001}"]

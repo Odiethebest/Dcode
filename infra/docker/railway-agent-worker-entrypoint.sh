@@ -23,9 +23,10 @@ term() {
 }
 trap term TERM INT
 
+# See api.Dockerfile for why this is 0.0.0.0 and not `::`.
 echo "[entrypoint] starting agent on :${PORT:-8001}"
 /app/.venv/bin/uvicorn dcode_agent.main:app \
-  --host "${HOST:-::}" --port "${PORT:-8001}" &
+  --host "${HOST:-0.0.0.0}" --port "${PORT:-8001}" &
 agent_pid=$!
 
 echo "[entrypoint] starting index worker"

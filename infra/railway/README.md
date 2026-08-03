@@ -4,9 +4,10 @@ Three `*.toml` files here, one per service that builds from this repository.
 The three data services (Postgres, Redis, RabbitMQ) come from Railway templates
 and need no file.
 
-**Nothing here has been deployed.** These were written from the code, and the
-sequence in [`Deploy.md` §10.2](../../Deploy.md) is the intended one rather than
-a recorded one. Correct both against what actually happens.
+**Deployed and reachable as of 2026-08-03.** What follows has been corrected
+against what actually happened rather than left as intent — four things failed
+first, and each one is now called out where it bit: the volume under `/tmp`,
+`HOST=::`, the injected `PORT`, and `uv run` at container start.
 
 ## Wiring each service
 
@@ -21,8 +22,11 @@ from the repository root. Leave Root Directory empty: every image here builds
 from the repository root, including the frontend — it used to build from
 `apps/frontend` and was changed precisely so this table has no exception in it.
 
-`agent-worker` needs **one volume**, mounted at whatever `WORKDIR_BASE` says
-(`/tmp/dcode-workdirs` by default). Without it the cloned checkout is lost on
+`agent-worker` needs **one volume**, and **not mounted under `/tmp`**. Railway
+refuses that and fails the deployment *before producing a single log line* — no
+build log, no deploy log, just FAILED, which is indistinguishable from a dozen
+other causes. Mount it at `/data/workdirs` and set `WORKDIR_BASE` to match. The
+`/tmp/dcode-workdirs` default is right for compose and wrong here. Without it the cloned checkout is lost on
 every redeploy, and the agent's `read_file` / `grep` / `list_directory` fail for
 every repository until it is re-indexed. Search and the call graph keep working,
 because they read Postgres — which is exactly the confusing half-failure the
@@ -48,7 +52,8 @@ avoids `$` now; a hand-picked Postgres password still can.
 
 | Variable | Value |
 |---|---|
-| `HOST` | `::` — **required.** Railway's private network is IPv6; a service bound to `0.0.0.0` there is reachable by nothing |
+| `PORT` | `8000` — **set it explicitly.** Railway injects one (8080) otherwise, and then every private URL pointing at `:8000` is wrong. Pinning it makes the other services' URLs correct by construction and matches compose |
+| `HOST` | `0.0.0.0`. **Not `::`** — measured: uvicorn given `::` produces an IPv6-only socket and Railway's health check arrives over IPv4, so the probe never reaches the app and the deploy fails with "1/1 replicas never became healthy" beside a log showing a healthy server |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}`, rewritten to the `postgresql+asyncpg://` scheme |
 | `REDIS_URL` | `${{Redis.REDIS_URL}}` |
 | `RABBITMQ_URL` | from the RabbitMQ service |
@@ -72,9 +77,10 @@ Same `EMBEDDING_*` / `RERANKER_*` / `INTERNAL_API_KEY` / `DATABASE_URL` /
 
 | Variable | Value |
 |---|---|
-| `HOST` | `::` |
+| `PORT` | `8001` |
+| `HOST` | `0.0.0.0` |
 | `RETRIEVAL_BASE_URL` | `http://api.railway.internal:8000` |
-| `WORKDIR_BASE` | the volume's mount path |
+| `WORKDIR_BASE` | `/data/workdirs` — the volume's mount path, and not under `/tmp` |
 | `WORKDIR_MAX_REPOS` | a number the volume can hold. `0` never evicts, which is how the volume fills; read `Deploy.md` §6 PR 5 for what eviction costs |
 | `SYNTHESIS_MODEL`, `OPENAI_API_KEY` | `gpt-4o-mini` and your key, to get prose answers rather than the rule-based template |
 | `AGENT_REQUEST_BUDGET_SECONDS`, `SSE_HEARTBEAT_SECONDS` | `240`, `20`. Both sized against the platform's request limits (`Deploy.md` R-2) |
